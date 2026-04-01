@@ -5,7 +5,6 @@ import type {
   BulkLevel,
   DashboardSummary,
   InstanceStatus,
-  LoginRequest,
   PartDbConnectionStatus,
   PartType,
   RegisterQrBatchRequest,
@@ -14,8 +13,7 @@ import type {
 import {
   ApiClientError,
   api,
-  clearSessionToken,
-  hydrateSessionToken,
+  loginUrl,
 } from "./api";
 import { PanelTitle } from "./components/PanelTitle";
 import { Metric } from "./components/Metric";
@@ -107,7 +105,6 @@ export default function SmartApp() {
     session: null,
     error: null,
   });
-  const [partDbTokenInput, setPartDbTokenInput] = useState("");
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [partDbStatus, setPartDbStatus] = useState<PartDbConnectionStatus | null>(null);
   const [catalogSuggestions, setCatalogSuggestions] = useState<PartType[]>([]);
@@ -131,7 +128,6 @@ export default function SmartApp() {
     authState.status === "authenticated" ? authState.session.expiresAt : null,
   );
 
-  const loginInputRef = useRef<HTMLInputElement>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
   const labelSearchAbortRef = useRef<AbortController | null>(null);
   const mergeSearchAbortRef = useRef<AbortController | null>(null);
@@ -141,33 +137,18 @@ export default function SmartApp() {
   const scanRequestRef = useRef(0);
 
   useEffect(() => {
-    const token = hydrateSessionToken();
-    if (!token) {
-      setAuthState({
-        status: "unauthenticated",
-        session: null,
-        error: null,
-      });
-      return;
-    }
-
     const controller = new AbortController();
-    void restoreSession(controller.signal);
+    void restoreSession(controller.signal, consumeAuthError());
     return () => controller.abort();
   }, []);
 
   useEffect(() => {
     if (authState.status === "authenticated") {
       scanInputRef.current?.focus();
-      return;
-    }
-
-    if (authState.status === "unauthenticated") {
-      loginInputRef.current?.focus();
     }
   }, [authState.status]);
 
-  async function restoreSession(signal: AbortSignal): Promise<void> {
+  async function restoreSession(signal: AbortSignal, authError: string | null): Promise<void> {
     setAuthState({
       status: "checking",
       session: null,
@@ -180,13 +161,21 @@ export default function SmartApp() {
         session,
         error: null,
       });
+      if (authError) {
+        addToast(authError, "error");
+      }
       await loadAuthenticatedData();
     } catch (caught) {
       if (signal.aborted) {
         return;
       }
-
-      handleAuthenticationFailure(caught);
+      const unauthenticated =
+        caught instanceof ApiClientError && caught.code === "unauthenticated";
+      setAuthState({
+        status: "unauthenticated",
+        session: null,
+        error: authError ?? (unauthenticated ? null : errorMessage(caught)),
+      });
     }
   }
 
@@ -213,7 +202,6 @@ export default function SmartApp() {
   }
 
   function handleAuthenticationFailure(caught: unknown): void {
-    clearSessionToken();
     resetAuthenticatedView();
     setAuthState({
       status: "unauthenticated",
@@ -296,28 +284,8 @@ export default function SmartApp() {
       error: null,
     });
 
-    try {
-      const session = (await api.login({
-        apiToken: partDbTokenInput,
-      } satisfies LoginRequest)).session;
-      setAuthState({
-        status: "authenticated",
-        session,
-        error: null,
-      });
-      setPartDbTokenInput("");
-      addToast(`Authenticated as ${session.username}.`, "success");
-      await loadAuthenticatedData();
-    } catch (caught) {
-      clearSessionToken();
-      setAuthState({
-        status: "unauthenticated",
-        session: null,
-        error: errorMessage(caught),
-      });
-      addToast(errorMessage(caught), "error");
-    } finally {
-      setPendingAction(null);
+    if (typeof window !== "undefined") {
+      window.location.assign(loginUrl(window.location.href));
     }
   }
 
@@ -326,13 +294,16 @@ export default function SmartApp() {
 
 
     try {
-      await api.logout();
+      const response = await api.logout();
+      if (typeof window !== "undefined" && response.redirectUrl) {
+        window.location.assign(response.redirectUrl);
+        return;
+      }
     } catch (caught) {
       if (!handleApiFailure(caught)) {
         addToast(errorMessage(caught), "error");
       }
     } finally {
-      clearSessionToken();
       resetAuthenticatedView();
       setAuthState({
         status: "unauthenticated",
@@ -663,17 +634,17 @@ export default function SmartApp() {
         <header className="hero">
           <div>
             <p className="eyebrow">Smart DB</p>
-            <h1>Sign In With Part-DB</h1>
+            <h1>Sign In With Makerspace SSO</h1>
             <p className="lede">
-              Labelers authenticate with their own Part-DB API token. Smart DB
-              does not maintain a separate account system.
+              Smart DB authenticates through your Makerspace identity provider
+              and keeps inventory credentials out of the browser.
             </p>
           </div>
           <div className="status-card">
             <div className="pill warn">Authentication Required</div>
             <p>
-              The token stays valid in Smart DB only while Part-DB would still
-              accept it.
+              You will be redirected to Zitadel and returned here with a secure
+              session.
             </p>
           </div>
         </header>
@@ -683,26 +654,17 @@ export default function SmartApp() {
 
         <section className="panel">
           <PanelTitle
-            title="Part-DB Token"
-            copy="Paste a personal Part-DB API token. The middleware validates it against Part-DB and attributes every action to that upstream user."
+            title="Makerspace Login"
+            copy="Use your Makerspace SSO account. Smart DB uses a server-side session cookie instead of storing bearer tokens in the browser."
           />
-          <form className="stack" onSubmit={handleLogin}>
-            <label>
-              API Token
-              <input
-                ref={loginInputRef}
-                type="password"
-                value={partDbTokenInput}
-                onChange={(event) => setPartDbTokenInput(event.target.value)}
-                placeholder="Paste your Part-DB API token"
-              />
-            </label>
-            <button type="submit" disabled={pendingAction === "login" || authState.status === "checking"}>
-              {pendingAction === "login" || authState.status === "checking"
-                ? "Authenticating..."
-                : "Authenticate"}
-            </button>
-          </form>
+          <div className="stack">
+            <a
+              className="button-link"
+              href={typeof window === "undefined" ? loginUrl("http://localhost") : loginUrl(window.location.href)}
+            >
+              Continue With SSO
+            </a>
+          </div>
         </section>
       </div>
     );
@@ -795,4 +757,20 @@ export default function SmartApp() {
       <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
+}
+
+function consumeAuthError(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const url = new URL(window.location.href);
+  const authError = url.searchParams.get("authError");
+  if (!authError) {
+    return null;
+  }
+
+  url.searchParams.delete("authError");
+  window.history.replaceState({}, "", url.toString());
+  return authError;
 }

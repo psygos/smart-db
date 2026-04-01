@@ -5,8 +5,6 @@ import {
   authSessionSchema,
   dashboardSummarySchema,
   inventoryEntitySummarySchema,
-  loginRequestSchema,
-  loginResponseSchema,
   logoutResponseSchema,
   mergePartTypesRequestSchema,
   parseWithSchema,
@@ -21,8 +19,6 @@ import {
   type AssignQrRequest,
   type AuthSession,
   type DashboardSummary,
-  type LoginRequest,
-  type LoginResponse,
   type LogoutResponse,
   type MergePartTypesRequest,
   type PartDbConnectionStatus,
@@ -35,9 +31,6 @@ import {
 } from "@smart-db/contracts";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
-const sessionTokenStorageKey = "smart-db.partdb-api-token";
-
-let sessionToken: string | null = null;
 
 export class ApiClientError extends Error {
   constructor(
@@ -51,20 +44,6 @@ export class ApiClientError extends Error {
 
 interface ApiRequestInit extends RequestInit {
   signal?: AbortSignal;
-  tokenOverride?: string | null;
-}
-
-function currentSessionToken(): string | null {
-  if (sessionToken) {
-    return sessionToken;
-  }
-
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  sessionToken = window.localStorage.getItem(sessionTokenStorageKey);
-  return sessionToken;
 }
 
 async function request<TSchema extends z.ZodTypeAny>(
@@ -72,15 +51,14 @@ async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   init?: ApiRequestInit,
 ): Promise<z.output<TSchema>> {
-  const activeToken = init?.tokenOverride ?? currentSessionToken();
   const timeoutSignal = AbortSignal.timeout(15_000);
   const combinedSignal = init?.signal
     ? AbortSignal.any([init.signal, timeoutSignal])
     : timeoutSignal;
   const response = await fetch(`${apiBaseUrl}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
       ...(init?.headers ?? {}),
     },
     ...init,
@@ -107,26 +85,18 @@ async function request<TSchema extends z.ZodTypeAny>(
   return parseWithSchema(schema, await response.json(), `response for ${path}`);
 }
 
-export function setSessionToken(token: string): void {
-  sessionToken = token;
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(sessionTokenStorageKey, token);
-  }
+export function loginUrl(returnTo: string): string {
+  const url = new URL("/api/auth/login", apiBaseUrl);
+  url.searchParams.set("returnTo", returnTo);
+  return url.toString();
 }
 
-export function clearSessionToken(): void {
-  sessionToken = null;
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(sessionTokenStorageKey);
-  }
-}
+export function setSessionToken(_token: string): void {}
+
+export function clearSessionToken(): void {}
 
 export function hydrateSessionToken(): string | null {
-  sessionToken =
-    typeof window === "undefined"
-      ? null
-      : window.localStorage.getItem(sessionTokenStorageKey);
-  return sessionToken;
+  return null;
 }
 
 function idempotencyHeaders(): Record<string, string> {
@@ -134,25 +104,13 @@ function idempotencyHeaders(): Record<string, string> {
 }
 
 export const api = {
-  async login(payload: LoginRequest): Promise<LoginResponse> {
-    const parsedPayload = parseWithSchema(loginRequestSchema, payload, "login form");
-    const response = await request(loginResponseSchema, "/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify(parsedPayload),
-      tokenOverride: parsedPayload.apiToken,
-    });
-    setSessionToken(parsedPayload.apiToken);
-    return response;
-  },
   getSession(signal?: AbortSignal): Promise<AuthSession> {
     return request(authSessionSchema, "/api/auth/session", signal ? { signal } : undefined);
   },
   async logout(): Promise<LogoutResponse> {
-    const response = await request(logoutResponseSchema, "/api/auth/logout", {
+    return request(logoutResponseSchema, "/api/auth/logout", {
       method: "POST",
     });
-    clearSessionToken();
-    return response;
   },
   getDashboard(): Promise<DashboardSummary> {
     return request(dashboardSummarySchema, "/api/dashboard");

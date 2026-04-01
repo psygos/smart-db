@@ -9,7 +9,7 @@ import type {
 } from "@smart-db/contracts";
 
 const apiMock = vi.hoisted(() => ({
-  login: vi.fn(),
+  loginUrl: vi.fn(),
   getSession: vi.fn(),
   logout: vi.fn(),
   hydrateSessionToken: vi.fn(),
@@ -39,6 +39,7 @@ vi.mock("./api", () => ({
   },
   clearSessionToken: apiMock.clearSessionToken,
   hydrateSessionToken: apiMock.hydrateSessionToken,
+  loginUrl: apiMock.loginUrl,
   api: apiMock,
 }));
 
@@ -108,20 +109,17 @@ beforeEach(() => {
   for (const mock of Object.values(apiMock)) {
     mock.mockReset();
   }
-  apiMock.hydrateSessionToken.mockReturnValue("partdb-token");
+  apiMock.loginUrl.mockReturnValue("http://localhost:4000/api/auth/login?returnTo=http%3A%2F%2Flocalhost%3A5173%2F");
   apiMock.getSession.mockResolvedValue({
+    subject: null,
     username: "labeler",
+    name: null,
+    email: null,
+    roles: [],
     issuedAt: "2026-01-01T00:00:00.000Z",
     expiresAt: null,
   });
-  apiMock.login.mockResolvedValue({
-    session: {
-      username: "labeler",
-      issuedAt: "2026-01-01T00:00:00.000Z",
-      expiresAt: null,
-    },
-  });
-  apiMock.logout.mockResolvedValue({ ok: true });
+  apiMock.logout.mockResolvedValue({ ok: true, redirectUrl: null });
   apiMock.getDashboard.mockResolvedValue(dashboard);
   apiMock.getPartDbStatus.mockResolvedValue(partDbStatus);
   apiMock.getProvisionalPartTypes.mockResolvedValue([partType]);
@@ -188,57 +186,48 @@ function deferred<T>() {
 }
 
 describe("App", () => {
-  it("renders the login shell when no persisted Part-DB token exists", async () => {
-    apiMock.hydrateSessionToken.mockReturnValueOnce(null);
-
-    render(<SmartApp />);
-
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Authenticate" })).toBeInTheDocument();
-  });
-
-  it("authenticates from the login shell and then loads the inventory app", async () => {
-    const user = userEvent.setup();
-    apiMock.hydrateSessionToken.mockReturnValueOnce(null);
-
-    render(<SmartApp />);
-
-    await user.type(screen.getByLabelText("API Token"), "partdb-token");
-    await user.click(screen.getByRole("button", { name: "Authenticate" }));
-
-    await waitFor(() => {
-      expect(apiMock.login).toHaveBeenCalledWith({
-        apiToken: "partdb-token",
-      });
-    });
-    expect(await screen.findByRole("button", { name: "Logout" })).toBeInTheDocument();
-    expect(await screen.findByText(/Authenticated as labeler/)).toBeInTheDocument();
-  });
-
-  it("surfaces login failures and stays on the login shell", async () => {
+  it("renders the login shell when the session is missing", async () => {
     const AuthError = (await import("./api")).ApiClientError;
-    const user = userEvent.setup();
-    apiMock.hydrateSessionToken.mockReturnValueOnce(null);
-    apiMock.login.mockRejectedValueOnce(new AuthError("unauthenticated", "invalid token"));
+    apiMock.getSession.mockRejectedValueOnce(new AuthError("unauthenticated", "Authentication is required."));
 
     render(<SmartApp />);
 
-    await user.type(screen.getByLabelText("API Token"), "bad-token");
-    await user.click(screen.getByRole("button", { name: "Authenticate" }));
-
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
-    expect((await screen.findAllByText("unauthenticated: invalid token")).length).toBeGreaterThan(0);
-    expect(apiMock.clearSessionToken).toHaveBeenCalled();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Continue With SSO" })).toHaveAttribute(
+      "href",
+      "http://localhost:4000/api/auth/login?returnTo=http%3A%2F%2Flocalhost%3A5173%2F",
+    );
   });
 
-  it("falls back to the login shell when the persisted token is invalid", async () => {
+  it("renders an SSO login link from the login shell", async () => {
+    const AuthError = (await import("./api")).ApiClientError;
+    apiMock.getSession.mockRejectedValueOnce(new AuthError("unauthenticated", "Authentication is required."));
+
+    render(<SmartApp />);
+
+    expect(await screen.findByRole("link", { name: "Continue With SSO" })).toHaveAttribute(
+      "href",
+      "http://localhost:4000/api/auth/login?returnTo=http%3A%2F%2Flocalhost%3A5173%2F",
+    );
+  });
+
+  it("surfaces session-restore failures and stays on the login shell", async () => {
+    const AuthError = (await import("./api")).ApiClientError;
+    apiMock.getSession.mockRejectedValueOnce(new AuthError("integration", "zitadel offline"));
+
+    render(<SmartApp />);
+
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
+    expect((await screen.findAllByText("integration: zitadel offline")).length).toBeGreaterThan(0);
+  });
+
+  it("falls back to the login shell when the session is invalid", async () => {
     const AuthError = (await import("./api")).ApiClientError;
     apiMock.getSession.mockRejectedValueOnce(new AuthError("unauthenticated", "token expired"));
 
     render(<SmartApp />);
 
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
-    expect(apiMock.clearSessionToken).toHaveBeenCalled();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
   });
 
   it("ignores aborted session restoration during unmount", async () => {
@@ -254,7 +243,7 @@ describe("App", () => {
     pendingSession.reject(new DOMException("aborted", "AbortError"));
     await Promise.resolve();
 
-    expect(apiMock.clearSessionToken).not.toHaveBeenCalled();
+    expect(apiMock.logout).not.toHaveBeenCalled();
   });
 
   it("shows the upstream token expiry when Part-DB reports one", async () => {
@@ -277,8 +266,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Logout" }));
 
     expect(apiMock.logout).toHaveBeenCalled();
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
-    expect(apiMock.clearSessionToken).toHaveBeenCalled();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
   });
 
   it("still clears auth state when logout fails for a non-auth reason", async () => {
@@ -289,7 +277,7 @@ describe("App", () => {
     await screen.findByRole("button", { name: "Logout" });
     await user.click(screen.getByRole("button", { name: "Logout" }));
 
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
     expect(await screen.findByText("logout failed")).toBeInTheDocument();
   });
 
@@ -371,8 +359,7 @@ describe("App", () => {
     await user.type(screen.getByPlaceholderText("Scan or type a QR / barcode"), "QR-401");
     await user.click(screen.getByRole("button", { name: "Open" }));
 
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
-    expect(apiMock.clearSessionToken).toHaveBeenCalled();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
   });
 
   it("drops back to login when predictive search becomes unauthenticated", async () => {
@@ -412,7 +399,7 @@ describe("App", () => {
     }
 
     await user.type(within(assignCard).getByLabelText("Search existing part types"), "bad");
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
   });
 
   it("restores default suggestions when a predictive-search query is cleared", async () => {
@@ -905,8 +892,7 @@ describe("App", () => {
 
     render(<SmartApp />);
 
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
-    expect(apiMock.clearSessionToken).toHaveBeenCalled();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
   });
 
   it("shows early merge validation and merge success", async () => {
@@ -958,7 +944,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Find canonical destination"), "cable");
     expect(await screen.findByText("merge search failed")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Logout" }));
-    expect(await screen.findByText("Sign In With Part-DB")).toBeInTheDocument();
+    expect(await screen.findByText("Sign In With Makerspace SSO")).toBeInTheDocument();
   });
 
   it("renders null event deltas as 'none'", async () => {

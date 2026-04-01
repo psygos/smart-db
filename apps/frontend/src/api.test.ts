@@ -5,6 +5,7 @@ import {
   api,
   clearSessionToken,
   hydrateSessionToken,
+  loginUrl,
   setSessionToken,
 } from "./api";
 
@@ -26,17 +27,11 @@ describe("frontend api", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
-            session: {
-              username: "labeler",
-              issuedAt: "2026-01-01T00:00:00.000Z",
-              expiresAt: null,
-            },
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
+            subject: null,
             username: "labeler",
+            name: null,
+            email: null,
+            roles: [],
             issuedAt: "2026-01-01T00:00:00.000Z",
             expiresAt: null,
           }),
@@ -196,9 +191,6 @@ describe("frontend api", () => {
         }),
     );
 
-    await expect(api.login({ apiToken: "token-123" })).resolves.toMatchObject({
-      session: { username: "labeler" },
-    });
     await expect(api.getSession()).resolves.toMatchObject({
       username: "labeler",
     });
@@ -249,10 +241,8 @@ describe("frontend api", () => {
     await expect(api.approvePartType("part-1")).resolves.toMatchObject({ needsReview: false });
 
     const fetch = globalThis.fetch as ReturnType<typeof vi.fn>;
-    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
-      headers: expect.objectContaining({
-        Authorization: "Bearer token-123",
-      }),
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+      credentials: "include",
     });
   });
 
@@ -318,12 +308,14 @@ describe("frontend api", () => {
     await expect(api.getDashboard()).rejects.toThrowError(ParseInputError);
   });
 
-  it("stores, hydrates, and clears the active token", () => {
+  it("builds a Zitadel login URL and leaves legacy token helpers inert", () => {
+    expect(loginUrl("https://smartdb.example.com/app")).toBe(
+      `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"}/api/auth/login?returnTo=${encodeURIComponent("https://smartdb.example.com/app")}`,
+    );
     setSessionToken("token-xyz");
-    expect(window.localStorage.getItem("smart-db.partdb-api-token")).toBe("token-xyz");
-    expect(hydrateSessionToken()).toBe("token-xyz");
+    expect(hydrateSessionToken()).toBeNull();
     clearSessionToken();
-    expect(window.localStorage.getItem("smart-db.partdb-api-token")).toBeNull();
+    expect(hydrateSessionToken()).toBeNull();
   });
 
   it("passes explicit abort signals through search and session calls", async () => {
