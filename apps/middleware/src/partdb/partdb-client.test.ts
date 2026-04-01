@@ -311,6 +311,23 @@ describe("PartDbClient", () => {
     );
   });
 
+  it("does not retry authenticate calls when token validation transport fails", async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    vi.stubGlobal("fetch", fetch);
+
+    const client = new PartDbClient({
+      baseUrl: "https://partdb.example.com",
+      retry: {
+        maxAttempts: 3,
+        baseDelayMs: 0,
+        maxDelayMs: 0,
+      },
+    });
+
+    await expect(client.authenticate("secret")).rejects.toThrowError("fetch failed");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns lookup summaries and wraps authenticate fetch failures", async () => {
     const fetch = vi
       .fn()

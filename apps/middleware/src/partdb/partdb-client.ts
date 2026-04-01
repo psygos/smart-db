@@ -24,11 +24,17 @@ interface TokenInfo {
   expiresAt: string | null;
 }
 
+const authRetryOptions: RetryOptions = {
+  maxAttempts: 1,
+  baseDelayMs: 0,
+  maxDelayMs: 0,
+};
+
 export class PartDbClient {
   constructor(private readonly config: PartDbConfig) {}
 
   async authenticate(apiToken: string): Promise<AuthSession> {
-    const tokenInfo = await this.getTokenInfo(apiToken);
+    const tokenInfo = await this.getTokenInfo(apiToken, authRetryOptions);
     return {
       username: tokenInfo.username,
       issuedAt: new Date().toISOString(),
@@ -126,12 +132,12 @@ export class PartDbClient {
     };
   }
 
-  private async getTokenInfo(apiToken: string): Promise<TokenInfo> {
+  private async getTokenInfo(apiToken: string, retryOverride?: RetryOptions): Promise<TokenInfo> {
     if (!this.config.baseUrl) {
       throw new IntegrationError("Part-DB", "base URL is not configured.");
     }
 
-    const retryOptions = this.config.retry ?? defaultRetryOptions;
+    const retryOptions = retryOverride ?? this.config.retry ?? defaultRetryOptions;
     const response = await withRetry(
       () =>
         fetch(`${this.normalizedBaseUrl()}/api/tokens/current`, {
