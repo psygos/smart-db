@@ -5,6 +5,7 @@ import type {
   BulkLevel,
   DashboardSummary,
   InstanceStatus,
+  QrBatch,
   PartDbConnectionStatus,
   PartType,
   RegisterQrBatchRequest,
@@ -14,6 +15,7 @@ import {
   ApiClientError,
   api,
   loginUrl,
+  qrBatchLabelsPdfUrl,
 } from "./api";
 import { PanelTitle } from "./components/PanelTitle";
 import { Metric } from "./components/Metric";
@@ -107,6 +109,7 @@ export default function SmartApp() {
   });
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [partDbStatus, setPartDbStatus] = useState<PartDbConnectionStatus | null>(null);
+  const [latestBatch, setLatestBatch] = useState<QrBatch | null>(null);
   const [catalogSuggestions, setCatalogSuggestions] = useState<PartType[]>([]);
   const [provisionalPartTypes, setProvisionalPartTypes] = useState<PartType[]>([]);
   const [labelSearch, setLabelSearch] = useState<SearchState>(defaultSearchState);
@@ -182,6 +185,7 @@ export default function SmartApp() {
   function resetAuthenticatedView(): void {
     setDashboard(null);
     setPartDbStatus(null);
+    setLatestBatch(null);
     setCatalogSuggestions([]);
     setProvisionalPartTypes([]);
     setLabelSearch(defaultSearchState);
@@ -220,15 +224,16 @@ export default function SmartApp() {
   }
 
   async function loadAuthenticatedData(): Promise<void> {
-    const [dashboardResult, partDbResult, provisionalResult, partTypesResult] =
+    const [dashboardResult, partDbResult, provisionalResult, partTypesResult, latestBatchResult] =
       await Promise.allSettled([
         api.getDashboard(),
         api.getPartDbStatus(),
         api.getProvisionalPartTypes(),
         api.searchPartTypes(""),
+        api.getLatestQrBatch(),
       ]);
 
-    for (const result of [dashboardResult, partDbResult, provisionalResult, partTypesResult]) {
+    for (const result of [dashboardResult, partDbResult, provisionalResult, partTypesResult, latestBatchResult]) {
       if (result.status === "rejected" && handleApiFailure(result.reason)) {
         return;
       }
@@ -242,6 +247,24 @@ export default function SmartApp() {
 
     if (partDbResult.status === "fulfilled") {
       setPartDbStatus(partDbResult.value);
+    }
+
+    if (latestBatchResult.status === "fulfilled") {
+      const latestBatchValue = latestBatchResult.value;
+      setLatestBatch(latestBatchValue);
+      if (latestBatchValue) {
+        setBatchForm((current) =>
+          current.prefix === defaultBatchForm.prefix &&
+          current.startNumber === defaultBatchForm.startNumber &&
+          current.count === defaultBatchForm.count
+            ? {
+                ...current,
+                prefix: latestBatchValue.prefix,
+                startNumber: latestBatchValue.endNumber + 1,
+              }
+            : current,
+        );
+      }
     }
 
     if (provisionalResult.status === "fulfilled") {
@@ -458,8 +481,10 @@ export default function SmartApp() {
         `Registered ${response.created} QR codes in ${response.batch.id}. ${response.skipped} were already present.`,
         "success",
       );
+      setLatestBatch(response.batch);
       setBatchForm((current) => ({
         ...current,
+        prefix: response.batch.prefix,
         startNumber: response.batch.endNumber + 1,
       }));
       await loadAuthenticatedData();
@@ -741,6 +766,8 @@ export default function SmartApp() {
             batchForm={batchForm}
             onBatchFormChange={setBatchForm}
             onRegisterBatch={handleRegisterBatch}
+            latestBatch={latestBatch}
+            latestBatchLabelsUrl={latestBatch ? qrBatchLabelsPdfUrl(latestBatch.id) : null}
             provisionalPartTypes={provisionalPartTypes}
             mergeSourceId={mergeSourceId}
             onMergeSourceIdChange={setMergeSourceId}

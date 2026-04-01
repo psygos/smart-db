@@ -5,17 +5,20 @@ import type {
   DashboardSummary,
   PartDbConnectionStatus,
   PartType,
+  QrBatch,
   ScanResponse,
 } from "@smart-db/contracts";
 
 const apiMock = vi.hoisted(() => ({
   loginUrl: vi.fn(),
+  qrBatchLabelsPdfUrl: vi.fn(),
   getSession: vi.fn(),
   logout: vi.fn(),
   hydrateSessionToken: vi.fn(),
   clearSessionToken: vi.fn(),
   getDashboard: vi.fn(),
   getPartDbStatus: vi.fn(),
+  getLatestQrBatch: vi.fn(),
   getProvisionalPartTypes: vi.fn(),
   searchPartTypes: vi.fn(),
   registerQrBatch: vi.fn(),
@@ -40,6 +43,7 @@ vi.mock("./api", () => ({
   clearSessionToken: apiMock.clearSessionToken,
   hydrateSessionToken: apiMock.hydrateSessionToken,
   loginUrl: apiMock.loginUrl,
+  qrBatchLabelsPdfUrl: apiMock.qrBatchLabelsPdfUrl,
   api: apiMock,
 }));
 
@@ -105,11 +109,23 @@ const bulkType: PartType = {
   countable: false,
 };
 
+const latestBatch: QrBatch = {
+  id: "batch-latest",
+  prefix: "QR",
+  startNumber: 1001,
+  endNumber: 1024,
+  actor: "labeler",
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
+
 beforeEach(() => {
   for (const mock of Object.values(apiMock)) {
     mock.mockReset();
   }
   apiMock.loginUrl.mockReturnValue("http://localhost:4000/api/auth/login?returnTo=http%3A%2F%2Flocalhost%3A5173%2F");
+  apiMock.qrBatchLabelsPdfUrl.mockImplementation(
+    (batchId: string) => `http://localhost:4000/api/qr-batches/${batchId}/labels.pdf`,
+  );
   apiMock.getSession.mockResolvedValue({
     subject: null,
     username: "labeler",
@@ -122,6 +138,7 @@ beforeEach(() => {
   apiMock.logout.mockResolvedValue({ ok: true, redirectUrl: null });
   apiMock.getDashboard.mockResolvedValue(dashboard);
   apiMock.getPartDbStatus.mockResolvedValue(partDbStatus);
+  apiMock.getLatestQrBatch.mockResolvedValue(latestBatch);
   apiMock.getProvisionalPartTypes.mockResolvedValue([partType]);
   apiMock.searchPartTypes.mockResolvedValue([partType]);
   apiMock.registerQrBatch.mockResolvedValue({
@@ -290,6 +307,13 @@ describe("App", () => {
     expect(screen.getByText("Unassigned QRs")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Admin" }));
+    expect(screen.getByText(/batch-latest/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download PDF Labels" })).toHaveAttribute(
+      "href",
+      "http://localhost:4000/api/qr-batches/batch-latest/labels.pdf",
+    );
+    expect(screen.getByLabelText("Prefix")).toHaveValue("QR");
+    expect(screen.getByLabelText("Start number")).toHaveValue(1025);
     await user.clear(screen.getByLabelText("Prefix"));
     await user.type(screen.getByLabelText("Prefix"), "LAB");
     await user.clear(screen.getByLabelText("Start number"));
@@ -305,6 +329,51 @@ describe("App", () => {
       });
     });
     expect(await screen.findByText(/Registered 500 QR codes/)).toBeInTheDocument();
+  });
+
+  it("updates the latest batch card after successful registration", async () => {
+    const user = userEvent.setup();
+    apiMock.getLatestQrBatch
+      .mockResolvedValueOnce(latestBatch)
+      .mockResolvedValueOnce({
+        id: "batch-new",
+        prefix: "LAB",
+        startNumber: 5001,
+        endNumber: 5025,
+        actor: "labeler",
+        createdAt: "2026-01-02T00:00:00.000Z",
+      });
+    apiMock.registerQrBatch.mockResolvedValueOnce({
+      batch: {
+        id: "batch-new",
+        prefix: "LAB",
+        startNumber: 5001,
+        endNumber: 5025,
+        actor: "labeler",
+        createdAt: "2026-01-02T00:00:00.000Z",
+      },
+      created: 25,
+      skipped: 0,
+    });
+
+    render(<SmartApp />);
+    await screen.findByRole("button", { name: "Logout" });
+    await user.click(screen.getByRole("button", { name: "Admin" }));
+    await user.clear(screen.getByLabelText("Prefix"));
+    await user.type(screen.getByLabelText("Prefix"), "LAB");
+    await user.clear(screen.getByLabelText("Start number"));
+    await user.type(screen.getByLabelText("Start number"), "5001");
+    await user.clear(screen.getByLabelText("Count"));
+    await user.type(screen.getByLabelText("Count"), "25");
+    await user.click(screen.getByRole("button", { name: "Register batch" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/25 labels · created by/)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: "Download PDF Labels" })).toHaveAttribute(
+      "href",
+      "http://localhost:4000/api/qr-batches/batch-new/labels.pdf",
+    );
   });
 
   it("auto-increments batch start number after successful registration", async () => {

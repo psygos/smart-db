@@ -276,6 +276,22 @@ describe("buildServer", () => {
         created: 2,
         skipped: 0,
       })),
+      getLatestQrBatch: vi.fn(() => ({
+        id: "batch-1",
+        prefix: "QR",
+        startNumber: 1001,
+        endNumber: 1002,
+        actor: "lab-admin",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      })),
+      getQrBatchById: vi.fn(() => ({
+        id: "batch-1",
+        prefix: "QR",
+        startNumber: 1001,
+        endNumber: 1002,
+        actor: "lab-admin",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      })),
       scanCode: vi.fn(async () => scanResponse),
       assignQr: vi.fn(() => entitySummary),
       recordEvent: vi.fn(() => stockEvent),
@@ -385,6 +401,15 @@ describe("buildServer", () => {
     });
     await expect(
       app.inject({
+        method: "GET",
+        url: "/api/qr-batches/latest",
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({
+      statusCode: 200,
+    });
+    await expect(
+      app.inject({
         method: "POST",
         url: "/api/qr-codes/QR-1001/void",
         payload: {},
@@ -398,6 +423,18 @@ describe("buildServer", () => {
         headers: sessionHeaders,
       }),
     ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "GET",
+        url: "/api/qr-batches/batch-1/labels.pdf",
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({
+      statusCode: 200,
+      headers: expect.objectContaining({
+        "content-type": expect.stringContaining("application/pdf"),
+      }),
+    });
 
     expect(service.searchPartTypes).toHaveBeenCalledWith("arduino");
     expect(service.voidQrCode).toHaveBeenCalledWith("QR-1001", "labeler");
@@ -415,6 +452,10 @@ describe("buildServer", () => {
       getProvisionalPartTypes: vi.fn(() => []),
       registerQrBatch: vi.fn(() => {
         throw new ConflictError("Batch already exists.");
+      }),
+      getLatestQrBatch: vi.fn(() => null),
+      getQrBatchById: vi.fn(() => {
+        throw new ConflictError("unused");
       }),
       scanCode: vi.fn(async () => scanResponse),
       assignQr: vi.fn(() => entitySummary),

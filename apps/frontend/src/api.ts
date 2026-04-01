@@ -5,6 +5,7 @@ import {
   authSessionSchema,
   dashboardSummarySchema,
   inventoryEntitySummarySchema,
+  latestQrBatchResponseSchema,
   logoutResponseSchema,
   mergePartTypesRequestSchema,
   parseWithSchema,
@@ -19,6 +20,7 @@ import {
   type AssignQrRequest,
   type AuthSession,
   type DashboardSummary,
+  type LatestQrBatchResponse,
   type LogoutResponse,
   type MergePartTypesRequest,
   type PartDbConnectionStatus,
@@ -118,6 +120,9 @@ export const api = {
   getPartDbStatus(): Promise<PartDbConnectionStatus> {
     return request(partDbConnectionStatusSchema, "/api/partdb/status");
   },
+  getLatestQrBatch(): Promise<LatestQrBatchResponse> {
+    return request(latestQrBatchResponseSchema, "/api/qr-batches/latest");
+  },
   getProvisionalPartTypes(): Promise<PartType[]> {
     return request(partTypeSchema.array(), "/api/part-types/provisional");
   },
@@ -187,3 +192,7 @@ export const api = {
     });
   },
 };
+
+export function qrBatchLabelsPdfUrl(batchId: string): string {
+  return `${apiBaseUrl}/api/qr-batches/${encodeURIComponent(batchId)}/labels.pdf`;
+}

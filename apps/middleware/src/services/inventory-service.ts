@@ -109,6 +109,26 @@ export class InventoryService {
       .map((row) => mapPartType(row as SqlRow));
   }
 
+  getLatestQrBatch() {
+    const row = this.db
+      .prepare(`SELECT * FROM qr_batches ORDER BY created_at DESC, rowid DESC LIMIT 1`)
+      .get() as SqlRow | undefined;
+
+    return row ? mapQrBatch(row) : null;
+  }
+
+  getQrBatchById(batchId: string) {
+    const row = this.db
+      .prepare(`SELECT * FROM qr_batches WHERE id = ?`)
+      .get(batchId) as SqlRow | undefined;
+
+    if (!row) {
+      throw new NotFoundError("QR batch", batchId);
+    }
+
+    return mapQrBatch(row);
+  }
+
   registerQrBatch(input: RegisterQrBatchCommand): RegisterQrBatchResponse {
     const actor = input.actor;
     const prefix = input.prefix;

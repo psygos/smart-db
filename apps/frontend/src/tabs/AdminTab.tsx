@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import type { PartType, RegisterQrBatchRequest } from "@smart-db/contracts";
+import type { PartType, QrBatch, RegisterQrBatchRequest } from "@smart-db/contracts";
 import { PanelTitle } from "../components/PanelTitle";
 
 type SearchState = {
@@ -16,6 +16,8 @@ interface AdminTabProps {
   batchForm: RegisterQrBatchRequest;
   onBatchFormChange: (updater: (current: RegisterQrBatchRequest) => RegisterQrBatchRequest) => void;
   onRegisterBatch: (event: FormEvent<HTMLFormElement>) => void;
+  latestBatch: QrBatch | null;
+  latestBatchLabelsUrl: string | null;
   // Merge
   provisionalPartTypes: PartType[];
   mergeSourceId: string;
@@ -37,6 +39,29 @@ export function AdminTab(props: AdminTabProps) {
           title="Print QR batches"
           copy={`Pre-register sticker ranges. This batch will be attributed to ${props.sessionUsername}.`}
         />
+        {props.latestBatch ? (
+          <div className="latest-batch-card">
+            <div>
+              <strong>Latest batch</strong>
+              <p>
+                {props.latestBatch.id} · {props.latestBatch.prefix}-{props.latestBatch.startNumber}
+                {" "}to{" "}
+                {props.latestBatch.prefix}-{props.latestBatch.endNumber}
+              </p>
+              <small>
+                {props.latestBatch.endNumber - props.latestBatch.startNumber + 1} labels · created by{" "}
+                {props.latestBatch.actor}
+              </small>
+            </div>
+            {props.latestBatchLabelsUrl ? (
+              <a className="button-link" href={props.latestBatchLabelsUrl}>
+                Download PDF Labels
+              </a>
+            ) : null}
+          </div>
+        ) : (
+          <p className="muted-copy">No QR batch has been registered yet.</p>
+        )}
         <form className="form-grid" onSubmit={props.onRegisterBatch}>
           <label>
             Prefix

@@ -192,6 +192,8 @@ export const registerQrBatchResponseSchema = z
   })
   .strict();
 
+export const latestQrBatchResponseSchema = qrBatchSchema.nullable();
+
 export const existingPartTypeDraftSchema = z
   .object({
     kind: z.literal("existing"),
@@ -428,6 +430,7 @@ export type LogoutResponse = z.output<typeof logoutResponseSchema>;
 export type RegisterQrBatchRequest = z.output<typeof registerQrBatchRequestSchema>;
 export type RegisterQrBatchCommand = z.output<typeof registerQrBatchCommandSchema>;
 export type RegisterQrBatchResponse = z.output<typeof registerQrBatchResponseSchema>;
+export type LatestQrBatchResponse = z.output<typeof latestQrBatchResponseSchema>;
 export type ExistingPartTypeDraft = z.output<typeof existingPartTypeDraftSchema>;
 export type NewPartTypeDraft = z.output<typeof newPartTypeDraftSchema>;
 export type PartTypeDraft = z.output<typeof partTypeDraftSchema>;

@@ -139,6 +139,28 @@ describe("E2E: full intake → lifecycle → merge workflow", () => {
     expect(batch.statusCode).toBe(200);
     expect(batch.json().created).toBe(5);
 
+    const latestBatch = await app.inject({
+      method: "GET",
+      url: "/api/qr-batches/latest",
+      headers: auth,
+    });
+    expect(latestBatch.statusCode).toBe(200);
+    expect(latestBatch.json()).toMatchObject({
+      id: batch.json().batch.id,
+      prefix: "E2E",
+      startNumber: 1,
+      endNumber: 5,
+    });
+
+    const labelsPdf = await app.inject({
+      method: "GET",
+      url: `/api/qr-batches/${batch.json().batch.id}/labels.pdf`,
+      headers: auth,
+    });
+    expect(labelsPdf.statusCode).toBe(200);
+    expect(labelsPdf.headers["content-type"]).toContain("application/pdf");
+    expect(Buffer.from(labelsPdf.body).subarray(0, 4).toString("utf8")).toBe("%PDF");
+
     const scanPrinted = await app.inject({
       method: "POST",
       url: "/api/scan",

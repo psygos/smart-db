@@ -3,6 +3,7 @@ import {
   applicationErrorResponseSchema,
   assignQrRequestSchema,
   configEnvironmentSchema,
+  latestQrBatchResponseSchema,
   loginRequestSchema,
   loginResponseSchema,
   logoutResponseSchema,
@@ -230,5 +231,7 @@ describe("schemas", () => {
       ok: true,
       redirectUrl: null,
     });
+
+    expect(latestQrBatchResponseSchema.parse(null)).toBeNull();
   });
 });

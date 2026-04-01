@@ -215,6 +215,36 @@ button {
   border: none;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  background: linear-gradient(135deg, #132033 0%, #24496f 100%);
+  color: #fff9ef;
+  text-decoration: none;
+}
+
+.latest-batch-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgba(19, 32, 51, 0.08);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.latest-batch-card p,
+.latest-batch-card small,
+.muted-copy {
+  margin: 0.2rem 0 0;
+  color: #5f6774;
+}
+
 .picker {
   display: flex;
   flex-wrap: wrap;
@@ -464,4 +494,3 @@ button {
     line-height: 1.02;
   }
 }
-

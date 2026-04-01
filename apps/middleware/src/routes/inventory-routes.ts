@@ -10,6 +10,7 @@ import {
   voidQrRequestSchema,
 } from "@smart-db/contracts";
 import { InventoryService } from "../services/inventory-service.js";
+import { buildQrBatchLabelsPdf } from "../services/qr-batch-labels.js";
 
 export async function registerInventoryRoutes(
   app: FastifyInstance,
@@ -41,6 +42,20 @@ export async function registerInventoryRoutes(
       ...command,
       actor: request.authContext!.session.username,
     });
+  });
+
+  app.get("/api/qr-batches/latest", { preHandler: requireAuth }, async () =>
+    inventoryService.getLatestQrBatch(),
+  );
+
+  app.get("/api/qr-batches/:id/labels.pdf", { preHandler: requireAuth }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const batch = inventoryService.getQrBatchById(params.id);
+    const pdf = await buildQrBatchLabelsPdf(batch);
+    reply
+      .header("Content-Type", "application/pdf")
+      .header("Content-Disposition", `attachment; filename=\"${batch.id}-labels.pdf\"`)
+      .send(Buffer.from(pdf));
   });
 
   app.post("/api/scan", { preHandler: requireAuth }, async (request) => {

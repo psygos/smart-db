@@ -6,6 +6,7 @@ import {
   clearSessionToken,
   hydrateSessionToken,
   loginUrl,
+  qrBatchLabelsPdfUrl,
   setSessionToken,
 } from "./api";
 
@@ -69,6 +70,17 @@ describe("frontend api", () => {
               partLotsPath: null,
               storageLocationsPath: null,
             },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            id: "batch-latest",
+            prefix: "QR",
+            startNumber: 1001,
+            endNumber: 1024,
+            actor: "labeler",
+            createdAt: "2026-01-01T00:00:00.000Z",
           }),
         })
         .mockResolvedValueOnce({
@@ -197,6 +209,7 @@ describe("frontend api", () => {
     await expect(api.logout()).resolves.toEqual({ ok: true, redirectUrl: null });
     await expect(api.getDashboard()).resolves.toMatchObject({ partTypeCount: 1 });
     await expect(api.getPartDbStatus()).resolves.toMatchObject({ configured: false });
+    await expect(api.getLatestQrBatch()).resolves.toMatchObject({ id: "batch-latest" });
     await expect(api.getProvisionalPartTypes()).resolves.toEqual([]);
     await expect(api.searchPartTypes("arduino")).resolves.toEqual([]);
     await expect(
@@ -316,6 +329,12 @@ describe("frontend api", () => {
     expect(hydrateSessionToken()).toBeNull();
     clearSessionToken();
     expect(hydrateSessionToken()).toBeNull();
+  });
+
+  it("builds qr batch pdf URLs", () => {
+    expect(qrBatchLabelsPdfUrl("batch-123")).toBe(
+      `${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000"}/api/qr-batches/batch-123/labels.pdf`,
+    );
   });
 
   it("passes explicit abort signals through search and session calls", async () => {
