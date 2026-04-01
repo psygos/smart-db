@@ -49,6 +49,7 @@ export class PartDbClient {
 
   async getConnectionStatus(apiToken: string | null = null): Promise<PartDbConnectionStatus> {
     const activeToken = this.activeToken(apiToken);
+    const usingServiceToken = !apiToken && Boolean(this.config.apiToken);
     if (!this.config.baseUrl || !activeToken) {
       return {
         configured: false,
@@ -92,6 +93,17 @@ export class PartDbClient {
       }
 
       if (!tokenResponse.ok) {
+        if (usingServiceToken) {
+          return {
+            configured: true,
+            connected: false,
+            baseUrl: this.publicBaseUrl(),
+            tokenLabel: null,
+            userLabel: null,
+            message: `Part-DB service token was rejected (${tokenResponse.status}).`,
+            discoveredResources,
+          };
+        }
         throw new UnauthenticatedApplicationError(
           `Part-DB rejected the token (${tokenResponse.status}).`,
         );

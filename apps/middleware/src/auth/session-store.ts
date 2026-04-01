@@ -21,9 +21,15 @@ interface CreateSessionInput {
 type SqlRow = Record<string, unknown>;
 
 export class SessionStore {
-  constructor(private readonly db: DatabaseSync) {}
+  private lastCleanupAt = 0;
+
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly cleanupIntervalMs: number = 5 * 60 * 1000,
+  ) {}
 
   create(input: CreateSessionInput): SessionRecord {
+    this.maybeDeleteExpired();
     const id = randomUUID();
     const now = new Date().toISOString();
     if (!input.expiresAt) {
@@ -62,6 +68,7 @@ export class SessionStore {
   }
 
   get(id: string): SessionRecord | null {
+    this.maybeDeleteExpired();
     const row = this.db.prepare(`SELECT * FROM auth_sessions WHERE id = ?`).get(id) as SqlRow | undefined;
     if (!row) {
       return null;
@@ -86,6 +93,15 @@ export class SessionStore {
 
   deleteExpired(nowIso: string = new Date().toISOString()): void {
     this.db.prepare(`DELETE FROM auth_sessions WHERE expires_at <= ?`).run(nowIso);
+    this.lastCleanupAt = Date.now();
+  }
+
+  private maybeDeleteExpired(): void {
+    if (Date.now() - this.lastCleanupAt < this.cleanupIntervalMs) {
+      return;
+    }
+
+    this.deleteExpired();
   }
 }
 

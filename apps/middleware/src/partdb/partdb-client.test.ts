@@ -43,6 +43,39 @@ describe("PartDbClient", () => {
     });
   });
 
+  it("degrades instead of throwing when the configured service token is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({}),
+      }),
+    );
+
+    const client = new PartDbClient({
+      baseUrl: "https://partdb.example.com",
+      apiToken: "service-token",
+      retry: noRetry,
+    });
+
+    await expect(client.getConnectionStatus()).resolves.toEqual({
+      configured: true,
+      connected: false,
+      baseUrl: "https://partdb.example.com",
+      tokenLabel: null,
+      userLabel: null,
+      message: "Part-DB service token was rejected (401).",
+      discoveredResources: {
+        tokenInfoPath: "/api/tokens/current",
+        openApiPath: "/api/docs.json",
+        partsPath: null,
+        partLotsPath: null,
+        storageLocationsPath: null,
+      },
+    });
+  });
+
   it("discovers token and resource paths on a healthy connection", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce({

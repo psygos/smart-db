@@ -99,4 +99,33 @@ describe("SessionStore", () => {
       }),
     ).toThrowError("session expiry could not be determined");
   });
+
+  it("sweeps other expired sessions during normal reads", () => {
+    const store = new SessionStore(db, 0);
+    store.create({
+      subject: "zitadel-user-6",
+      username: "expired-other",
+      name: null,
+      email: null,
+      roles: [],
+      expiresAt: "2020-01-01T00:00:00.000Z",
+      idToken: null,
+    });
+    const active = store.create({
+      subject: "zitadel-user-7",
+      username: "active",
+      name: null,
+      email: null,
+      roles: [],
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      idToken: null,
+    });
+
+    expect(store.get(active.id)).toMatchObject({
+      session: {
+        username: "active",
+      },
+    });
+    expect(db.prepare(`SELECT COUNT(*) AS count FROM auth_sessions`).get()).toEqual({ count: 1 });
+  });
 });
