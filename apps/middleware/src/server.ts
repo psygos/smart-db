@@ -67,6 +67,14 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerIdempotencyHooks(app, db);
 
   const requireAuth: preHandlerAsyncHookHandler = async (request, reply) => {
+    if (
+      request.method !== "GET" &&
+      request.method !== "HEAD" &&
+      request.headers.origin !== activeConfig.frontendOrigin
+    ) {
+      throw new UnauthenticatedError("Cross-origin mutation requests are not allowed.");
+    }
+
     const session = authService.getSession(request.cookies[activeConfig.sessionCookieName]);
     if (!session) {
       reply.clearCookie(

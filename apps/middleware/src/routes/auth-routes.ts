@@ -1,5 +1,5 @@
 import type { FastifyInstance, preHandlerAsyncHookHandler } from "fastify";
-import { logoutResponseSchema, parseWithSchema } from "@smart-db/contracts";
+import { UnauthenticatedError, logoutResponseSchema, parseWithSchema } from "@smart-db/contracts";
 import { AuthService } from "../auth/auth-service.js";
 import {
   authRequestCookieName,
@@ -62,6 +62,9 @@ export async function registerAuthRoutes(
   });
 
   app.post("/api/auth/logout", async (request, reply) => {
+    if (request.headers.origin !== config.frontendOrigin) {
+      throw new UnauthenticatedError("Cross-origin logout requests are not allowed.");
+    }
     const result = await authService.logout(request.cookies[config.sessionCookieName]);
     reply.clearCookie(
       config.sessionCookieName,

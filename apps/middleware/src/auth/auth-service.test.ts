@@ -202,4 +202,38 @@ describe("AuthService", () => {
       started.authRequest,
     )).rejects.toThrowError(UnauthenticatedError);
   });
+
+  it("rejects stale callback state even if the cookie is otherwise valid", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const service = new AuthService(
+      {
+        authorizationUrl: vi.fn(async () => "https://auth.example.com/login"),
+        exchangeAuthorizationCode: vi.fn(),
+        logoutUrl: vi.fn(),
+      } as never,
+      new SessionStore(db),
+      {
+        frontendOrigin: "https://smartdb.example.com",
+        redirectUri: "https://smartdb.example.com/api/auth/callback",
+        sessionCookieSecret: "super-secret",
+      },
+    );
+
+    const started = await service.startLogin("https://smartdb.example.com/app");
+    const authRequest = decodeAuthRequest(started.authRequest, "super-secret");
+    if (!authRequest) {
+      throw new Error("auth request was not decodable");
+    }
+
+    vi.setSystemTime(new Date("2026-01-01T00:11:00.000Z"));
+    await expect(service.completeLogin(
+      {
+        code: "auth-code",
+        state: authRequest.state,
+      },
+      started.authRequest,
+    )).rejects.toThrowError("Authentication request expired before callback completed.");
+    vi.useRealTimers();
+  });
 });

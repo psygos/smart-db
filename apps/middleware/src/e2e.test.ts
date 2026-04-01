@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildServer } from "./server";
 import type { FastifyInstance } from "fastify";
-const auth = { cookie: "smartdb_session=session-1" };
+const auth = {
+  cookie: "smartdb_session=session-1",
+  origin: "http://localhost:5173",
+};
 const authSession = {
   subject: "zitadel-user-1",
   username: "e2e-labeler",

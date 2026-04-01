@@ -46,6 +46,8 @@ interface LogoutResult {
   redirectUrl: string | null;
 }
 
+const authRequestTtlMs = 10 * 60 * 1000;
+
 export class AuthService {
   constructor(
     private readonly identityProvider: IdentityProvider,
@@ -90,6 +92,10 @@ export class AuthService {
 
     if (authRequest.state !== state) {
       throw new UnauthenticatedError("Authentication state did not match.");
+    }
+
+    if (Date.now() - Date.parse(authRequest.createdAt) > authRequestTtlMs) {
+      throw new UnauthenticatedError("Authentication request expired before callback completed.");
     }
 
     const identity = await this.identityProvider.exchangeAuthorizationCode(

@@ -98,6 +98,7 @@ const authSession = {
 
 const sessionHeaders = {
   cookie: "smartdb_session=session-1",
+  origin: "http://localhost:5173",
 };
 
 afterEach(() => {
