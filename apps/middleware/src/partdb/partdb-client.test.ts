@@ -232,6 +232,44 @@ describe("PartDbClient", () => {
     });
   });
 
+  it("prefers collection endpoints over nested subresources during discovery", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          owner: {
+            username: "makerspace",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          paths: {
+            "/api/parts/{id}/orderdetails": {},
+            "/api/storage_locations/{id}/children": {},
+            "/api/parts": {},
+            "/api/storage_locations": {},
+            "/api/part_lots": {},
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = new PartDbClient({
+      baseUrl: "https://partdb.example.com",
+      retry: noRetry,
+    });
+
+    await expect(client.getConnectionStatus("secret")).resolves.toMatchObject({
+      discoveredResources: {
+        partsPath: "/api/parts",
+        partLotsPath: "/api/part_lots",
+        storageLocationsPath: "/api/storage_locations",
+      },
+    });
+  });
+
   it("rejects authentication when Part-DB is not configured or the token owner is missing", async () => {
     const unconfiguredClient = new PartDbClient({
       baseUrl: null,

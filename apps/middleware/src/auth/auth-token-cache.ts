@@ -9,7 +9,10 @@ interface CacheEntry {
 export class AuthTokenCache {
   private readonly entries = new Map<string, CacheEntry>();
 
-  constructor(private readonly ttlMs: number = 5 * 60 * 1000) {}
+  constructor(
+    private readonly ttlMs: number = 5 * 60 * 1000,
+    private readonly staleTtlMs: number = 15 * 60 * 1000,
+  ) {}
 
   static hashToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
@@ -18,6 +21,11 @@ export class AuthTokenCache {
   get(hash: string): AuthSession | null {
     const entry = this.entries.get(hash);
     if (!entry) {
+      return null;
+    }
+
+    if (this.isBeyondStaleWindow(entry)) {
+      this.entries.delete(hash);
       return null;
     }
 
@@ -30,10 +38,27 @@ export class AuthTokenCache {
 
   getStale(hash: string): AuthSession | null {
     const entry = this.entries.get(hash);
-    return entry?.session ?? null;
+    if (!entry) {
+      return null;
+    }
+
+    if (this.isBeyondStaleWindow(entry)) {
+      this.entries.delete(hash);
+      return null;
+    }
+
+    return entry.session;
   }
 
   set(hash: string, session: AuthSession): void {
     this.entries.set(hash, { session, validatedAt: Date.now() });
+  }
+
+  delete(hash: string): void {
+    this.entries.delete(hash);
+  }
+
+  private isBeyondStaleWindow(entry: CacheEntry): boolean {
+    return Date.now() - entry.validatedAt > this.ttlMs + this.staleTtlMs;
   }
 }

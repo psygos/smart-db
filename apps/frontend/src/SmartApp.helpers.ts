@@ -37,7 +37,12 @@ export type EventFormState = {
 export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
   const notes = normalizeNullable(form.notes);
 
-  if (form.partTypeMode === "existing" && form.existingPartTypeId) {
+  if (form.partTypeMode === "existing") {
+    const existingPartTypeId = form.existingPartTypeId.trim();
+    if (!existingPartTypeId) {
+      throw new InvariantError("Existing part type selection requires a part type id.");
+    }
+
     return form.entityKind === "instance"
       ? {
           qrCode: form.qrCode,
@@ -46,7 +51,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           notes,
           partType: {
             kind: "existing",
-            existingPartTypeId: form.existingPartTypeId,
+            existingPartTypeId,
           },
           initialStatus: form.initialStatus,
         }
@@ -57,7 +62,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           notes,
           partType: {
             kind: "existing",
-            existingPartTypeId: form.existingPartTypeId,
+            existingPartTypeId,
           },
           initialLevel: form.initialLevel,
         };

@@ -194,5 +194,20 @@ describe("App helpers", () => {
     expect(narrowBulkEvent("level_changed")).toBe("level_changed");
     expect(() => narrowInstanceEvent("level_changed")).toThrowError(InvariantError);
     expect(() => narrowBulkEvent("lost")).toThrowError(InvariantError);
+    expect(() =>
+      buildAssignRequest({
+        qrCode: "QR-1005",
+        entityKind: "instance",
+        location: "Shelf C",
+        notes: "",
+        partTypeMode: "existing",
+        existingPartTypeId: "   ",
+        canonicalName: "",
+        category: "",
+        countable: true,
+        initialStatus: "available",
+        initialLevel: "good",
+      }),
+    ).toThrowError("Existing part type selection requires a part type id.");
   });
 });

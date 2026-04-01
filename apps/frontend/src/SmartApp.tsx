@@ -513,15 +513,12 @@ export default function SmartApp() {
 
     try {
       const request = buildAssignRequest(assignForm);
-      await api.assignQr(request);
+      const response = await api.assignQr(request);
       addToast(`Assigned ${request.qrCode} to inventory.`, "success");
-      const partTypeName = assignForm.partTypeMode === "existing"
-        ? (labelOptions.find((pt) => pt.id === assignForm.existingPartTypeId)?.canonicalName ?? assignForm.canonicalName)
-        : assignForm.canonicalName;
       setLastAssignment({
-        partTypeName,
-        partTypeId: assignForm.existingPartTypeId,
-        location: assignForm.location,
+        partTypeName: response.partType.canonicalName,
+        partTypeId: response.partType.id,
+        location: response.location,
       });
       setAssignForm(defaultAssignForm);
       setScanCode(request.qrCode);
@@ -548,8 +545,13 @@ export default function SmartApp() {
         existingPartTypeId: lastAssignment.partTypeId,
         location: lastAssignment.location,
       });
-      await api.assignQr(request);
+      const response = await api.assignQr(request);
       addToast(`Assigned ${request.qrCode} to inventory.`, "success");
+      setLastAssignment({
+        partTypeName: response.partType.canonicalName,
+        partTypeId: response.partType.id,
+        location: response.location,
+      });
       setAssignForm(defaultAssignForm);
       setScanCode(request.qrCode);
       await performScan(request.qrCode, true);

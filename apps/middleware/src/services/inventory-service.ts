@@ -8,6 +8,7 @@ import {
   instanceStatuses,
   inventoryEntitySummarySchema,
   partTypeSchema,
+  qrBatchSchema,
   type AssignQrCommand,
   type BulkLevel,
   type DashboardSummary,
@@ -113,7 +114,7 @@ export class InventoryService {
     const prefix = input.prefix;
     const startNumber = input.startNumber;
     const count = input.count;
-    const batchId = input.batchId?.trim() || `batch-${Date.now()}`;
+    const batchId = input.batchId?.trim() || `batch-${randomUUID()}`;
     const createdAt = nowIso();
     const batch = {
       id: batchId,
@@ -126,23 +127,43 @@ export class InventoryService {
 
     let created = 0;
     let skipped = 0;
+    let persistedBatch = batch;
 
     this.withTransaction(() => {
-      this.db
-        .prepare(
-          `
-          INSERT OR IGNORE INTO qr_batches (id, prefix, start_number, end_number, actor, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-          `,
-        )
-        .run(
-          batch.id,
-          batch.prefix,
-          batch.startNumber,
-          batch.endNumber,
-          batch.actor,
-          batch.createdAt,
-        );
+      const existingRow = this.db
+        .prepare(`SELECT * FROM qr_batches WHERE id = ?`)
+        .get(batch.id) as SqlRow | undefined;
+
+      if (existingRow) {
+        const existingBatch = mapQrBatch(existingRow);
+        if (
+          existingBatch.prefix !== batch.prefix ||
+          existingBatch.startNumber !== batch.startNumber ||
+          existingBatch.endNumber !== batch.endNumber ||
+          existingBatch.actor !== batch.actor
+        ) {
+          throw new ConflictError("QR batch id already exists with different metadata.", {
+            batchId: batch.id,
+          });
+        }
+        persistedBatch = existingBatch;
+      } else {
+        this.db
+          .prepare(
+            `
+            INSERT INTO qr_batches (id, prefix, start_number, end_number, actor, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            `,
+          )
+          .run(
+            batch.id,
+            batch.prefix,
+            batch.startNumber,
+            batch.endNumber,
+            batch.actor,
+            batch.createdAt,
+          );
+      }
 
       const statement = this.db.prepare(
         `
@@ -151,9 +172,9 @@ export class InventoryService {
         `,
       );
 
-      for (let number = startNumber; number <= batch.endNumber; number += 1) {
-        const code = `${prefix}-${number}`;
-        const result = statement.run(code, batch.id, createdAt, createdAt);
+      for (let number = persistedBatch.startNumber; number <= persistedBatch.endNumber; number += 1) {
+        const code = `${persistedBatch.prefix}-${number}`;
+        const result = statement.run(code, persistedBatch.id, createdAt, createdAt);
         if (result.changes > 0) {
           created += 1;
         } else {
@@ -162,7 +183,7 @@ export class InventoryService {
       }
     });
 
-    return { batch, created, skipped };
+    return { batch: persistedBatch, created, skipped };
   }
 
   async scanCode(code: string, partDbToken: string): Promise<ScanResponse> {
@@ -881,6 +902,21 @@ function mapQrCode(row: SqlRow): QRCode {
       updatedAt: String(row.updated_at),
     },
     "QR code record",
+  );
+}
+
+function mapQrBatch(row: SqlRow) {
+  return parsePersisted(
+    qrBatchSchema,
+    {
+      id: String(row.id),
+      prefix: String(row.prefix),
+      startNumber: numberFromRow(row.start_number),
+      endNumber: numberFromRow(row.end_number),
+      actor: String(row.actor),
+      createdAt: String(row.created_at),
+    },
+    "QR batch record",
   );
 }
 

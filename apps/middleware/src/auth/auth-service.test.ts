@@ -67,6 +67,51 @@ describe("AuthService", () => {
     await expect(service.authenticateApiToken("token-stale")).resolves.toEqual(session);
   });
 
+  it("rejects stale cache when Part-DB explicitly rejects the token", async () => {
+    vi.useFakeTimers();
+    const session = {
+      username: "labeler",
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    };
+    const authenticate = vi
+      .fn()
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(new UnauthenticatedError("Part-DB rejected the token (401)."));
+    const cache = new AuthTokenCache(100, 1_000);
+    const service = new AuthService({ authenticate } as never, cache);
+
+    await service.authenticateApiToken("token-revoked");
+    vi.advanceTimersByTime(200);
+
+    await expect(service.authenticateApiToken("token-revoked")).rejects.toThrowError(
+      "Part-DB rejected the token (401).",
+    );
+    expect(cache.getStale(AuthTokenCache.hashToken("token-revoked"))).toBeNull();
+  });
+
+  it("rejects cache entries that are beyond the stale grace window", async () => {
+    vi.useFakeTimers();
+    const session = {
+      username: "labeler",
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    };
+    const authenticate = vi
+      .fn()
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(new Error("Part-DB is down"));
+    const cache = new AuthTokenCache(100, 50);
+    const service = new AuthService({ authenticate } as never, cache);
+
+    await service.authenticateApiToken("token-expired");
+    vi.advanceTimersByTime(200);
+
+    await expect(service.authenticateApiToken("token-expired")).rejects.toThrowError(
+      "Part-DB is down",
+    );
+  });
+
   it("throws when cache is empty and Part-DB fails", async () => {
     const authenticate = vi.fn().mockRejectedValue(new Error("Part-DB is down"));
     const service = new AuthService({ authenticate } as never);

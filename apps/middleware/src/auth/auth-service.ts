@@ -21,6 +21,11 @@ export class AuthService {
       this.cache.set(hash, session);
       return session;
     } catch (error) {
+      if (error instanceof UnauthenticatedError) {
+        this.cache.delete(hash);
+        throw error;
+      }
+
       const stale = this.cache.getStale(hash);
       if (stale) {
         return stale;

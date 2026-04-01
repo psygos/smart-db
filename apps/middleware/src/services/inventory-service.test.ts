@@ -83,6 +83,34 @@ describe("InventoryService", () => {
         count: 1,
       }).batch.id,
     ).toBe("manual-batch");
+    expect(
+      service.registerQrBatch({
+        actor: "lab-admin",
+        batchId: "manual-batch",
+        prefix: "QR",
+        startNumber: 2000,
+        count: 1,
+      }),
+    ).toMatchObject({
+      batch: {
+        id: "manual-batch",
+        prefix: "QR",
+        startNumber: 2000,
+        endNumber: 2000,
+        actor: "lab-admin",
+      },
+      created: 0,
+      skipped: 1,
+    });
+    expect(() =>
+      service.registerQrBatch({
+        actor: "lab-admin",
+        batchId: "manual-batch",
+        prefix: "ALT",
+        startNumber: 2000,
+        count: 1,
+      }),
+    ).toThrowError(ConflictError);
 
     await expect(service.scanCode("EAN-1234")).resolves.toEqual({
       mode: "unknown",

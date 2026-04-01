@@ -84,4 +84,65 @@ describe("idempotency middleware", () => {
     expect(second.statusCode).toBe(200);
     expect(second.json()).toEqual({ result: "ok" });
   });
+
+  it("does not replay cached responses across authorization headers", async () => {
+    let callCount = 0;
+    const app = Fastify();
+    registerIdempotencyHooks(app, db);
+
+    app.post("/test", async (request) => ({
+      count: ++callCount,
+      authorization: request.headers.authorization ?? null,
+    }));
+    await app.ready();
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/test",
+      headers: {
+        authorization: "Bearer token-a",
+        "x-idempotency-key": "key-auth",
+      },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/test",
+      headers: {
+        authorization: "Bearer token-b",
+        "x-idempotency-key": "key-auth",
+      },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual({ count: 2, authorization: "Bearer token-b" });
+    expect(second.headers["x-idempotency-replay"]).toBeUndefined();
+  });
+
+  it("does not replay cached responses across endpoints", async () => {
+    let oneCount = 0;
+    let twoCount = 0;
+    const app = Fastify();
+    registerIdempotencyHooks(app, db);
+
+    app.post("/one", async () => ({ count: ++oneCount, endpoint: "one" }));
+    app.post("/two", async () => ({ count: ++twoCount, endpoint: "two" }));
+    await app.ready();
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/one",
+      headers: { "x-idempotency-key": "key-shared" },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/two",
+      headers: { "x-idempotency-key": "key-shared" },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual({ count: 1, endpoint: "two" });
+    expect(second.headers["x-idempotency-replay"]).toBeUndefined();
+  });
 });

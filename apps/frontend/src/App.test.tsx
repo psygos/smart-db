@@ -1272,6 +1272,140 @@ describe("App", () => {
     });
   });
 
+  it("reuses the server-assigned part type id for 'Assign Same' after creating a new part type", async () => {
+    const user = userEvent.setup();
+    const createdPartType: PartType = {
+      ...partType,
+      id: "part-created",
+      canonicalName: "Fresh Widget",
+      category: "Widgets",
+    };
+    const firstLabelResponse = {
+      mode: "label",
+      qrCode: {
+        code: "QR-3001",
+        batchId: "batch-1",
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      suggestions: [],
+      partDb: {
+        configured: false,
+        connected: false,
+        message: "Not configured",
+      },
+    } satisfies ScanResponse;
+
+    apiMock.scan
+      .mockResolvedValueOnce(firstLabelResponse)
+      .mockResolvedValueOnce({
+        mode: "interact",
+        qrCode: {
+          ...firstLabelResponse.qrCode,
+          status: "assigned",
+          assignedKind: "instance",
+          assignedId: "instance-3001",
+        },
+        entity: {
+          id: "instance-3001",
+          targetType: "instance",
+          qrCode: "QR-3001",
+          partType: createdPartType,
+          location: "Shelf Z",
+          state: "available",
+          assignee: null,
+        },
+        recentEvents: [],
+        availableActions: ["moved", "checked_out"],
+        partDb: firstLabelResponse.partDb,
+      } satisfies ScanResponse)
+      .mockResolvedValueOnce({
+        ...firstLabelResponse,
+        qrCode: { ...firstLabelResponse.qrCode, code: "QR-3002" },
+      } satisfies ScanResponse)
+      .mockResolvedValueOnce({
+        mode: "interact",
+        qrCode: {
+          ...firstLabelResponse.qrCode,
+          code: "QR-3002",
+          status: "assigned",
+          assignedKind: "instance",
+          assignedId: "instance-3002",
+        },
+        entity: {
+          id: "instance-3002",
+          targetType: "instance",
+          qrCode: "QR-3002",
+          partType: createdPartType,
+          location: "Shelf Z",
+          state: "available",
+          assignee: null,
+        },
+        recentEvents: [],
+        availableActions: ["moved", "checked_out"],
+        partDb: firstLabelResponse.partDb,
+      } satisfies ScanResponse);
+
+    apiMock.assignQr
+      .mockResolvedValueOnce({
+        id: "instance-3001",
+        targetType: "instance",
+        qrCode: "QR-3001",
+        partType: createdPartType,
+        location: "Shelf Z",
+        state: "available",
+        assignee: null,
+      })
+      .mockResolvedValueOnce({
+        id: "instance-3002",
+        targetType: "instance",
+        qrCode: "QR-3002",
+        partType: createdPartType,
+        location: "Shelf Z",
+        state: "available",
+        assignee: null,
+      });
+
+    render(<SmartApp />);
+    await screen.findByRole("button", { name: "Logout" });
+
+    await user.type(screen.getByPlaceholderText("Scan or type a QR / barcode"), "QR-3001");
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const assignHeading = await screen.findByText("Assign QR-3001");
+    const assignCard = assignHeading.closest(".result-card");
+    if (!assignCard) {
+      throw new Error("assign card was not rendered");
+    }
+
+    await user.click(within(assignCard).getByRole("button", { name: "More options" }));
+    await user.type(within(assignCard).getByLabelText("New canonical name"), "Fresh Widget");
+    await user.clear(within(assignCard).getByLabelText("Category"));
+    await user.type(within(assignCard).getByLabelText("Category"), "Widgets");
+    await user.clear(within(assignCard).getByLabelText("Location"));
+    await user.type(within(assignCard).getByLabelText("Location"), "Shelf Z");
+    await user.click(within(assignCard).getByRole("button", { name: "Assign QR" }));
+    await waitFor(() => {
+      expect(apiMock.assignQr).toHaveBeenCalledTimes(1);
+    });
+
+    await user.clear(screen.getByPlaceholderText("Scan or type a QR / barcode"));
+    await user.type(screen.getByPlaceholderText("Scan or type a QR / barcode"), "QR-3002");
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const sameBtn = await screen.findByRole("button", { name: /Assign Same/ });
+    await user.click(sameBtn);
+
+    await waitFor(() => {
+      expect(apiMock.assignQr).toHaveBeenCalledTimes(2);
+      expect(apiMock.assignQr).toHaveBeenLastCalledWith(expect.objectContaining({
+        qrCode: "QR-3002",
+        partType: { kind: "existing", existingPartTypeId: "part-created" },
+      }));
+    });
+  });
+
   it("ignores aborted predictive-search failures", async () => {
     const user = userEvent.setup();
     const firstSearch = deferred<PartType[]>();

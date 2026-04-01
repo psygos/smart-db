@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -20,7 +21,7 @@ export function registerIdempotencyHooks(app: FastifyInstance, db: DatabaseSync)
     const key = request.headers["x-idempotency-key"];
     if (typeof key !== "string" || !key) return;
 
-    const row = lookup.get(key) as { response_json: string } | undefined;
+    const row = lookup.get(storageKey(request, key)) as { response_json: string } | undefined;
     if (row) {
       const cached = JSON.parse(row.response_json) as { statusCode: number; body: unknown };
       reply.code(cached.statusCode);
@@ -40,7 +41,7 @@ export function registerIdempotencyHooks(app: FastifyInstance, db: DatabaseSync)
     const statusCode = reply.statusCode;
     if (statusCode >= 200 && statusCode < 300) {
       const cached = JSON.stringify({ statusCode, body: JSON.parse(payload) });
-      insert.run(key, request.url, cached, new Date().toISOString());
+      insert.run(storageKey(request, key), request.url, cached, new Date().toISOString());
     }
 
     // Lazy cleanup
@@ -49,4 +50,14 @@ export function registerIdempotencyHooks(app: FastifyInstance, db: DatabaseSync)
 
     return payload;
   });
+}
+
+function storageKey(request: FastifyRequest, key: string): string {
+  const authorization =
+    typeof request.headers.authorization === "string"
+      ? request.headers.authorization.trim()
+      : "";
+  return createHash("sha256")
+    .update(`${request.method}\n${request.url}\n${authorization}\n${key}`)
+    .digest("hex");
 }

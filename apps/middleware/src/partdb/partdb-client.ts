@@ -197,20 +197,29 @@ function emptyResources(): PartDbDiscoveredResources {
 
 function discoverResources(document: OpenApiDocument): PartDbDiscoveredResources {
   const resources = emptyResources();
+  const paths = Object.keys(document.paths ?? {});
 
-  for (const path of Object.keys(document.paths ?? {})) {
-    if (path.includes("/api/parts") && !resources.partsPath) {
-      resources.partsPath = path;
-    }
-    if (path.includes("/api/part_lots") && !resources.partLotsPath) {
-      resources.partLotsPath = path;
-    }
-    if (path.includes("/api/storage_locations") && !resources.storageLocationsPath) {
-      resources.storageLocationsPath = path;
-    }
-  }
+  resources.partsPath = selectCollectionPath(paths, "/api/parts");
+  resources.partLotsPath = selectCollectionPath(paths, "/api/part_lots");
+  resources.storageLocationsPath = selectCollectionPath(paths, "/api/storage_locations");
 
   return resources;
+}
+
+function selectCollectionPath(paths: string[], collectionPath: string): string | null {
+  const exact = paths.find((path) => path === collectionPath);
+  if (exact) {
+    return exact;
+  }
+
+  const matching = paths
+    .filter((path) => path.startsWith(`${collectionPath}/`))
+    .sort((left, right) => {
+      const segmentDelta = left.split("/").length - right.split("/").length;
+      return segmentDelta !== 0 ? segmentDelta : left.length - right.length;
+    });
+
+  return matching[0] ?? null;
 }
 
 function stringOrNull(value: unknown): string | null {
