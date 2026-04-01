@@ -50,7 +50,7 @@ services:
           "CMD",
           "php",
           "-r",
-          "$ctx = stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 5]]); exit(@file_get_contents('http://127.0.0.1/en/login', false, $ctx) === false ? 1 : 0);",
+          "exit(@file_get_contents('http://127.0.0.1/en/login', false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 5]])) === false ? 1 : 0);",
         ]
       interval: 15s
       timeout: 5s
