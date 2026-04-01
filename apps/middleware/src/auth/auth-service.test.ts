@@ -47,7 +47,7 @@ describe("AuthService", () => {
     expect(authenticate).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to stale cache when Part-DB fails", async () => {
+  it("does not fall back once a cached token has expired and Part-DB fails", async () => {
     vi.useFakeTimers();
     const session = {
       username: "labeler",
@@ -64,7 +64,9 @@ describe("AuthService", () => {
     await service.authenticateApiToken("token-stale");
     vi.advanceTimersByTime(200);
 
-    await expect(service.authenticateApiToken("token-stale")).resolves.toEqual(session);
+    await expect(service.authenticateApiToken("token-stale")).rejects.toThrowError(
+      "Part-DB is down",
+    );
   });
 
   it("rejects stale cache when Part-DB explicitly rejects the token", async () => {
@@ -78,7 +80,7 @@ describe("AuthService", () => {
       .fn()
       .mockResolvedValueOnce(session)
       .mockRejectedValueOnce(new UnauthenticatedError("Part-DB rejected the token (401)."));
-    const cache = new AuthTokenCache(100, 1_000);
+    const cache = new AuthTokenCache(100);
     const service = new AuthService({ authenticate } as never, cache);
 
     await service.authenticateApiToken("token-revoked");
@@ -87,29 +89,7 @@ describe("AuthService", () => {
     await expect(service.authenticateApiToken("token-revoked")).rejects.toThrowError(
       "Part-DB rejected the token (401).",
     );
-    expect(cache.getStale(AuthTokenCache.hashToken("token-revoked"))).toBeNull();
-  });
-
-  it("rejects cache entries that are beyond the stale grace window", async () => {
-    vi.useFakeTimers();
-    const session = {
-      username: "labeler",
-      issuedAt: "2026-01-01T00:00:00.000Z",
-      expiresAt: null,
-    };
-    const authenticate = vi
-      .fn()
-      .mockResolvedValueOnce(session)
-      .mockRejectedValueOnce(new Error("Part-DB is down"));
-    const cache = new AuthTokenCache(100, 50);
-    const service = new AuthService({ authenticate } as never, cache);
-
-    await service.authenticateApiToken("token-expired");
-    vi.advanceTimersByTime(200);
-
-    await expect(service.authenticateApiToken("token-expired")).rejects.toThrowError(
-      "Part-DB is down",
-    );
+    expect(cache.get(AuthTokenCache.hashToken("token-revoked"))).toBeNull();
   });
 
   it("throws when cache is empty and Part-DB fails", async () => {

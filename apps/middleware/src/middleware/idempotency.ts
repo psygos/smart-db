@@ -15,7 +15,7 @@ export function registerIdempotencyHooks(app: FastifyInstance, db: DatabaseSync)
     "DELETE FROM idempotency_keys WHERE created_at < ?",
   );
 
-  app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
+  app.addHook("preValidation", async (request: FastifyRequest, reply: FastifyReply) => {
     if (request.method !== "POST") return;
 
     const key = request.headers["x-idempotency-key"];
@@ -58,6 +58,28 @@ function storageKey(request: FastifyRequest, key: string): string {
       ? request.headers.authorization.trim()
       : "";
   return createHash("sha256")
-    .update(`${request.method}\n${request.url}\n${authorization}\n${key}`)
+    .update(
+      `${request.method}\n${request.url}\n${authorization}\n${stableStringify(request.body)}\n${key}`,
+    )
     .digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortValue(value));
+}
+
+function sortValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortValue);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nestedValue]) => [key, sortValue(nestedValue)]),
+    );
+  }
+
+  return value ?? null;
 }

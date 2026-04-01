@@ -33,16 +33,4 @@ describe("AuthTokenCache", () => {
     expect(hash1).toBe(hash2);
     expect(hash1).toHaveLength(64);
   });
-
-  it("returns stale entries even after TTL for fallback use", () => {
-    vi.useFakeTimers();
-    const cache = new AuthTokenCache(100);
-    const hash = AuthTokenCache.hashToken("token-stale");
-
-    cache.set(hash, session);
-    vi.advanceTimersByTime(200);
-
-    expect(cache.get(hash)).toBeNull();
-    expect(cache.getStale(hash)).toEqual(session);
-  });
 });

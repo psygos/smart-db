@@ -145,4 +145,37 @@ describe("idempotency middleware", () => {
     expect(second.json()).toEqual({ count: 1, endpoint: "two" });
     expect(second.headers["x-idempotency-replay"]).toBeUndefined();
   });
+
+  it("does not replay cached responses when the payload changes", async () => {
+    let callCount = 0;
+    const app = Fastify();
+    registerIdempotencyHooks(app, db);
+
+    app.post("/test", async (request) => ({
+      count: ++callCount,
+      payload: request.body,
+    }));
+    await app.ready();
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/test",
+      headers: { "x-idempotency-key": "key-body" },
+      payload: { code: "QR-1", location: "Shelf A" },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/test",
+      headers: { "x-idempotency-key": "key-body" },
+      payload: { code: "QR-1", location: "Shelf B" },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toEqual({
+      count: 2,
+      payload: { code: "QR-1", location: "Shelf B" },
+    });
+    expect(second.headers["x-idempotency-replay"]).toBeUndefined();
+  });
 });

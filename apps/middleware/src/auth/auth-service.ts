@@ -23,14 +23,7 @@ export class AuthService {
     } catch (error) {
       if (error instanceof UnauthenticatedError) {
         this.cache.delete(hash);
-        throw error;
       }
-
-      const stale = this.cache.getStale(hash);
-      if (stale) {
-        return stale;
-      }
-
       throw error;
     }
   }
