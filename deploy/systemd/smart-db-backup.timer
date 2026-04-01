@@ -2,7 +2,7 @@
 Description=Run Smart DB backups every night
 
 [Timer]
-OnCalendar=*-*-* 03:15:00
+OnCalendar=*-*-* 03:15:00 UTC
 Persistent=true
 Unit=smart-db-backup.service
 

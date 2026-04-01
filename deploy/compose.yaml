@@ -9,7 +9,7 @@ services:
       middleware:
         condition: service_healthy
       partdb:
-        condition: service_started
+        condition: service_healthy
     network_mode: host
     restart: unless-stopped
     volumes:
@@ -36,7 +36,7 @@ services:
       - ./state/caddy/certs/smart-db-root-ca.crt:/workspace/certs/smart-db-root-ca.crt:ro
 
   partdb:
-    image: jbtronics/part-db1:latest
+    image: jbtronics/part-db1@sha256:5b1729ff1a024149ac27dc8f988e51c19a1140dbebbb2d0ae4854f8e771293f6
     env_file:
       - ./config/partdb.env
     networks:
@@ -44,6 +44,18 @@ services:
     ports:
       - "127.0.0.1:8080:80"
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "php",
+          "-r",
+          "$ctx = stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 5]]); exit(@file_get_contents('http://127.0.0.1/en/login', false, $ctx) === false ? 1 : 0);",
+        ]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
     volumes:
       - ./state/partdb/uploads:/var/www/html/uploads
       - ./state/partdb/public-media:/var/www/html/public/media
