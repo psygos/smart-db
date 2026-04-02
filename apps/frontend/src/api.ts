@@ -57,13 +57,14 @@ async function request<TSchema extends z.ZodTypeAny>(
   const combinedSignal = init?.signal
     ? AbortSignal.any([init.signal, timeoutSignal])
     : timeoutSignal;
+  const { headers: initHeaders, signal: _ignoredSignal, ...restInit } = init ?? {};
   const response = await fetch(apiUrl(path), {
+    ...restInit,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
+      ...(initHeaders ?? {}),
     },
-    ...init,
     signal: combinedSignal,
   });
 

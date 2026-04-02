@@ -408,6 +408,8 @@ describe("frontend api", () => {
       assignee: null,
     });
 
+    expect(fetch.mock.calls[0]?.[1]?.headers?.["Content-Type"]).toBe("application/json");
+    expect(fetch.mock.calls[1]?.[1]?.headers?.["Content-Type"]).toBe("application/json");
     expect(fetch.mock.calls[0]?.[1]?.headers?.["X-Idempotency-Key"]).toBeDefined();
     expect(fetch.mock.calls[1]?.[1]?.headers?.["X-Idempotency-Key"]).toBeDefined();
     expect(fetch.mock.calls[0]?.[1]?.headers?.["X-Idempotency-Key"]).not.toBe(
