@@ -22,7 +22,13 @@ export type OutboxOperation =
       payload: {
         name: string;
         categoryIri: string | null;
+        categoryPath: string[];
         unitIri: string | null;
+        unit: {
+          name: string;
+          symbol: string;
+          isInteger: boolean;
+        };
         description: string;
         tags: string[];
         needsReview: boolean;
@@ -41,7 +47,7 @@ export type OutboxOperation =
       kind: "create_lot";
       payload: {
         partIri: string | null;
-        storageLocationIri: string | null;
+        storageLocationName: string;
         amount: number;
         description: string;
         userBarcode: string;
@@ -53,21 +59,21 @@ export type OutboxOperation =
   | {
       kind: "update_lot";
       payload: {
-        lotIri: string;
+        lotIri: string | null;
         patch: {
-          amount?: number;
-          storageLocationIri?: string;
-          description?: string;
+          amount?: number | undefined;
+          storageLocationName?: string | undefined;
+          description?: string | undefined;
         };
       };
       target: null;
-      dependsOnId: null;
+      dependsOnId: string | null;
     }
   | {
       kind: "delete_lot";
-      payload: { lotIri: string };
+      payload: { lotIri: string | null };
       target: null;
-      dependsOnId: null;
+      dependsOnId: string | null;
     };
 
 export type OutboxOperationKind = OutboxOperation["kind"];

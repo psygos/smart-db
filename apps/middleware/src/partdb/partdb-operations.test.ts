@@ -76,33 +76,13 @@ describe("PartDbOperations", () => {
   });
 
   it("returns dependency_missing instead of calling downstream resources", async () => {
-    const { operations, parts, partLots } = makeOperations();
-
-    const partResult = await operations.execute({
-      kind: "create_part",
-      payload: {
-        name: "Arduino Uno",
-        categoryIri: null,
-        unitIri: null,
-        description: "",
-        tags: [],
-        needsReview: false,
-        minAmount: null,
-      },
-      target: { table: "part_types", rowId: "part-1", column: "partdb_part_id" },
-      dependsOnId: null,
-    });
-    expect(partResult).toMatchObject({
-      ok: false,
-      error: { kind: "dependency_missing", dependency: "categoryIri" },
-    });
-    expect(parts.create).not.toHaveBeenCalled();
+    const { operations, partLots } = makeOperations();
 
     const lotResult = await operations.execute({
       kind: "create_lot",
       payload: {
-        partIri: "/api/parts/1",
-        storageLocationIri: null,
+        partIri: null,
+        storageLocationName: "Shelf A",
         amount: 10,
         description: "",
         userBarcode: "QR-1",
@@ -113,7 +93,7 @@ describe("PartDbOperations", () => {
     });
     expect(lotResult).toMatchObject({
       ok: false,
-      error: { kind: "dependency_missing", dependency: "storageLocationIri" },
+      error: { kind: "dependency_missing", dependency: "partIri" },
     });
     expect(partLots.create).not.toHaveBeenCalled();
   });
@@ -130,7 +110,9 @@ describe("PartDbOperations", () => {
         payload: {
           name: "Arduino Uno",
           categoryIri: "/api/categories/7",
+          categoryPath: ["Electronics", "Microcontrollers"],
           unitIri: "/api/measurement_units/3",
+          unit: { name: "Pieces", symbol: "pcs", isInteger: true },
           description: "Dev board",
           tags: ["microcontroller"],
           needsReview: true,

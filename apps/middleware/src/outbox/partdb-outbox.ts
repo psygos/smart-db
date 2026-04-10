@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { OutboxOperation, OutboxRow, OutboxStatus } from "./outbox-types.js";
+import { parseWithSchema } from "@smart-db/contracts";
+import { outboxOperationSchema } from "./outbox-schemas.js";
 
 type SqlRow = Record<string, unknown>;
 
@@ -55,6 +57,78 @@ export class PartDbOutbox {
       .prepare(`SELECT * FROM partdb_outbox WHERE correlation_id = ? ORDER BY created_at, id`)
       .all(correlationId)
       .map((row) => mapOutboxRow(row as SqlRow));
+  }
+
+  listFailures(limit: number = 50): OutboxRow[] {
+    return this.db
+      .prepare(`
+        SELECT *
+        FROM partdb_outbox
+        WHERE status IN ('failed', 'dead')
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `)
+      .all(limit)
+      .map((row) => mapOutboxRow(row as SqlRow));
+  }
+
+  getStatusSummary(): {
+    pending: number;
+    inFlight: number;
+    failedLast24h: number;
+    deadTotal: number;
+  } {
+    const row = this.db.prepare(`
+      SELECT
+        SUM(CASE WHEN status IN ('pending', 'failed') THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'leased' THEN 1 ELSE 0 END) AS in_flight,
+        SUM(CASE WHEN status = 'failed' AND completed_at IS NULL THEN 1 ELSE 0 END) AS failed_last_24h,
+        SUM(CASE WHEN status = 'dead' THEN 1 ELSE 0 END) AS dead_total
+      FROM partdb_outbox
+    `).get() as SqlRow;
+
+    return {
+      pending: Number(row.pending ?? 0),
+      inFlight: Number(row.in_flight ?? 0),
+      failedLast24h: Number(row.failed_last_24h ?? 0),
+      deadTotal: Number(row.dead_total ?? 0),
+    };
+  }
+
+  retry(id: string, nowIso: string = new Date().toISOString()): void {
+    this.db.prepare(`
+      UPDATE partdb_outbox
+      SET status = 'pending',
+          next_attempt_at = ?,
+          lease_expires_at = NULL,
+          leased_at = NULL
+      WHERE id = ? AND status IN ('failed', 'dead')
+    `).run(nowIso, id);
+  }
+
+  getDependencyResponseIri(id: string): string | null {
+    const row = this.db.prepare(
+      `SELECT response_iri FROM partdb_outbox WHERE id = ? AND status = 'delivered'`,
+    ).get(id) as SqlRow | undefined;
+    return row && typeof row.response_iri === "string" ? row.response_iri : null;
+  }
+
+  findLatestPendingTarget(
+    table: NonNullable<OutboxRow["targetTable"]>,
+    rowId: string,
+    column: NonNullable<OutboxRow["targetColumn"]>,
+  ): OutboxRow | null {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM partdb_outbox
+      WHERE target_table = ?
+        AND target_row_id = ?
+        AND target_column = ?
+        AND status IN ('pending', 'failed', 'leased')
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).get(table, rowId, column) as SqlRow | undefined;
+    return row ? mapOutboxRow(row) : null;
   }
 
   claimBatch(options: ClaimOptions = {}): OutboxRow[] {
@@ -116,15 +190,42 @@ export class PartDbOutbox {
   }
 
   markDelivered(id: string, response: { iri: string | null; body: unknown }, completedAt: string = new Date().toISOString()): void {
-    this.db.prepare(`
-      UPDATE partdb_outbox
-      SET status = 'delivered',
-          response_json = ?,
-          response_iri = ?,
-          completed_at = ?,
-          lease_expires_at = NULL
-      WHERE id = ?
-    `).run(JSON.stringify(response.body), response.iri, completedAt, id);
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare(`
+        UPDATE partdb_outbox
+        SET status = 'delivered',
+            response_json = ?,
+            response_iri = ?,
+            completed_at = ?,
+            lease_expires_at = NULL
+        WHERE id = ?
+      `).run(JSON.stringify(response.body), response.iri, completedAt, id);
+
+      const row = this.db.prepare(`
+        SELECT target_table, target_row_id, target_column
+        FROM partdb_outbox
+        WHERE id = ?
+      `).get(id) as SqlRow | undefined;
+
+      if (
+        row &&
+        typeof row.target_table === "string" &&
+        typeof row.target_row_id === "string" &&
+        typeof row.target_column === "string" &&
+        response.iri
+      ) {
+        const targetValue = String(extractIdFromIri(response.iri));
+        this.db.prepare(
+          `UPDATE ${row.target_table} SET ${row.target_column} = ? WHERE id = ?`,
+        ).run(targetValue, row.target_row_id);
+      }
+
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   markFailed(id: string, error: unknown, status: Extract<OutboxStatus, "failed" | "dead">, nextAttemptAt: string | null = null): void {
@@ -136,6 +237,26 @@ export class PartDbOutbox {
           lease_expires_at = NULL
       WHERE id = ?
     `).run(status, nextAttemptAt, JSON.stringify(error), id);
+  }
+
+  hydrateOperation(row: OutboxRow): OutboxOperation {
+    return parseWithSchema(
+      outboxOperationSchema,
+      {
+        kind: row.operation,
+        payload: JSON.parse(row.payloadJson),
+        target:
+          row.targetTable && row.targetRowId && row.targetColumn
+            ? {
+                table: row.targetTable,
+                rowId: row.targetRowId,
+                column: row.targetColumn,
+              }
+            : null,
+        dependsOnId: row.dependsOnId,
+      },
+      "partdb outbox operation",
+    );
   }
 }
 
@@ -175,4 +296,13 @@ function mapOutboxRow(row: SqlRow): OutboxRow {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function extractIdFromIri(iri: string): number {
+  const match = iri.match(/\/(\d+)$/);
+  if (!match) {
+    throw new Error(`Could not extract numeric id from Part-DB IRI '${iri}'.`);
+  }
+
+  return Number(match[1]);
 }
