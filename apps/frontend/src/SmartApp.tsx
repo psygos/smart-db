@@ -87,6 +87,7 @@ const defaultAssignForm: AssignFormState = {
   canonicalName: "",
   category: "",
   countable: true,
+  unitSymbol: "pcs",
   initialStatus: "available",
   initialQuantity: "0",
   minimumQuantity: "",
@@ -99,6 +100,7 @@ const defaultEventForm: EventFormState = {
   location: "Unknown",
   quantityDelta: "",
   quantity: "",
+  quantityIsInteger: true,
   assignee: "",
   notes: "",
 };
@@ -1022,6 +1024,7 @@ function buildDefaultEventFormForEntity(
     targetId: entity.id,
     location: entity.location,
     quantity: entity.targetType === "bulk" && entity.quantity !== null ? String(entity.quantity) : "",
+    quantityIsInteger: entity.partType.unit.isInteger,
   };
 }
 

@@ -800,10 +800,11 @@ describe("App", () => {
     await user.type(within(assignCard).getByLabelText(/^Location/), "Fastener wall");
     await user.click(within(assignCard).getByRole("button", { name: "More options" }));
     await user.selectOptions(within(assignCard).getByLabelText("Kind"), "bulk");
+    await user.selectOptions(within(assignCard).getByLabelText("Unit"), "g");
     await user.clear(within(assignCard).getByLabelText(/^Starting quantity/));
-    await user.type(within(assignCard).getByLabelText(/^Starting quantity/), "4");
+    await user.type(within(assignCard).getByLabelText(/^Starting quantity/), "4.5");
     await user.clear(within(assignCard).getByLabelText(/^Low-stock threshold/));
-    await user.type(within(assignCard).getByLabelText(/^Low-stock threshold/), "2");
+    await user.type(within(assignCard).getByLabelText(/^Low-stock threshold/), "2.25");
     await user.type(within(assignCard).getByLabelText(/^New canonical name/), "M3 Screw");
     await user.clear(within(assignCard).getByLabelText(/^Category/));
     await user.type(within(assignCard).getByLabelText(/^Category/), "Fasteners");
@@ -825,9 +826,14 @@ describe("App", () => {
           notes: null,
           imageUrl: null,
           countable: false,
+          unit: {
+            symbol: "g",
+            name: "Grams",
+            isInteger: false,
+          },
         },
-        initialQuantity: 4,
-        minimumQuantity: 2,
+        initialQuantity: 4.5,
+        minimumQuantity: 2.25,
       });
     });
   });

@@ -7,6 +7,8 @@ import type {
   StockEventKind,
 } from "@smart-db/contracts";
 import {
+  defaultMeasurementUnit,
+  getMeasurementUnitBySymbol,
   InvariantError,
   describeCategoryPathParseError,
   parseCategoryPathInput,
@@ -23,6 +25,7 @@ export type AssignFormState = {
   canonicalName: string;
   category: string;
   countable: boolean;
+  unitSymbol: string;
   initialStatus: InstanceStatus;
   initialQuantity: string;
   minimumQuantity: string;
@@ -42,6 +45,7 @@ export type EventFormState = {
   location: string;
   quantityDelta: string;
   quantity: string;
+  quantityIsInteger: boolean;
   assignee: string;
   notes: string;
 };
@@ -52,6 +56,7 @@ export type EventFormIssues = Partial<
 
 export function getAssignFormIssues(form: AssignFormState): AssignFormIssues {
   const issues: AssignFormIssues = {};
+  const unit = getMeasurementUnitBySymbol(form.unitSymbol);
 
   if (!form.location.trim()) {
     issues.location = "Location is required.";
@@ -61,10 +66,21 @@ export function getAssignFormIssues(form: AssignFormState): AssignFormIssues {
     const initialQuantity = parseNonNegativeNumber(form.initialQuantity);
     if (initialQuantity === null) {
       issues.initialQuantity = "Starting quantity must be zero or greater.";
+    } else if (unit?.isInteger && !Number.isInteger(initialQuantity)) {
+      issues.initialQuantity = `${unit.symbol} quantities must be whole numbers.`;
     }
 
-    if (form.minimumQuantity.trim().length > 0 && parseNonNegativeNumber(form.minimumQuantity) === null) {
-      issues.minimumQuantity = "Low-stock threshold must be zero or greater.";
+    if (!unit) {
+      issues.initialQuantity ??= "Choose a valid unit.";
+    }
+
+    if (form.minimumQuantity.trim().length > 0) {
+      const minimumQuantity = parseNonNegativeNumber(form.minimumQuantity);
+      if (minimumQuantity === null) {
+        issues.minimumQuantity = "Low-stock threshold must be zero or greater.";
+      } else if (unit?.isInteger && !Number.isInteger(minimumQuantity)) {
+        issues.minimumQuantity = `${unit.symbol} quantities must be whole numbers.`;
+      }
     }
   }
 
@@ -103,6 +119,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
   const location = form.location.trim();
   const initialQuantity = parseNonNegativeNumber(form.initialQuantity);
   const minimumQuantity = parseNullableNonNegativeNumber(form.minimumQuantity);
+  const selectedUnit = getMeasurementUnitBySymbol(form.unitSymbol) ?? defaultMeasurementUnit;
 
   if (form.partTypeMode === "existing") {
     const existingPartTypeId = form.existingPartTypeId.trim();
@@ -147,6 +164,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           notes: null,
           imageUrl: null,
           countable: form.countable,
+          unit: defaultMeasurementUnit,
         },
         initialStatus: form.initialStatus,
       }
@@ -163,6 +181,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           notes: null,
           imageUrl: null,
           countable: form.countable,
+          unit: selectedUnit,
         },
         initialQuantity: initialQuantity ?? 0,
         minimumQuantity,
@@ -189,21 +208,30 @@ export function getEventFormIssues(form: EventFormState): EventFormIssues {
   }
 
   if (event === "restocked" || event === "consumed") {
-    if (parsePositiveNumber(form.quantityDelta) === null) {
+    const quantityDelta = parsePositiveNumber(form.quantityDelta);
+    if (quantityDelta === null) {
       issues.quantityDelta = "Enter a quantity greater than zero.";
+    } else if (form.quantityIsInteger && !Number.isInteger(quantityDelta)) {
+      issues.quantityDelta = "This unit only allows whole-number quantities.";
     }
     return issues;
   }
 
   if (event === "stocktaken") {
-    if (parseNonNegativeNumber(form.quantity) === null) {
+    const quantity = parseNonNegativeNumber(form.quantity);
+    if (quantity === null) {
       issues.quantity = "Enter the measured quantity on hand.";
+    } else if (form.quantityIsInteger && !Number.isInteger(quantity)) {
+      issues.quantity = "This unit only allows whole-number quantities.";
     }
     return issues;
   }
 
-  if (parseSignedNumber(form.quantityDelta) === null) {
+  const quantityDelta = parseSignedNumber(form.quantityDelta);
+  if (quantityDelta === null) {
     issues.quantityDelta = "Enter a positive or negative adjustment.";
+  } else if (form.quantityIsInteger && !Number.isInteger(quantityDelta)) {
+    issues.quantityDelta = "This unit only allows whole-number quantities.";
   }
 
   if (!form.notes.trim()) {
@@ -339,6 +367,10 @@ export function formatBulkState(quantity: number | null, unitSymbol: string, min
   }
 
   return amount;
+}
+
+export function quantityInputStep(isInteger: boolean): "1" | "any" {
+  return isInteger ? "1" : "any";
 }
 
 export function narrowInstanceEvent(

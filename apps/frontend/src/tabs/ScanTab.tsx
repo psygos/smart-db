@@ -3,11 +3,12 @@ import type { FormEvent } from "react";
 import type {
   AssignQrRequest,
   InstanceStatus,
+  MeasurementUnit,
   PartType,
   ScanResponse,
   StockEventKind,
 } from "@smart-db/contracts";
-import { instanceStatuses } from "@smart-db/contracts";
+import { instanceStatuses, measurementUnitCatalog } from "@smart-db/contracts";
 import { PanelTitle } from "../components/PanelTitle";
 import { QRScanner } from "../components/QRScanner";
 import {
@@ -15,6 +16,7 @@ import {
   formatCategoryPath,
   formatQuantity,
   formatTimestamp,
+  quantityInputStep,
   type AssignFormIssues,
   type AssignFormState,
   type EventFormIssues,
@@ -66,6 +68,17 @@ interface ScanTabProps {
 
 export function ScanTab(props: ScanTabProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const selectedMeasurementUnit =
+    measurementUnitCatalog.find((unit) => unit.symbol === props.assignForm.unitSymbol) ??
+    measurementUnitCatalog[0];
+  const bulkUnitSymbol =
+    props.scanResult?.mode === "interact" && props.scanResult.entity.targetType === "bulk"
+      ? props.scanResult.entity.partType.unit.symbol
+      : selectedMeasurementUnit.symbol;
+  const bulkQuantityStep =
+    props.scanResult?.mode === "interact" && props.scanResult.entity.targetType === "bulk"
+      ? quantityInputStep(props.scanResult.entity.partType.unit.isInteger)
+      : quantityInputStep(selectedMeasurementUnit.isInteger);
 
   return (
     <section className="panel">
@@ -191,6 +204,7 @@ export function ScanTab(props: ScanTabProps) {
                             canonicalName: "",
                             category: formatCategoryPath(partType.categoryPath),
                             countable: partType.countable,
+                            unitSymbol: partType.unit.symbol,
                             initialStatus: "available",
                             initialQuantity: "0",
                             minimumQuantity: "",
@@ -294,7 +308,7 @@ export function ScanTab(props: ScanTabProps) {
                   <label>
                     Initial status
                     <select
-                      value={props.assignForm.initialStatus}
+                        value={props.assignForm.initialStatus}
                       onChange={(event) =>
                         props.onAssignFormChange((current) => ({
                           ...current,
@@ -316,9 +330,9 @@ export function ScanTab(props: ScanTabProps) {
                       <input
                         type="number"
                         min="0"
-                        step="any"
                         inputMode="decimal"
                         value={props.assignForm.initialQuantity}
+                        step={quantityInputStep(selectedMeasurementUnit.isInteger)}
                         onChange={(event) =>
                           props.onAssignFormChange((current) => ({
                             ...current,
@@ -335,9 +349,9 @@ export function ScanTab(props: ScanTabProps) {
                       <input
                         type="number"
                         min="0"
-                        step="any"
                         inputMode="decimal"
                         value={props.assignForm.minimumQuantity}
+                        step={quantityInputStep(selectedMeasurementUnit.isInteger)}
                         onChange={(event) =>
                           props.onAssignFormChange((current) => ({
                             ...current,
@@ -350,6 +364,26 @@ export function ScanTab(props: ScanTabProps) {
                         <span className="field-error">{props.assignIssues.minimumQuantity}</span>
                       ) : null}
                     </label>
+                    {props.assignForm.partTypeMode === "new" ? (
+                      <label>
+                        Unit
+                        <select
+                          value={props.assignForm.unitSymbol}
+                          onChange={(event) =>
+                            props.onAssignFormChange((current) => ({
+                              ...current,
+                              unitSymbol: event.target.value,
+                            }))
+                          }
+                        >
+                          {measurementUnitCatalog.map((unit) => (
+                            <option key={unit.symbol} value={unit.symbol}>
+                              {unit.name} ({unit.symbol})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                   </>
                 )}
                 {props.assignForm.partTypeMode === "new" ? (
@@ -463,10 +497,10 @@ export function ScanTab(props: ScanTabProps) {
               props.eventForm.event === "adjusted") &&
               props.scanResult.entity.targetType === "bulk" && (
               <label>
-                {props.eventForm.event === "adjusted" ? "Adjustment" : "Quantity change"}
+                {props.eventForm.event === "adjusted" ? `Adjustment (${bulkUnitSymbol})` : `Quantity change (${bulkUnitSymbol})`}
                 <input
                   type="number"
-                  step="any"
+                  step={bulkQuantityStep}
                   inputMode="decimal"
                   value={props.eventForm.quantityDelta}
                   onChange={(event) =>
@@ -484,11 +518,11 @@ export function ScanTab(props: ScanTabProps) {
             {props.eventForm.event === "stocktaken" &&
               props.scanResult.entity.targetType === "bulk" && (
               <label>
-                Quantity on hand
+                Quantity on hand ({bulkUnitSymbol})
                 <input
                   type="number"
                   min="0"
-                  step="any"
+                  step={bulkQuantityStep}
                   inputMode="decimal"
                   value={props.eventForm.quantity}
                   onChange={(event) =>

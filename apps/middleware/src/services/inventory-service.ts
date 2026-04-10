@@ -5,6 +5,7 @@ import {
   bulkStockSchema,
   categoryLeafFromPath,
   ConflictError,
+  defaultMeasurementUnit,
   InvariantError,
   instanceStatuses,
   inventoryEntitySummarySchema,
@@ -387,6 +388,10 @@ export class InventoryService {
           input.minimumQuantity === null
             ? null
             : requireFiniteNonNegativeQuantity(input.minimumQuantity, "minimumQuantity");
+        requireUnitCompatibleQuantity(initialQuantity, partType.unit, "initialQuantity");
+        if (minimumQuantity !== null) {
+          requireUnitCompatibleQuantity(minimumQuantity, partType.unit, "minimumQuantity");
+        }
         const initialLevel = persistedBulkLevelFromQuantity(initialQuantity, minimumQuantity);
         const id = randomUUID();
         this.db
@@ -562,6 +567,7 @@ export class InventoryService {
     if (!partType) {
       throw new InvariantError("Bulk stock is missing its part type.", { partTypeId: current.partTypeId });
     }
+    requireUnitCompatibleQuantity(nextQuantity, partType.unit, "quantity");
 
     this.withTransaction(() => {
       this.db
@@ -961,6 +967,7 @@ export class InventoryService {
     const category = categoryLeafFromPath(categoryPath.value);
     const countable = draft.countable;
     const timestamp = nowIso();
+    const unit = draft.unit ?? defaultMeasurementUnit;
     const partType: PartType = {
       id: randomUUID(),
       canonicalName,
@@ -970,11 +977,7 @@ export class InventoryService {
       imageUrl: draft.imageUrl,
       notes: draft.notes,
       countable,
-      unit: {
-        symbol: "pcs",
-        name: "Pieces",
-        isInteger: true,
-      },
+      unit,
       needsReview: true,
       partDbPartId: null,
       partDbCategoryId: null,
@@ -1675,6 +1678,19 @@ function requireFiniteNonNegativeQuantity(value: number, field: string): number 
   }
 
   return value;
+}
+
+function requireUnitCompatibleQuantity(
+  value: number,
+  unit: PartType["unit"],
+  field: string,
+): void {
+  if (unit.isInteger && !Number.isInteger(value)) {
+    throw new InvariantError(`Parsed bulk command has a fractional ${field} for integer unit '${unit.symbol}'.`, {
+      field,
+      unit: unit.symbol,
+    });
+  }
 }
 
 export const inventoryServiceTestInternals = {

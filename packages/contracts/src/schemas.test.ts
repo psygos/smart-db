@@ -6,6 +6,8 @@ import {
   categoryPathSchema,
   configEnvironmentSchema,
   describeCategoryPathParseError,
+  defaultMeasurementUnit,
+  getMeasurementUnitBySymbol,
   latestQrBatchResponseSchema,
   loginRequestSchema,
   loginResponseSchema,
@@ -81,6 +83,16 @@ describe("schemas", () => {
       "Category paths can have at most 6 levels.",
     );
     expect(categoryLeafFromPath(["Electronics", "Resistors", "SMD 0603"])).toBe("SMD 0603");
+    expect(getMeasurementUnitBySymbol("g")).toEqual({
+      symbol: "g",
+      name: "Grams",
+      isInteger: false,
+    });
+    expect(defaultMeasurementUnit).toEqual({
+      symbol: "pcs",
+      name: "Pieces",
+      isInteger: true,
+    });
   });
 
   it("rejects out-of-bounds batch count and invalid prefix characters", () => {
@@ -140,11 +152,11 @@ describe("schemas", () => {
         qrCode: "QR-1002",
         entityKind: "bulk",
         location: "Bin 4",
-        partType: {
-          kind: "new",
-          canonicalName: "M3 Screw",
-          category: "Fasteners",
-          countable: false,
+      partType: {
+        kind: "new",
+        canonicalName: "M3 Screw",
+        category: "Fasteners",
+        countable: false,
         },
       }),
     ).toEqual({
@@ -160,6 +172,11 @@ describe("schemas", () => {
         notes: null,
         imageUrl: null,
         countable: false,
+        unit: {
+          symbol: "pcs",
+          name: "Pieces",
+          isInteger: true,
+        },
       },
       initialQuantity: 0,
       minimumQuantity: null,
@@ -178,6 +195,25 @@ describe("schemas", () => {
         },
       }),
     ).toThrow(/unsupported characters/i);
+
+    expect(() =>
+      assignQrRequestSchema.parse({
+        qrCode: "QR-1004",
+        entityKind: "bulk",
+        location: "Bin 4",
+        partType: {
+          kind: "new",
+          canonicalName: "Bad Unit",
+          category: "Fasteners",
+          countable: true,
+          unit: {
+            symbol: "g",
+            name: "Grams",
+            isInteger: false,
+          },
+        },
+      }),
+    ).toThrow(/integer unit/i);
   });
 
   it("parses lifecycle events, merge requests, responses, and error envelopes", () => {

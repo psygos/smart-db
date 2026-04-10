@@ -1110,6 +1110,64 @@ describe("InventoryService", () => {
     ).toThrowError(ConflictError);
   });
 
+  it("enforces integer quantities for integer-backed bulk units", () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({ actor: "admin", prefix: "UNIT", startNumber: 1, count: 2 });
+
+    expect(() =>
+      service.assignQr({
+        qrCode: "UNIT-1",
+        actor: "labeler",
+        entityKind: "bulk",
+        location: "Drawer",
+        notes: null,
+        partType: {
+          kind: "new",
+          canonicalName: "Discrete Screw Bin",
+          category: "Hardware",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: false,
+          unit: {
+            symbol: "pcs",
+            name: "Pieces",
+            isInteger: true,
+          },
+        },
+        initialQuantity: 1.5,
+        minimumQuantity: null,
+      }),
+    ).toThrowError(InvariantError);
+
+    const grams = service.assignQr({
+      qrCode: "UNIT-2",
+      actor: "labeler",
+      entityKind: "bulk",
+      location: "Drawer",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Solder Paste",
+        category: "Consumables",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
+        unit: {
+          symbol: "g",
+          name: "Grams",
+          isInteger: false,
+        },
+      },
+      initialQuantity: 1.5,
+      minimumQuantity: 0.5,
+    });
+
+    expect(grams.state).toBe("1.5 g on hand");
+  });
+
   it("treats malformed persisted records as invariant failures", async () => {
     const { db, service } = makeService();
 

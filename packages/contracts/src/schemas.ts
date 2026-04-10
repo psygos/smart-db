@@ -9,6 +9,20 @@ const normalizedOptionalString = z.string().trim().nullish().transform((value) =
   return trimmed ? trimmed : null;
 });
 const categorySegmentPattern = /^[A-Za-z0-9 _\-+&().#]+$/;
+export const measurementUnitCatalog = [
+  { symbol: "pcs", name: "Pieces", isInteger: true },
+  { symbol: "g", name: "Grams", isInteger: false },
+  { symbol: "kg", name: "Kilograms", isInteger: false },
+  { symbol: "mg", name: "Milligrams", isInteger: false },
+  { symbol: "m", name: "Meters", isInteger: false },
+  { symbol: "cm", name: "Centimeters", isInteger: false },
+  { symbol: "mm", name: "Millimeters", isInteger: false },
+  { symbol: "mL", name: "Milliliters", isInteger: false },
+  { symbol: "L", name: "Liters", isInteger: false },
+  { symbol: "oz", name: "Ounces", isInteger: false },
+  { symbol: "lb", name: "Pounds", isInteger: false },
+] as const;
+export const defaultMeasurementUnit = measurementUnitCatalog[0];
 
 export const instanceStatuses = [
   "available",
@@ -123,6 +137,12 @@ export function categoryLeafFromPath(path: z.output<typeof categoryPathSchema>):
   return path[path.length - 1] ?? "Uncategorized";
 }
 
+export function getMeasurementUnitBySymbol(symbol: string): z.output<typeof measurementUnitSchema> | null {
+  return (
+    measurementUnitCatalog.find((unit) => unit.symbol === symbol) ?? null
+  );
+}
+
 export const partTypeSchema = z
   .object({
     id: identifierSchema,
@@ -133,11 +153,7 @@ export const partTypeSchema = z
     imageUrl: nullableLooseString.default(null),
     notes: nullableLooseString.default(null),
     countable: z.boolean(),
-    unit: measurementUnitSchema.default({
-      symbol: "pcs",
-      name: "Pieces",
-      isInteger: true,
-    }),
+    unit: measurementUnitSchema.default(defaultMeasurementUnit),
     needsReview: z.boolean(),
     partDbPartId: nullableLooseString.default(null),
     partDbCategoryId: nullableLooseString.default(null),
@@ -320,13 +336,24 @@ export const newPartTypeDraftSchema = z
     notes: nullableLooseString.default(null),
     imageUrl: nullableLooseString.default(null),
     countable: z.boolean(),
+    unit: measurementUnitSchema.default(defaultMeasurementUnit),
   })
   .strict();
 
-export const partTypeDraftSchema = z.discriminatedUnion("kind", [
-  existingPartTypeDraftSchema,
-  newPartTypeDraftSchema,
-]);
+export const partTypeDraftSchema = z
+  .discriminatedUnion("kind", [
+    existingPartTypeDraftSchema,
+    newPartTypeDraftSchema,
+  ])
+  .superRefine((value, context) => {
+    if (value.kind === "new" && value.countable && !value.unit.isInteger) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["unit"],
+        message: "Countable part types require an integer unit.",
+      });
+    }
+  });
 
 export const instanceAssignQrRequestSchema = z
   .object({
