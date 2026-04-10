@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "partdb:backfill": "tsx src/scripts/backfill-partdb.ts",
+    "partdb:reconcile-deletes": "tsx src/scripts/reconcile-partdb-deletes.ts",
     "smartdb:reset": "tsx src/scripts/reset-smartdb.ts"
   },
   "dependencies": {
@@ -17,7 +18,8 @@
     "fastify": "^5.2.1",
     "jose": "^6.0.12",
     "pdf-lib": "^1.17.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",

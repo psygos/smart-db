@@ -9,6 +9,13 @@ import { PartDbRestClient } from "../partdb-rest.js";
 export class PartDbPartLotsResource {
   constructor(private readonly rest: PartDbRestClient) {}
 
+  get(lotIri: string): Promise<Result<PartDbLotResponse, PartDbError>> {
+    return this.rest.getJson(lotIri, partDbLotResponseSchema, {
+      resource: "part_lot",
+      identifier: lotIri,
+    });
+  }
+
   create(payload: Record<string, unknown>): Promise<Result<PartDbLotResponse, PartDbError>> {
     return this.rest.postJson("/api/part_lots", payload, partDbLotResponseSchema, {
       resource: "part_lot",
