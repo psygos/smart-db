@@ -97,6 +97,14 @@ export class PartDbOperations {
         });
         return created.ok ? Ok({ iri: created.value["@id"], body: created.value }) : created;
       }
+      case "delete_part": {
+        if (!operation.payload.partIri) {
+          return Err({ kind: "dependency_missing", dependency: "partIri", retryable: false });
+        }
+
+        const deleted = await this.parts.delete(operation.payload.partIri);
+        return deleted.ok ? Ok({ iri: operation.payload.partIri, body: null }) : deleted;
+      }
       case "create_lot": {
         if (!operation.payload.partIri) {
           return Err({ kind: "dependency_missing", dependency: "partIri", retryable: false });

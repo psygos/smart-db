@@ -21,4 +21,11 @@ export class PartDbPartsResource {
       identifier: partIri,
     });
   }
+
+  delete(partIri: string): Promise<Result<void, PartDbError>> {
+    return this.rest.deleteResource(partIri, {
+      resource: "part",
+      identifier: partIri,
+    });
+  }
 }

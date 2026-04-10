@@ -55,6 +55,14 @@ interface PartDbBackfillResult {
   skipped: number;
 }
 
+interface ResetInventoryStateResult {
+  clearedPartTypes: number;
+  clearedInventoryItems: number;
+  clearedQrCodes: number;
+  queuedRemotePartDeletes: number;
+  queuedRemoteLotDeletes: number;
+}
+
 export class InventoryService {
   constructor(
     private readonly db: DatabaseSync,
@@ -796,6 +804,96 @@ export class InventoryService {
 
   async getPartDbStatus(): Promise<PartDbConnectionStatus> {
     return this.partDbClient.getConnectionStatus();
+  }
+
+  resetInventoryState(): ResetInventoryStateResult {
+    const outbox = this.partDbOutbox;
+    const correlationId = randomUUID();
+    let queuedRemotePartDeletes = 0;
+    let queuedRemoteLotDeletes = 0;
+    let clearedPartTypes = 0;
+    let clearedInventoryItems = 0;
+    let clearedQrCodes = 0;
+
+    this.withTransaction(() => {
+      const parts = this.db
+        .prepare(`SELECT id, partdb_part_id FROM part_types ORDER BY created_at, id`)
+        .all() as Array<{ id: string; partdb_part_id: string | null }>;
+      const instances = this.db
+        .prepare(`SELECT id, part_type_id, partdb_lot_id FROM physical_instances ORDER BY created_at, id`)
+        .all() as Array<{ id: string; part_type_id: string; partdb_lot_id: string | null }>;
+      const bulkStocks = this.db
+        .prepare(`SELECT id, part_type_id, partdb_lot_id FROM bulk_stocks ORDER BY created_at, id`)
+        .all() as Array<{ id: string; part_type_id: string; partdb_lot_id: string | null }>;
+      const qrCountRow = this.db
+        .prepare(`SELECT COUNT(*) AS count FROM qrcodes`)
+        .get() as { count: number };
+
+      clearedPartTypes = parts.length;
+      clearedInventoryItems = instances.length + bulkStocks.length;
+      clearedQrCodes = Number(qrCountRow.count);
+
+      if (outbox) {
+        this.db.prepare(`DELETE FROM partdb_outbox`).run();
+        const lastDeleteByPartType = new Map<string, string | null>();
+
+        for (const item of [...instances, ...bulkStocks]) {
+          if (!item.partdb_lot_id) {
+            continue;
+          }
+
+          const opId = outbox.enqueue(
+            {
+              kind: "delete_lot",
+              payload: {
+                lotIri: `/api/part_lots/${item.partdb_lot_id}`,
+              },
+              target: null,
+              dependsOnId: lastDeleteByPartType.get(item.part_type_id) ?? null,
+            },
+            correlationId,
+          );
+          lastDeleteByPartType.set(item.part_type_id, opId);
+          queuedRemoteLotDeletes += 1;
+        }
+
+        for (const part of parts) {
+          if (!part.partdb_part_id) {
+            continue;
+          }
+
+          outbox.enqueue(
+            {
+              kind: "delete_part",
+              payload: {
+                partIri: `/api/parts/${part.partdb_part_id}`,
+              },
+              target: null,
+              dependsOnId: lastDeleteByPartType.get(part.id) ?? null,
+            },
+            correlationId,
+          );
+          queuedRemotePartDeletes += 1;
+        }
+      }
+
+      this.db.prepare(`DELETE FROM stock_events`).run();
+      this.db.prepare(`DELETE FROM physical_instances`).run();
+      this.db.prepare(`DELETE FROM bulk_stocks`).run();
+      this.db.prepare(`DELETE FROM qrcodes`).run();
+      this.db.prepare(`DELETE FROM qr_batches`).run();
+      this.db.prepare(`DELETE FROM part_types`).run();
+      this.db.prepare(`DELETE FROM partdb_category_cache`).run();
+      this.db.prepare(`DELETE FROM idempotency_keys`).run();
+    });
+
+    return {
+      clearedPartTypes,
+      clearedInventoryItems,
+      clearedQrCodes,
+      queuedRemotePartDeletes,
+      queuedRemoteLotDeletes,
+    };
   }
 
   backfillPartDbSync(): PartDbBackfillResult {

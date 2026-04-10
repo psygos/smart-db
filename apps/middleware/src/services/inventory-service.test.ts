@@ -300,6 +300,97 @@ describe("InventoryService", () => {
     });
   });
 
+  it("resets local inventory and queues corresponding Part-DB deletions", () => {
+    const { db, service } = makeService({ withOutbox: true });
+
+    service.registerQrBatch({ actor: "admin", prefix: "RST", startNumber: 1, count: 2 });
+    const instance = service.assignQr({
+      qrCode: "RST-1",
+      actor: "labeler",
+      entityKind: "instance",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Reset Instance",
+        category: "Electronics",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+      },
+      initialStatus: "available",
+    });
+    const bulk = service.assignQr({
+      qrCode: "RST-2",
+      actor: "labeler",
+      entityKind: "bulk",
+      location: "Bin A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Reset Bulk",
+        category: "Hardware",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
+      },
+      initialQuantity: 12,
+      minimumQuantity: 3,
+    });
+
+    db.prepare(`UPDATE part_types SET partdb_part_id = '41' WHERE id = ?`).run(instance.partType.id);
+    db.prepare(`UPDATE part_types SET partdb_part_id = '42' WHERE id = ?`).run(bulk.partType.id);
+    db.prepare(`UPDATE physical_instances SET partdb_lot_id = '51' WHERE id = ?`).run(instance.id);
+    db.prepare(`UPDATE bulk_stocks SET partdb_lot_id = '52' WHERE id = ?`).run(bulk.id);
+
+    const result = service.resetInventoryState();
+    expect(result).toEqual({
+      clearedPartTypes: 2,
+      clearedInventoryItems: 2,
+      clearedQrCodes: 2,
+      queuedRemotePartDeletes: 2,
+      queuedRemoteLotDeletes: 2,
+    });
+
+    const counts = db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM part_types) AS part_types,
+        (SELECT COUNT(*) FROM physical_instances) AS physical_instances,
+        (SELECT COUNT(*) FROM bulk_stocks) AS bulk_stocks,
+        (SELECT COUNT(*) FROM qrcodes) AS qrcodes,
+        (SELECT COUNT(*) FROM qr_batches) AS qr_batches,
+        (SELECT COUNT(*) FROM stock_events) AS stock_events
+    `).get() as {
+      part_types: number;
+      physical_instances: number;
+      bulk_stocks: number;
+      qrcodes: number;
+      qr_batches: number;
+      stock_events: number;
+    };
+    expect(counts).toEqual({
+      part_types: 0,
+      physical_instances: 0,
+      bulk_stocks: 0,
+      qrcodes: 0,
+      qr_batches: 0,
+      stock_events: 0,
+    });
+
+    const resetRows = dbRows(db);
+    expect(resetRows.map((row) => row.operation).sort()).toEqual([
+      "delete_lot",
+      "delete_lot",
+      "delete_part",
+      "delete_part",
+    ]);
+    expect(
+      resetRows.filter((row) => row.operation === "delete_part").every((row) => row.dependsOnId !== null),
+    ).toBe(true);
+  });
+
   it("supports the full intake and lifecycle flow for instances and bulk stock", async () => {
     const { service } = makeService();
 

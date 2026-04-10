@@ -44,6 +44,12 @@ export type OutboxOperation =
       dependsOnId: null;
     }
   | {
+      kind: "delete_part";
+      payload: { partIri: string | null };
+      target: null;
+      dependsOnId: string | null;
+    }
+  | {
       kind: "create_lot";
       payload: {
         partIri: string | null;

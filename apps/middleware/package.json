@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "partdb:backfill": "tsx src/scripts/backfill-partdb.ts"
+    "partdb:backfill": "tsx src/scripts/backfill-partdb.ts",
+    "smartdb:reset": "tsx src/scripts/reset-smartdb.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

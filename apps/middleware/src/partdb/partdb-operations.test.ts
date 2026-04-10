@@ -12,6 +12,7 @@ function makeOperations() {
   } as never;
   const parts = {
     create: vi.fn(),
+    delete: vi.fn(),
   } as never;
   const partLots = {
     create: vi.fn(),
@@ -103,6 +104,7 @@ describe("PartDbOperations", () => {
     parts.create.mockResolvedValue(Ok({ "@id": "/api/parts/9", id: 9, name: "Arduino Uno", category: "/api/categories/7" }));
     partLots.patch.mockResolvedValue(Ok({ "@id": "/api/part_lots/4", id: 4, amount: 12 }));
     partLots.delete.mockResolvedValue(Ok(undefined));
+    parts.delete.mockResolvedValue(Ok(undefined));
 
     await expect(
       operations.execute({
@@ -136,6 +138,15 @@ describe("PartDbOperations", () => {
         dependsOnId: null,
       }),
     ).resolves.toEqual(Ok({ iri: "/api/part_lots/4", body: { "@id": "/api/part_lots/4", id: 4, amount: 12 } }));
+
+    await expect(
+      operations.execute({
+        kind: "delete_part",
+        payload: { partIri: "/api/parts/9" },
+        target: null,
+        dependsOnId: null,
+      }),
+    ).resolves.toEqual(Ok({ iri: "/api/parts/9", body: null }));
 
     await expect(
       operations.execute({
