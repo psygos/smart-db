@@ -1,0 +1,29 @@
+import type { Result } from "@smart-db/contracts";
+import type { PartDbError } from "../partdb-errors.js";
+import {
+  partDbStorageLocationResponseSchema,
+  type PartDbStorageLocationResponse,
+} from "../partdb-schemas.js";
+import { PartDbRestClient } from "../partdb-rest.js";
+
+export class PartDbStorageLocationsResource {
+  constructor(private readonly rest: PartDbRestClient) {}
+
+  list(query: URLSearchParams = new URLSearchParams()): Promise<Result<PartDbStorageLocationResponse[], PartDbError>> {
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.rest.getJson(
+      `/api/storage_locations${suffix}`,
+      partDbStorageLocationResponseSchema.array(),
+      { resource: "storage_location" },
+    );
+  }
+
+  create(payload: Record<string, unknown>): Promise<Result<PartDbStorageLocationResponse, PartDbError>> {
+    return this.rest.postJson(
+      "/api/storage_locations",
+      payload,
+      partDbStorageLocationResponseSchema,
+      { resource: "storage_location" },
+    );
+  }
+}

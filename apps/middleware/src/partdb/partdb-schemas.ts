@@ -62,3 +62,10 @@ export const partDbErrorResponseSchema = z.object({
     .optional(),
   status: z.number().optional(),
 });
+
+export type PartDbCategoryResponse = z.output<typeof partDbCategoryResponseSchema>;
+export type PartDbPartResponse = z.output<typeof partDbPartResponseSchema>;
+export type PartDbLotResponse = z.output<typeof partDbLotResponseSchema>;
+export type PartDbStorageLocationResponse = z.output<typeof partDbStorageLocationResponseSchema>;
+export type PartDbMeasurementUnitResponse = z.output<typeof partDbMeasurementUnitResponseSchema>;
+export type PartDbErrorResponse = z.output<typeof partDbErrorResponseSchema>;
