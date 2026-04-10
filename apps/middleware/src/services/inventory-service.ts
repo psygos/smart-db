@@ -673,12 +673,21 @@ export class InventoryService {
       id: randomUUID(),
       canonicalName,
       category,
+      categoryPath: [category],
       aliases: uniqueAliases(draft.aliases),
       imageUrl: draft.imageUrl,
       notes: draft.notes,
       countable,
+      unit: {
+        symbol: "pcs",
+        name: "Pieces",
+        isInteger: true,
+      },
       needsReview: true,
       partDbPartId: null,
+      partDbCategoryId: null,
+      partDbUnitId: null,
+      partDbSyncStatus: "never",
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -687,20 +696,27 @@ export class InventoryService {
       .prepare(
         `
         INSERT INTO part_types
-          (id, canonical_name, category, aliases_json, image_url, notes, countable, needs_review, partdb_part_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, canonical_name, category, category_path_json, aliases_json, image_url, notes, countable, unit_symbol, unit_name, unit_is_integer, needs_review, partdb_part_id, partdb_category_id, partdb_unit_id, partdb_sync_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
         partType.id,
         partType.canonicalName,
         partType.category,
+        JSON.stringify(partType.categoryPath),
         JSON.stringify(partType.aliases),
         partType.imageUrl,
         partType.notes,
         partType.countable ? 1 : 0,
+        partType.unit.symbol,
+        partType.unit.name,
+        partType.unit.isInteger ? 1 : 0,
         1,
         partType.partDbPartId,
+        partType.partDbCategoryId,
+        partType.partDbUnitId,
+        partType.partDbSyncStatus,
         partType.createdAt,
         partType.updatedAt,
       );
@@ -899,12 +915,21 @@ function mapPartType(row: SqlRow): PartType {
       id: String(row.id),
       canonicalName: String(row.canonical_name),
       category: String(row.category),
-    aliases: parseAliases(row.aliases_json),
-    imageUrl: stringOrNull(row.image_url),
-    notes: stringOrNull(row.notes),
-    countable: Boolean(row.countable),
-    needsReview: Boolean(row.needs_review),
+      categoryPath: parseCategoryPath(row.category_path_json, row.category),
+      aliases: parseAliases(row.aliases_json),
+      imageUrl: stringOrNull(row.image_url),
+      notes: stringOrNull(row.notes),
+      countable: Boolean(row.countable),
+      unit: {
+        symbol: stringOrNull(row.unit_symbol) ?? "pcs",
+        name: stringOrNull(row.unit_name) ?? "Pieces",
+        isInteger: Boolean(row.unit_is_integer ?? 1),
+      },
+      needsReview: Boolean(row.needs_review),
       partDbPartId: stringOrNull(row.partdb_part_id),
+      partDbCategoryId: stringOrNull(row.partdb_category_id),
+      partDbUnitId: stringOrNull(row.partdb_unit_id),
+      partDbSyncStatus: (stringOrNull(row.partdb_sync_status) ?? "never") as PartType["partDbSyncStatus"],
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     },
@@ -919,12 +944,21 @@ function mapPartTypeFromJoin(row: SqlRow, prefix: string): PartType {
       id: String(row[`${prefix}id`]),
       canonicalName: String(row[`${prefix}canonical_name`]),
       category: String(row[`${prefix}category`]),
-    aliases: parseAliases(row[`${prefix}aliases_json`]),
-    imageUrl: stringOrNull(row[`${prefix}image_url`]),
-    notes: stringOrNull(row[`${prefix}notes`]),
-    countable: Boolean(row[`${prefix}countable`]),
-    needsReview: Boolean(row[`${prefix}needs_review`]),
+      categoryPath: parseCategoryPath(row[`${prefix}category_path_json`], row[`${prefix}category`]),
+      aliases: parseAliases(row[`${prefix}aliases_json`]),
+      imageUrl: stringOrNull(row[`${prefix}image_url`]),
+      notes: stringOrNull(row[`${prefix}notes`]),
+      countable: Boolean(row[`${prefix}countable`]),
+      unit: {
+        symbol: stringOrNull(row[`${prefix}unit_symbol`]) ?? "pcs",
+        name: stringOrNull(row[`${prefix}unit_name`]) ?? "Pieces",
+        isInteger: Boolean(row[`${prefix}unit_is_integer`] ?? 1),
+      },
+      needsReview: Boolean(row[`${prefix}needs_review`]),
       partDbPartId: stringOrNull(row[`${prefix}partdb_part_id`]),
+      partDbCategoryId: stringOrNull(row[`${prefix}partdb_category_id`]),
+      partDbUnitId: stringOrNull(row[`${prefix}partdb_unit_id`]),
+      partDbSyncStatus: (stringOrNull(row[`${prefix}partdb_sync_status`]) ?? "never") as PartType["partDbSyncStatus"],
       createdAt: String(row[`${prefix}created_at`]),
       updatedAt: String(row[`${prefix}updated_at`]),
     },
@@ -988,7 +1022,11 @@ function mapBulkStock(row: SqlRow) {
       qrCode: String(row.qr_code),
       partTypeId: String(row.part_type_id),
       level: String(row.level) as BulkLevel,
+      quantity: Number(row.quantity ?? 0),
+      minimumQuantity: row.minimum_quantity === null || row.minimum_quantity === undefined ? null : Number(row.minimum_quantity),
       location: String(row.location),
+      partDbLotId: stringOrNull(row.partdb_lot_id),
+      partDbSyncStatus: (stringOrNull(row.partdb_sync_status) ?? "never") as PartType["partDbSyncStatus"],
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     },
@@ -1057,6 +1095,24 @@ function parseAliases(value: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+function parseCategoryPath(value: unknown, fallbackCategory: unknown): string[] {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown[];
+      const segments = parsed.filter((segment): segment is string => typeof segment === "string" && segment.trim().length > 0);
+      if (segments.length > 0) {
+        return segments;
+      }
+    } catch {
+      // fall through to fallback below
+    }
+  }
+
+  return typeof fallbackCategory === "string" && fallbackCategory.trim().length > 0
+    ? [fallbackCategory]
+    : ["Uncategorized"];
 }
 
 function parsePersisted<T>(schema: { parse: (input: unknown) => T }, input: unknown, context: string): T {

@@ -26,6 +26,7 @@ export interface AppConfig {
     baseUrl: string | null;
     publicBaseUrl: string | null;
     apiToken: string | null;
+    syncEnabled: boolean;
   };
   auth: {
     issuer: string | null;
@@ -57,6 +58,7 @@ export function parseConfig(environment: Partial<Record<keyof ConfigEnvironment,
       baseUrl: parsedEnvironment.PARTDB_BASE_URL,
       publicBaseUrl: parsedEnvironment.PARTDB_PUBLIC_BASE_URL,
       apiToken: parsedEnvironment.PARTDB_API_TOKEN,
+      syncEnabled: parsedEnvironment.PARTDB_SYNC_ENABLED,
     },
     auth: {
       issuer: parsedEnvironment.ZITADEL_ISSUER,
@@ -77,6 +79,7 @@ export const config = parseConfig({
   PARTDB_BASE_URL: process.env.PARTDB_BASE_URL,
   PARTDB_PUBLIC_BASE_URL: process.env.PARTDB_PUBLIC_BASE_URL,
   PARTDB_API_TOKEN: process.env.PARTDB_API_TOKEN,
+  PARTDB_SYNC_ENABLED: process.env.PARTDB_SYNC_ENABLED,
   SESSION_COOKIE_SECRET: process.env.SESSION_COOKIE_SECRET,
   ZITADEL_ISSUER: process.env.ZITADEL_ISSUER,
   ZITADEL_CLIENT_ID: process.env.ZITADEL_CLIENT_ID,

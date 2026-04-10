@@ -17,6 +17,7 @@ describe("parseConfig", () => {
         baseUrl: null,
         publicBaseUrl: null,
         apiToken: null,
+        syncEnabled: false,
       },
       auth: {
         issuer: null,
@@ -33,6 +34,12 @@ describe("parseConfig", () => {
     expect(() =>
       parseConfig({
         PORT: "nope",
+      }),
+    ).toThrowError(ParseInputError);
+
+    expect(() =>
+      parseConfig({
+        PARTDB_SYNC_ENABLED: "not-a-bool",
       }),
     ).toThrowError(ParseInputError);
   });

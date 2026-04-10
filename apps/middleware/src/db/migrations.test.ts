@@ -30,6 +30,8 @@ describe("applyMigrations", () => {
     expect(versions[0]).toMatchObject({ version: 1, description: "baseline schema" });
     expect(versions[1]).toMatchObject({ version: 2, description: "version columns and idempotency keys" });
     expect(versions[2]).toMatchObject({ version: 3, description: "auth sessions" });
+    expect(versions[3]).toMatchObject({ version: 4, description: "partdb sync model foundations" });
+    expect(versions[4]).toMatchObject({ version: 5, description: "partdb outbox" });
   });
 
   it("skips already-applied migrations on subsequent runs", () => {
@@ -61,6 +63,8 @@ describe("applyMigrations", () => {
     expect(tableNames).toContain("bulk_stocks");
     expect(tableNames).toContain("stock_events");
     expect(tableNames).toContain("auth_sessions");
+    expect(tableNames).toContain("partdb_category_cache");
+    expect(tableNames).toContain("partdb_outbox");
     expect(tableNames).toContain("schema_version");
   });
 
@@ -112,6 +116,73 @@ describe("applyMigrations", () => {
         "expires_at",
         "created_at",
         "last_seen_at",
+      ]),
+    );
+  });
+
+  it("adds partdb sync columns and cache table in v4", () => {
+    const db = makeDb();
+    applyMigrations(db);
+
+    const partTypeCols = db.prepare(`PRAGMA table_info(part_types)`).all() as { name: string }[];
+    expect(partTypeCols.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "category_path_json",
+        "unit_symbol",
+        "unit_name",
+        "unit_is_integer",
+        "partdb_category_id",
+        "partdb_unit_id",
+        "partdb_sync_status",
+      ]),
+    );
+
+    const bulkCols = db.prepare(`PRAGMA table_info(bulk_stocks)`).all() as { name: string }[];
+    expect(bulkCols.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "quantity",
+        "minimum_quantity",
+        "partdb_lot_id",
+        "partdb_sync_status",
+      ]),
+    );
+
+    const instanceCols = db.prepare(`PRAGMA table_info(physical_instances)`).all() as { name: string }[];
+    expect(instanceCols.map((column) => column.name)).toContain("partdb_lot_id");
+  });
+
+  it("creates the partdb_outbox table and indexes in v5", () => {
+    const db = makeDb();
+    applyMigrations(db);
+
+    const tables = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'partdb_outbox'`)
+      .all() as { name: string }[];
+    expect(tables).toHaveLength(1);
+
+    const outboxCols = db.prepare(`PRAGMA table_info(partdb_outbox)`).all() as { name: string }[];
+    expect(outboxCols.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        "id",
+        "idempotency_key",
+        "correlation_id",
+        "operation",
+        "payload_json",
+        "depends_on_id",
+        "target_table",
+        "target_row_id",
+        "target_column",
+        "status",
+        "attempt_count",
+        "max_attempts",
+        "lease_expires_at",
+        "next_attempt_at",
+        "last_error_json",
+        "response_json",
+        "response_iri",
+        "created_at",
+        "leased_at",
+        "completed_at",
       ]),
     );
   });

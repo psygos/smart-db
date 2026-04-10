@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   applicationErrorResponseSchema,
   assignQrRequestSchema,
+  categoryPathSchema,
   configEnvironmentSchema,
   latestQrBatchResponseSchema,
   loginRequestSchema,
   loginResponseSchema,
   logoutResponseSchema,
+  measurementUnitSchema,
   mergePartTypesRequestSchema,
   recordEventRequestSchema,
   registerQrBatchRequestSchema,
@@ -33,6 +35,7 @@ describe("schemas", () => {
       PARTDB_BASE_URL: null,
       PARTDB_PUBLIC_BASE_URL: null,
       PARTDB_API_TOKEN: null,
+      PARTDB_SYNC_ENABLED: false,
       SESSION_COOKIE_SECRET: null,
       ZITADEL_ISSUER: null,
       ZITADEL_CLIENT_ID: null,
@@ -40,6 +43,29 @@ describe("schemas", () => {
       ZITADEL_POST_LOGOUT_REDIRECT_URI: null,
       ZITADEL_ROLE_CLAIM: null,
     });
+  });
+
+  it("parses category paths and measurement units with bounded structure", () => {
+    expect(categoryPathSchema.parse(["Electronics", "Resistors", "SMD 0603"])).toEqual([
+      "Electronics",
+      "Resistors",
+      "SMD 0603",
+    ]);
+
+    expect(
+      measurementUnitSchema.parse({
+        symbol: "pcs",
+        name: "Pieces",
+        isInteger: true,
+      }),
+    ).toEqual({
+      symbol: "pcs",
+      name: "Pieces",
+      isInteger: true,
+    });
+
+    expect(() => categoryPathSchema.parse([])).toThrow();
+    expect(() => categoryPathSchema.parse(new Array(7).fill("too-deep"))).toThrow();
   });
 
   it("rejects out-of-bounds batch count and invalid prefix characters", () => {
@@ -210,12 +236,21 @@ describe("schemas", () => {
             id: "part-1",
             canonicalName: "Arduino Uno",
             category: "Microcontrollers",
+            categoryPath: ["Uncategorized"],
             aliases: [],
             imageUrl: null,
             notes: null,
             countable: true,
+            unit: {
+              symbol: "pcs",
+              name: "Pieces",
+              isInteger: true,
+            },
             needsReview: false,
             partDbPartId: null,
+            partDbCategoryId: null,
+            partDbUnitId: null,
+            partDbSyncStatus: "never",
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
           },
@@ -250,12 +285,21 @@ describe("schemas", () => {
           id: "part-1",
           canonicalName: "Arduino Uno",
           category: "Microcontrollers",
+          categoryPath: ["Uncategorized"],
           aliases: [],
           imageUrl: null,
           notes: null,
           countable: true,
+          unit: {
+            symbol: "pcs",
+            name: "Pieces",
+            isInteger: true,
+          },
           needsReview: false,
           partDbPartId: null,
+          partDbCategoryId: null,
+          partDbUnitId: null,
+          partDbSyncStatus: "never",
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         },

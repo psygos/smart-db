@@ -19,6 +19,7 @@ export const instanceStatuses = [
 export const bulkLevels = ["full", "good", "low", "empty"] as const;
 export const qrStatuses = ["printed", "assigned", "voided", "duplicate"] as const;
 export const inventoryTargetKinds = ["instance", "bulk"] as const;
+export const partDbSyncStatuses = ["never", "pending", "synced", "failed"] as const;
 export const stockEventKinds = [
   "labeled",
   "moved",
@@ -45,24 +46,53 @@ export const instanceStatusSchema = z.enum(instanceStatuses);
 export const bulkLevelSchema = z.enum(bulkLevels);
 export const qrStatusSchema = z.enum(qrStatuses);
 export const inventoryTargetKindSchema = z.enum(inventoryTargetKinds);
+export const partDbSyncStatusSchema = z.enum(partDbSyncStatuses);
 export const stockEventKindSchema = z.enum(stockEventKinds);
 export const instanceActionSchema = z.enum(instanceActionKinds);
 export const bulkActionSchema = z.enum(bulkActionKinds);
 
 const isoTimestampSchema = z.string().datetime();
 const identifierSchema = nonEmptyString;
+const booleanEnvironmentSchema = z
+  .union([
+    z.boolean(),
+    z.enum(["true", "false", "1", "0"]),
+  ])
+  .transform((value) => value === true || value === "true" || value === "1");
+
+export const measurementUnitSchema = z
+  .object({
+    symbol: z.string().trim().min(1).max(10),
+    name: nonEmptyString,
+    isInteger: z.boolean(),
+  })
+  .strict();
+
+export const categoryPathSchema = z
+  .array(z.string().trim().min(1).max(255))
+  .min(1)
+  .max(6);
 
 export const partTypeSchema = z
   .object({
     id: identifierSchema,
     canonicalName: nonEmptyString,
     category: nonEmptyString,
+    categoryPath: categoryPathSchema.default(["Uncategorized"]),
     aliases: z.array(nonEmptyString).default([]),
     imageUrl: nullableLooseString.default(null),
     notes: nullableLooseString.default(null),
     countable: z.boolean(),
+    unit: measurementUnitSchema.default({
+      symbol: "pcs",
+      name: "Pieces",
+      isInteger: true,
+    }),
     needsReview: z.boolean(),
     partDbPartId: nullableLooseString.default(null),
+    partDbCategoryId: nullableLooseString.default(null),
+    partDbUnitId: nullableLooseString.default(null),
+    partDbSyncStatus: partDbSyncStatusSchema.default("never"),
     createdAt: isoTimestampSchema,
     updatedAt: isoTimestampSchema,
   })
@@ -87,7 +117,11 @@ export const bulkStockSchema = z
     qrCode: nonEmptyString,
     partTypeId: identifierSchema,
     level: bulkLevelSchema,
+    quantity: z.number().nonnegative().default(0),
+    minimumQuantity: z.number().nonnegative().nullable().default(null),
     location: nonEmptyString,
+    partDbLotId: nullableLooseString.default(null),
+    partDbSyncStatus: partDbSyncStatusSchema.default("never"),
     createdAt: isoTimestampSchema,
     updatedAt: isoTimestampSchema,
   })
@@ -536,10 +570,13 @@ export const scanResponseSchema = z.union([
 export type InstanceStatus = z.output<typeof instanceStatusSchema>;
 export type BulkLevel = z.output<typeof bulkLevelSchema>;
 export type QrStatus = z.output<typeof qrStatusSchema>;
+export type PartDbSyncStatus = z.output<typeof partDbSyncStatusSchema>;
 export type StockEventKind = z.output<typeof stockEventKindSchema>;
 export type InstanceActionKind = z.output<typeof instanceActionSchema>;
 export type BulkActionKind = z.output<typeof bulkActionSchema>;
 export type InventoryTargetKind = z.output<typeof inventoryTargetKindSchema>;
+export type MeasurementUnit = z.output<typeof measurementUnitSchema>;
+export type CategoryPath = z.output<typeof categoryPathSchema>;
 export type PartType = z.output<typeof partTypeSchema>;
 export type PhysicalInstance = z.output<typeof physicalInstanceSchema>;
 export type BulkStock = z.output<typeof bulkStockSchema>;
@@ -580,6 +617,7 @@ export const configEnvironmentSchema = z
     PARTDB_BASE_URL: nullableString.nullish().transform((value) => value ?? null).default(null),
     PARTDB_PUBLIC_BASE_URL: nullableString.nullish().transform((value) => value ?? null).default(null),
     PARTDB_API_TOKEN: nullableString.nullish().transform((value) => value ?? null).default(null),
+    PARTDB_SYNC_ENABLED: booleanEnvironmentSchema.default(false),
     SESSION_COOKIE_SECRET: nullableString.nullish().transform((value) => value ?? null).default(null),
     ZITADEL_ISSUER: nullableString.nullish().transform((value) => value ?? null).default(null),
     ZITADEL_CLIENT_ID: nullableString.nullish().transform((value) => value ?? null).default(null),

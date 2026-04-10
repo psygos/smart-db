@@ -115,6 +115,81 @@ CREATE INDEX IF NOT EXISTS auth_sessions_expires_at_idx
   ON auth_sessions (expires_at);
     `,
   },
+  {
+    version: 4,
+    description: "partdb sync model foundations",
+    sql: `
+ALTER TABLE bulk_stocks ADD COLUMN quantity REAL NOT NULL DEFAULT 0;
+ALTER TABLE bulk_stocks ADD COLUMN minimum_quantity REAL;
+ALTER TABLE bulk_stocks ADD COLUMN partdb_lot_id TEXT;
+ALTER TABLE bulk_stocks ADD COLUMN partdb_sync_status TEXT NOT NULL DEFAULT 'never';
+
+ALTER TABLE physical_instances ADD COLUMN partdb_lot_id TEXT;
+
+ALTER TABLE part_types ADD COLUMN category_path_json TEXT NOT NULL DEFAULT '["Uncategorized"]';
+ALTER TABLE part_types ADD COLUMN unit_symbol TEXT NOT NULL DEFAULT 'pcs';
+ALTER TABLE part_types ADD COLUMN unit_name TEXT NOT NULL DEFAULT 'Pieces';
+ALTER TABLE part_types ADD COLUMN unit_is_integer INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE part_types ADD COLUMN partdb_category_id TEXT;
+ALTER TABLE part_types ADD COLUMN partdb_unit_id TEXT;
+ALTER TABLE part_types ADD COLUMN partdb_sync_status TEXT NOT NULL DEFAULT 'never';
+
+UPDATE part_types
+SET category_path_json = json_array(category)
+WHERE category_path_json = '["Uncategorized"]' OR category_path_json = '[]';
+
+UPDATE bulk_stocks
+SET quantity = CASE level
+  WHEN 'full' THEN 100
+  WHEN 'good' THEN 75
+  WHEN 'low' THEN 25
+  WHEN 'empty' THEN 0
+  ELSE 0
+END
+WHERE quantity = 0;
+
+CREATE TABLE IF NOT EXISTS partdb_category_cache (
+  path_key TEXT PRIMARY KEY,
+  partdb_iri TEXT NOT NULL,
+  cached_at TEXT NOT NULL
+);
+    `,
+  },
+  {
+    version: 5,
+    description: "partdb outbox",
+    sql: `
+CREATE TABLE IF NOT EXISTS partdb_outbox (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  correlation_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  depends_on_id TEXT REFERENCES partdb_outbox(id),
+  target_table TEXT,
+  target_row_id TEXT,
+  target_column TEXT,
+  status TEXT NOT NULL,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 10,
+  lease_expires_at TEXT,
+  next_attempt_at TEXT NOT NULL,
+  last_error_json TEXT,
+  response_json TEXT,
+  response_iri TEXT,
+  created_at TEXT NOT NULL,
+  leased_at TEXT,
+  completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS partdb_outbox_worker_idx
+  ON partdb_outbox(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS partdb_outbox_correlation_idx
+  ON partdb_outbox(correlation_id);
+CREATE INDEX IF NOT EXISTS partdb_outbox_target_idx
+  ON partdb_outbox(target_table, target_row_id);
+    `,
+  },
 ];
 
 export function applyMigrations(
