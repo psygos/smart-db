@@ -1,6 +1,7 @@
 import type { FastifyInstance, preHandlerAsyncHookHandler } from "fastify";
 import {
   assignQrRequestSchema,
+  bulkSplitRequestSchema,
   mergePartTypesRequestSchema,
   parseWithSchema,
   partTypeSearchQuerySchema,
@@ -125,6 +126,18 @@ export async function registerInventoryRoutes(
       ...command,
       actor: request.authContext!.session.username,
     });
+  });
+
+  app.post("/api/bulk-stocks/:id/split", authenticatedMutation, async (request) => {
+    const params = request.params as { id: string };
+    const body = parseWithSchema(bulkSplitRequestSchema, request.body, "bulk split request");
+    return inventoryService.splitBulkStock(
+      params.id,
+      body.quantity,
+      body.destinationLocation,
+      request.authContext!.session.username,
+      body.notes,
+    );
   });
 
   app.post("/api/part-types/merge", adminMutation, async (request) => {

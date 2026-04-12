@@ -494,6 +494,152 @@ export class InventoryService {
     };
   }
 
+  splitBulkStock(
+    bulkId: string,
+    quantity: number,
+    destinationLocation: string,
+    actor: string,
+    notes: string | null,
+  ): { source: { id: string; quantity: number }; destination: { id: string; quantity: number } } {
+    const source = this.db
+      .prepare(`SELECT bs.*, pt.unit_symbol, pt.unit_is_integer, pt.id AS pt_id FROM bulk_stocks bs JOIN part_types pt ON pt.id = bs.part_type_id WHERE bs.id = ?`)
+      .get(bulkId) as SqlRow | undefined;
+    if (!source) {
+      throw new NotFoundError("Bulk stock", bulkId);
+    }
+
+    const sourceQty = Number(source.quantity);
+    if (quantity <= 0 || quantity > sourceQty) {
+      throw new ConflictError(`Cannot move ${quantity}; only ${sourceQty} on hand.`, {
+        requested: quantity,
+        available: sourceQty,
+      });
+    }
+
+    if (source.unit_is_integer && !Number.isInteger(quantity)) {
+      throw new ConflictError("This unit requires whole-number quantities.", { quantity });
+    }
+
+    const rawDest = destinationLocation.trim().replace(/\s+/g, " ");
+    const currentLocation = String(source.location);
+    if (rawDest.toLowerCase() === currentLocation.toLowerCase()) {
+      throw new ConflictError("Destination is the same as the current location.", {
+        location: rawDest,
+      });
+    }
+
+    // Snap destination to canonical spelling (same as assignQr)
+    const canonicalDest = (() => {
+      const existing = this.db
+        .prepare(`SELECT location FROM bulk_stocks WHERE LOWER(TRIM(location)) = LOWER(?) LIMIT 1`)
+        .get(rawDest) as { location: string } | undefined;
+      return existing?.location ?? rawDest;
+    })();
+
+    const partTypeId = String(source.pt_id);
+    const timestamp = nowIso();
+    const correlationId = randomUUID();
+    const unitSymbol = String(source.unit_symbol);
+
+    let result: { source: { id: string; quantity: number }; destination: { id: string; quantity: number } };
+
+    this.withTransaction(() => {
+      // Full move: just update the location
+      if (quantity === sourceQty) {
+        this.db
+          .prepare(`UPDATE bulk_stocks SET location = ?, updated_at = ? WHERE id = ?`)
+          .run(canonicalDest, timestamp, bulkId);
+        this.db
+          .prepare(`INSERT INTO stock_events (id, target_type, target_id, event, from_state, to_state, location, actor, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(randomUUID(), "bulk", bulkId, "moved", `${sourceQty} ${unitSymbol} in ${currentLocation}`, `${sourceQty} ${unitSymbol} in ${canonicalDest}`, canonicalDest, actor, notes, timestamp);
+        this.enqueueLotUpdate(
+          { table: "bulk_stocks", rowId: bulkId, column: "partdb_lot_id" },
+          correlationId,
+          { storageLocationName: canonicalDest },
+        );
+        result = {
+          source: { id: bulkId, quantity: sourceQty },
+          destination: { id: bulkId, quantity: sourceQty },
+        };
+        return;
+      }
+
+      // Partial move: decrement source, create or augment destination
+      const newSourceQty = sourceQty - quantity;
+      this.db
+        .prepare(`UPDATE bulk_stocks SET quantity = ?, updated_at = ? WHERE id = ?`)
+        .run(newSourceQty, timestamp, bulkId);
+      this.db
+        .prepare(`INSERT INTO stock_events (id, target_type, target_id, event, from_state, to_state, location, actor, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(randomUUID(), "bulk", bulkId, "adjusted", `${sourceQty} ${unitSymbol}`, `${newSourceQty} ${unitSymbol}`, currentLocation, actor, notes ?? `Split ${quantity} to ${canonicalDest}`, timestamp);
+      this.enqueueLotUpdate(
+        { table: "bulk_stocks", rowId: bulkId, column: "partdb_lot_id" },
+        correlationId,
+        { amount: newSourceQty },
+      );
+
+      // Check for existing bin at destination for same part type
+      const existingDest = this.db
+        .prepare(`SELECT id, quantity FROM bulk_stocks WHERE part_type_id = ? AND LOWER(TRIM(location)) = LOWER(?) LIMIT 1`)
+        .get(partTypeId, canonicalDest) as { id: string; quantity: number } | undefined;
+
+      if (existingDest) {
+        const newDestQty = Number(existingDest.quantity) + quantity;
+        this.db
+          .prepare(`UPDATE bulk_stocks SET quantity = ?, updated_at = ? WHERE id = ?`)
+          .run(newDestQty, timestamp, existingDest.id);
+        this.db
+          .prepare(`INSERT INTO stock_events (id, target_type, target_id, event, from_state, to_state, location, actor, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(randomUUID(), "bulk", existingDest.id, "restocked", `${Number(existingDest.quantity)} ${unitSymbol}`, `${newDestQty} ${unitSymbol}`, canonicalDest, actor, `Received ${quantity} from ${currentLocation}`, timestamp);
+        this.enqueueLotUpdate(
+          { table: "bulk_stocks", rowId: existingDest.id, column: "partdb_lot_id" },
+          correlationId,
+          { amount: newDestQty },
+        );
+        result = {
+          source: { id: bulkId, quantity: newSourceQty },
+          destination: { id: existingDest.id, quantity: newDestQty },
+        };
+      } else {
+        // Create new bin with auto-generated QR in external batch
+        this.ensureExternalBatch();
+        const newQrCode = `SPLIT-${randomUUID().slice(0, 8)}`;
+        const newBulkId = randomUUID();
+        this.db
+          .prepare(`INSERT INTO qrcodes (code, batch_id, status, assigned_kind, assigned_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(newQrCode, "external", "assigned", "bulk", newBulkId, timestamp, timestamp);
+        this.db
+          .prepare(`INSERT INTO bulk_stocks (id, qr_code, part_type_id, level, quantity, minimum_quantity, location, partdb_lot_id, partdb_sync_status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, ?, ?)`)
+          .run(newBulkId, newQrCode, partTypeId, "good", quantity, canonicalDest, "pending", timestamp, timestamp);
+        this.db
+          .prepare(`INSERT INTO stock_events (id, target_type, target_id, event, from_state, to_state, location, actor, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(randomUUID(), "bulk", newBulkId, "labeled", null, `${quantity} ${unitSymbol} on hand`, canonicalDest, actor, `Split from ${currentLocation}`, timestamp);
+
+        // Enqueue Part-DB lot creation for new bin
+        const partType = this.findPartType(partTypeId);
+        if (partType) {
+          const partSyncDep = this.ensurePartTypeSync(partType, correlationId);
+          this.enqueueCreateLot(
+            { table: "bulk_stocks", rowId: newBulkId, column: "partdb_lot_id" },
+            correlationId,
+            partType,
+            canonicalDest,
+            newQrCode,
+            `Split from ${currentLocation}`,
+            quantity,
+            partSyncDep,
+          );
+        }
+        result = {
+          source: { id: bulkId, quantity: newSourceQty },
+          destination: { id: newBulkId, quantity },
+        };
+      }
+    });
+
+    return result!;
+  }
+
   private autoIncrementExternalBulk(bulkId: string, actor: string | null, amount: number = 1): { newQuantity: number } | null {
     const row = this.db
       .prepare(`SELECT quantity FROM bulk_stocks WHERE id = ?`)

@@ -46,12 +46,13 @@ export type EventFormState = {
   quantityDelta: string;
   quantity: string;
   quantityIsInteger: boolean;
+  splitQuantity: string;
   assignee: string;
   notes: string;
 };
 
 export type EventFormIssues = Partial<
-  Record<"location" | "quantityDelta" | "quantity" | "notes", string>
+  Record<"location" | "quantityDelta" | "quantity" | "splitQuantity" | "notes", string>
 >;
 
 export function getAssignFormIssues(form: AssignFormState): AssignFormIssues {

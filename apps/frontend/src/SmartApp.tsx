@@ -103,6 +103,7 @@ const defaultEventForm: EventFormState = {
   quantityDelta: "",
   quantity: "",
   quantityIsInteger: true,
+  splitQuantity: "",
   assignee: "",
   notes: "",
 };
@@ -797,9 +798,26 @@ export default function SmartApp() {
 
 
     try {
-      const request = buildEventRequest(eventForm);
-      const response = await api.recordEvent(request);
-      addToast(`${actionLabel(response.event)} recorded`, "success");
+      // Bulk move with a split quantity: call splitBulkStock instead of recordEvent
+      const isBulkSplit =
+        eventForm.event === "moved" &&
+        eventForm.targetType === "bulk" &&
+        eventForm.splitQuantity.trim() !== "";
+
+      if (isBulkSplit) {
+        const splitQty = Number(eventForm.splitQuantity);
+        const splitResult = await api.splitBulkStock(eventForm.targetId, {
+          quantity: splitQty,
+          destinationLocation: eventForm.location.trim(),
+          notes: eventForm.notes.trim() || null,
+        });
+        addToast(`Moved ${splitQty} to ${eventForm.location.trim()} (source: ${splitResult.source.quantity}, dest: ${splitResult.destination.quantity})`, "success");
+      } else {
+        const request = buildEventRequest(eventForm);
+        const response = await api.recordEvent(request);
+        addToast(`${actionLabel(response.event)} recorded`, "success");
+      }
+
       if (scanResult?.mode === "interact") {
         await performScan(scanResult.qrCode.code, { silent: true });
       }

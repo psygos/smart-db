@@ -203,6 +203,20 @@ export const api = {
   getKnownCategories(): Promise<string[]> {
     return request(z.array(z.string()), "/api/categories");
   },
+  splitBulkStock(bulkId: string, payload: { quantity: number; destinationLocation: string; notes: string | null }): Promise<{ source: { id: string; quantity: number }; destination: { id: string; quantity: number } }> {
+    return request(
+      z.object({
+        source: z.object({ id: z.string(), quantity: z.number() }),
+        destination: z.object({ id: z.string(), quantity: z.number() }),
+      }),
+      `/api/bulk-stocks/${encodeURIComponent(bulkId)}/split`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: idempotencyHeaders(),
+      },
+    );
+  },
   getPartTypeItems(partTypeId: string): Promise<PartTypeItemsResponse> {
     return request(partTypeItemsResponseSchema, `/api/part-types/${encodeURIComponent(partTypeId)}/items`);
   },

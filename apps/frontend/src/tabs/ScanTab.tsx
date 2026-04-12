@@ -632,6 +632,7 @@ export function ScanTab(props: ScanTabProps) {
           <form className="form-grid" onSubmit={props.onRecordEvent}>
             {(props.eventForm.event === "moved" ||
               props.eventForm.event === "checked_out") && (
+              <>
               <label>
                 Location
                 <input
@@ -647,6 +648,33 @@ export function ScanTab(props: ScanTabProps) {
                   <span className="field-error">{props.eventIssues.location}</span>
                 ) : null}
               </label>
+              {props.eventForm.event === "moved" &&
+                props.scanResult.entity.targetType === "bulk" ? (
+                <label>
+                  Units to move
+                  <input
+                    type="number"
+                    min="0"
+                    step={bulkQuantityStep}
+                    inputMode="decimal"
+                    value={props.eventForm.splitQuantity}
+                    placeholder={`All (${props.scanResult.entity.quantity ?? 0})`}
+                    onChange={(event) =>
+                      props.onEventFormChange((current) => ({
+                        ...current,
+                        splitQuantity: event.target.value,
+                      }))
+                    }
+                  />
+                  <small style={{ marginTop: "0.2rem", textTransform: "none", letterSpacing: 0, fontFamily: "var(--font-sans)" }}>
+                    Leave empty to move the entire bin.
+                  </small>
+                  {props.eventIssues.splitQuantity ? (
+                    <span className="field-error">{props.eventIssues.splitQuantity}</span>
+                  ) : null}
+                </label>
+              ) : null}
+              </>
             )}
             {props.eventForm.event === "checked_out" && (
               <label>

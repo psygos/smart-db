@@ -548,6 +548,16 @@ export const recordEventCommandSchema = z.union([
   bulkRecordEventCommandSchema,
 ]);
 
+export const bulkSplitRequestSchema = z
+  .object({
+    quantity: z.number().positive(),
+    destinationLocation: nonEmptyString,
+    notes: nullableLooseString.default(null),
+  })
+  .strict();
+
+export type BulkSplitRequest = z.output<typeof bulkSplitRequestSchema>;
+
 export const mergePartTypesRequestSchema = z
   .object({
     sourcePartTypeId: identifierSchema,
