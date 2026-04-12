@@ -182,6 +182,9 @@ export const api = {
   getKnownLocations(): Promise<string[]> {
     return request(z.array(z.string()), "/api/locations");
   },
+  getKnownCategories(): Promise<string[]> {
+    return request(z.array(z.string()), "/api/categories");
+  },
   getInventorySummary(): Promise<InventorySummaryRow[]> {
     return request(inventorySummaryRowSchema.array(), "/api/inventory/summary");
   },

@@ -61,6 +61,7 @@ interface ScanTabProps {
   assignIssues: AssignFormIssues;
   onAssignFormChange: (updater: (current: AssignFormState) => AssignFormState) => void;
   knownLocations: string[];
+  knownCategories: string[];
   onLabelSearch: (query: string) => void;
   onAssign: (event: FormEvent<HTMLFormElement>) => void;
   sessionUsername: string;
@@ -345,6 +346,42 @@ export function ScanTab(props: ScanTabProps) {
                     <span className="field-error">{props.assignIssues.category}</span>
                   ) : null}
                 </label>
+                {props.knownCategories.length > 0 ? (
+                  <div className="wide picker" role="listbox" aria-label="Known categories">
+                    {(() => {
+                      const query = props.assignForm.category.trim().toLowerCase();
+                      const matches = query
+                        ? props.knownCategories.filter((cat) => cat.toLowerCase().includes(query))
+                        : props.knownCategories;
+                      const top = matches.slice(0, 12);
+                      if (top.length === 0) {
+                        return <p className="muted-copy">No matches. What you typed will be a new category.</p>;
+                      }
+                      return top.map((cat) => {
+                        const segments = cat.split(" / ");
+                        const leaf = segments[segments.length - 1] ?? cat;
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            role="option"
+                            aria-selected={props.assignForm.category === cat}
+                            className={props.assignForm.category === cat ? "selected" : ""}
+                            onClick={() =>
+                              props.onAssignFormChange((current) => ({
+                                ...current,
+                                category: cat,
+                              }))
+                            }
+                          >
+                            <strong>{leaf}</strong>
+                            <span>{cat}</span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                ) : null}
                 <div className="wide mode-toggle" role="radiogroup" aria-label="Tracking mode">
                   <button
                     type="button"

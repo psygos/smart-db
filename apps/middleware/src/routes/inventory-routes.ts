@@ -58,6 +58,10 @@ export async function registerInventoryRoutes(
     inventoryService.getKnownLocations(),
   );
 
+  app.get("/api/categories", authenticated, async () =>
+    inventoryService.getKnownCategories(),
+  );
+
   app.get("/api/part-types/provisional", admin, async () =>
     inventoryService.getProvisionalPartTypes(),
   );

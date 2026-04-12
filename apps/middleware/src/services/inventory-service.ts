@@ -132,6 +132,22 @@ export class InventoryService {
     return rows.map((row) => mapPartType(row as SqlRow));
   }
 
+  getKnownCategories(): string[] {
+    const rows = this.db
+      .prepare(`SELECT DISTINCT category_path_json FROM part_types WHERE category_path_json IS NOT NULL AND category_path_json != '[]'`)
+      .all() as Array<{ category_path_json: string }>;
+    const paths: string[] = [];
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.category_path_json);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          paths.push(parsed.join(" / "));
+        }
+      } catch {}
+    }
+    return paths.sort((a, b) => a.localeCompare(b));
+  }
+
   getInventorySummary(): Array<{
     id: string;
     canonicalName: string;

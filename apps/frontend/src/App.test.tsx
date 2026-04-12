@@ -38,6 +38,7 @@ const apiMock = vi.hoisted(() => ({
   backfillPartDbSync: vi.fn(),
   retryPartDbSync: vi.fn(),
   getKnownLocations: vi.fn(),
+  getKnownCategories: vi.fn(),
   getInventorySummary: vi.fn(),
 }));
 
@@ -173,6 +174,7 @@ beforeEach(() => {
   apiMock.getProvisionalPartTypes.mockResolvedValue([partType]);
   apiMock.searchPartTypes.mockResolvedValue([partType]);
   apiMock.getKnownLocations.mockResolvedValue([]);
+  apiMock.getKnownCategories.mockResolvedValue([]);
   apiMock.getInventorySummary.mockResolvedValue([]);
   apiMock.registerQrBatch.mockResolvedValue({
     batch: {

@@ -127,6 +127,7 @@ export default function SmartApp() {
   const [latestBatch, setLatestBatch] = useState<QrBatch | null>(null);
   const [catalogSuggestions, setCatalogSuggestions] = useState<PartType[]>([]);
   const [knownLocations, setKnownLocations] = useState<string[]>([]);
+  const [knownCategories, setKnownCategories] = useState<string[]>([]);
   const [inventorySummary, setInventorySummary] = useState<InventorySummaryRow[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [provisionalPartTypes, setProvisionalPartTypes] = useState<PartType[]>([]);
@@ -294,7 +295,7 @@ export default function SmartApp() {
     const canAccessAdmin =
       activeSession !== null && hasSmartDbRole(activeSession.roles, smartDbRoles.admin);
 
-    const [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult, locationsResult, inventoryResult] =
+    const [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult, locationsResult, inventoryResult, categoriesResult] =
       await Promise.allSettled([
         api.getDashboard(),
         api.getPartDbStatus(),
@@ -305,9 +306,10 @@ export default function SmartApp() {
         canAccessAdmin ? api.getLatestQrBatch() : Promise.resolve(null),
         api.getKnownLocations(),
         api.getInventorySummary(),
+        api.getKnownCategories(),
       ]);
 
-    for (const result of [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult, locationsResult, inventoryResult]) {
+    for (const result of [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult, locationsResult, inventoryResult, categoriesResult]) {
       if (result.status === "rejected" && handleApiFailure(result.reason)) {
         return;
       }
@@ -325,6 +327,10 @@ export default function SmartApp() {
 
     if (inventoryResult.status === "fulfilled") {
       setInventorySummary(inventoryResult.value);
+    }
+
+    if (categoriesResult.status === "fulfilled") {
+      setKnownCategories(categoriesResult.value);
     }
 
     if (partDbResult.status === "fulfilled") {
@@ -988,6 +994,7 @@ export default function SmartApp() {
               assignIssues={assignIssues}
               onAssignFormChange={setAssignForm}
               knownLocations={knownLocations}
+              knownCategories={knownCategories}
               onLabelSearch={(query) => void performSearch("label", query)}
               onAssign={handleAssign}
               sessionUsername={authState.session.username}
