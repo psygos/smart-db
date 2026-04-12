@@ -229,6 +229,7 @@ export const stockEventSchema = z
     actor: nonEmptyString,
     notes: nullableLooseString.default(null),
     createdAt: isoTimestampSchema,
+    partName: nullableLooseString.default(null),
   })
   .strict();
 

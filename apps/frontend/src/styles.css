@@ -645,3 +645,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   color: var(--ink-2);
   font-weight: 500;
 }
+
+.activity-item-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink);
+}

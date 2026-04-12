@@ -85,9 +85,16 @@ export class InventoryService {
       .get() as SqlRow;
 
     const recentEvents = this.db
-      .prepare(`SELECT * FROM stock_events ORDER BY rowid DESC LIMIT 8`)
+      .prepare(`
+        SELECT se.*,
+          COALESCE(
+            (SELECT pt.canonical_name FROM bulk_stocks bs JOIN part_types pt ON pt.id = bs.part_type_id WHERE bs.id = se.target_id),
+            (SELECT pt.canonical_name FROM physical_instances pi JOIN part_types pt ON pt.id = pi.part_type_id WHERE pi.id = se.target_id)
+          ) AS part_name
+        FROM stock_events se ORDER BY se.rowid DESC LIMIT 8
+      `)
       .all()
-      .map((row) => mapStockEvent(row as SqlRow));
+      .map((row) => ({ ...mapStockEvent(row as SqlRow), partName: (row as SqlRow).part_name as string | null }));
 
     return {
       partTypeCount: numberFromRow(countRow.part_type_count),

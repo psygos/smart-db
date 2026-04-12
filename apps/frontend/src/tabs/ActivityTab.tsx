@@ -13,7 +13,7 @@ interface ActivityTabProps {
   scanHistory: ScanHistoryEntry[];
 }
 
-function describeEvent(e: StockEvent): { title: string; id: string; detail: string; time: string } {
+function describeEvent(e: StockEvent): { title: string; item: string | null; detail: string; time: string } {
   const action = actionLabel(e.event);
   const who = e.actor ?? "system";
 
@@ -30,7 +30,7 @@ function describeEvent(e: StockEvent): { title: string; id: string; detail: stri
 
   return {
     title: `${action} by ${who}`,
-    id: e.targetId,
+    item: e.partName ?? null,
     detail,
     time: formatTimestamp(e.createdAt),
   };
@@ -73,7 +73,7 @@ export function ActivityTab(props: ActivityTabProps) {
                   <span className="activity-action">{info.title}</span>
                   <span className="activity-time">{info.time}</span>
                 </div>
-                <code className="activity-code">{info.id}</code>
+                {info.item ? <span className="activity-item-name">{info.item}</span> : null}
                 {info.detail ? (
                   <span className="activity-detail">{info.detail}</span>
                 ) : null}
