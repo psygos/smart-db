@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type ToastType = "success" | "error";
+export type ToastType = "success" | "error" | "info";
 
 export interface Toast {
   id: string;
@@ -8,7 +8,14 @@ export interface Toast {
   type: ToastType;
 }
 
-const AUTO_DISMISS_MS = 4000;
+const AUTO_DISMISS_MS: Record<ToastType, number | null> = {
+  success: 3500,
+  info: 4500,
+  error: null,  // sticky until dismissed
+};
+
+const MAX_VISIBLE = 3;
+
 let nextId = 0;
 
 export function useToasts() {
@@ -25,7 +32,7 @@ export function useToasts() {
   }, []);
 
   const addToast = useCallback(
-    (message: string, type: ToastType) => {
+    (message: string, type: ToastType = "info") => {
       const id = `toast-${++nextId}`;
       let dedupedId: string | null = null;
       setToasts((current) => {
@@ -37,17 +44,30 @@ export function useToasts() {
           return current;
         }
 
-        return [...current, { id, message, type }];
+        // Cap visible toasts; drop oldest of same type
+        const next = [...current, { id, message, type }];
+        if (next.length > MAX_VISIBLE) {
+          const dropped = next.shift();
+          if (dropped) {
+            const timer = timersRef.current.get(dropped.id);
+            if (timer !== undefined) {
+              clearTimeout(timer);
+              timersRef.current.delete(dropped.id);
+            }
+          }
+        }
+        return next;
       });
 
       if (dedupedId) {
         return dedupedId;
       }
 
-      if (type === "success") {
+      const dismissAfter = AUTO_DISMISS_MS[type];
+      if (dismissAfter !== null) {
         const timer = setTimeout(() => {
           dismissToast(id);
-        }, AUTO_DISMISS_MS);
+        }, dismissAfter);
         timersRef.current.set(id, timer);
       }
 

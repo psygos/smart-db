@@ -11,9 +11,9 @@ export class PartDbMeasurementUnitsResource {
 
   list(query: URLSearchParams = new URLSearchParams()): Promise<Result<PartDbMeasurementUnitResponse[], PartDbError>> {
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return this.rest.getJson(
+    return this.rest.getCollection(
       `/api/measurement_units${suffix}`,
-      partDbMeasurementUnitResponseSchema.array(),
+      partDbMeasurementUnitResponseSchema,
       { resource: "measurement_unit" },
     );
   }

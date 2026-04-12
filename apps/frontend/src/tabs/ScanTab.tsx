@@ -39,6 +39,8 @@ export interface LastAssignment {
 interface ScanTabProps {
   scanCode: string;
   onScanCodeChange: (value: string) => void;
+  scanMode: "increment" | "inspect";
+  onScanModeChange: (mode: "increment" | "inspect") => void;
   scanInputRef: React.RefObject<HTMLInputElement | null>;
   scanResultRef: React.RefObject<HTMLDivElement | null>;
   scanResult: ScanResponse | null;
@@ -46,14 +48,17 @@ interface ScanTabProps {
   onScan: (event: FormEvent<HTMLFormElement>) => void;
   onCameraScan: (code: string) => void;
   onScanNext: () => void;
+  onRegisterUnknown: (code: string) => void;
   cameraLookupCode: string | null;
   cameraBlockedReason: string | null;
   // Label
   labelSearch: SearchState;
   labelOptions: PartType[];
+  fullPartTypeCatalog: PartType[];
   assignForm: AssignFormState;
   assignIssues: AssignFormIssues;
   onAssignFormChange: (updater: (current: AssignFormState) => AssignFormState) => void;
+  knownLocations: string[];
   onLabelSearch: (query: string) => void;
   onAssign: (event: FormEvent<HTMLFormElement>) => void;
   sessionUsername: string;
@@ -110,17 +115,31 @@ export function ScanTab(props: ScanTabProps) {
         </button>
       </form>
 
+
+
       <div aria-live="polite" ref={props.scanResultRef}>
-      {props.scanResult?.mode === "unknown" ? (
-        <div className="result-card">
-          <h3>{props.scanResult.code} is unknown to Smart DB</h3>
-          <p>
-            That usually means this is a manufacturer barcode or a QR that
-            has not been pre-registered yet.
-          </p>
-          <small>{props.scanResult.partDb.message}</small>
-        </div>
-      ) : null}
+      {props.scanResult?.mode === "unknown" ? (() => {
+        const unknownResult = props.scanResult;
+        const handleRegister = () => props.onRegisterUnknown(unknownResult.code);
+        return (
+          <div className="result-card">
+            <h3>{unknownResult.code} is unknown to Smart DB</h3>
+            <p>
+              Register this barcode to start tracking it. Future scans will
+              automatically increment the quantity on hand.
+            </p>
+            <button
+              type="button"
+              onClick={handleRegister}
+              disabled={props.pendingAction !== null}
+              style={{ marginTop: "0.75rem" }}
+            >
+              Register this barcode
+            </button>
+            <small style={{ display: "block", marginTop: "0.5rem" }}>{unknownResult.partDb.message}</small>
+          </div>
+        );
+      })() : null}
 
       {props.scanResult?.mode === "label" ? (
         <div className="result-card">
@@ -219,6 +238,34 @@ export function ScanTab(props: ScanTabProps) {
                     <p className="muted-copy">No matching part types yet.</p>
                   )}
                 </div>
+                {props.assignForm.existingPartTypeId ? (() => {
+                  // Look up across BOTH the visible search results and the full catalog,
+                  // so the fork button stays reachable even if the user filters the picker.
+                  const selected =
+                    props.labelOptions.find((pt) => pt.id === props.assignForm.existingPartTypeId) ??
+                    props.fullPartTypeCatalog.find((pt) => pt.id === props.assignForm.existingPartTypeId);
+                  if (!selected) return null;
+                  return (
+                    <button
+                      type="button"
+                      className="disclosure wide"
+                      onClick={() =>
+                        props.onAssignFormChange((current) => ({
+                          ...current,
+                          partTypeMode: "new",
+                          existingPartTypeId: "",
+                          canonicalName: selected.canonicalName,
+                          category: formatCategoryPath(selected.categoryPath),
+                          countable: selected.countable,
+                          entityKind: selected.countable ? "instance" : "bulk",
+                          unitSymbol: selected.unit.symbol,
+                        }))
+                      }
+                    >
+                      Create a variant of "{selected.canonicalName}"
+                    </button>
+                  );
+                })() : null}
               </>
             ) : (
               <>
@@ -238,11 +285,11 @@ export function ScanTab(props: ScanTabProps) {
                     <span className="field-error">{props.assignIssues.canonicalName}</span>
                   ) : null}
                 </label>
-                <label>
+                <label className="wide">
                   Category path
                   <input
                     value={props.assignForm.category}
-                    placeholder="Electronics/Resistors/SMD 0603"
+                    placeholder="Electronics / Resistors / SMD 0603"
                     onChange={(event) =>
                       props.onAssignFormChange((current) => ({
                         ...current,
@@ -250,16 +297,95 @@ export function ScanTab(props: ScanTabProps) {
                       }))
                     }
                   />
+                  <small style={{ marginTop: "0.3rem", textTransform: "none", letterSpacing: 0, fontFamily: "var(--font-sans)" }}>
+                    Use <code>/</code> for sub-categories. Each level is created in Part-DB.
+                  </small>
                   {props.assignIssues.category ? (
                     <span className="field-error">{props.assignIssues.category}</span>
                   ) : null}
                 </label>
+                <div className="wide mode-toggle" role="radiogroup" aria-label="Tracking mode">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={props.assignForm.entityKind === "instance"}
+                    className={props.assignForm.entityKind === "instance" ? "selected" : ""}
+                    onClick={() =>
+                      props.onAssignFormChange((current) => ({
+                        ...current,
+                        entityKind: "instance",
+                        countable: true,
+                      }))
+                    }
+                  >
+                    Discrete item
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={props.assignForm.entityKind === "bulk"}
+                    className={props.assignForm.entityKind === "bulk" ? "selected" : ""}
+                    onClick={() =>
+                      props.onAssignFormChange((current) => ({
+                        ...current,
+                        entityKind: "bulk",
+                        countable: false,
+                      }))
+                    }
+                  >
+                    Bulk / measured
+                  </button>
+                </div>
+                {props.assignForm.entityKind === "bulk" ? (
+                  <>
+                    <label>
+                      Unit of measure
+                      <select
+                        value={props.assignForm.unitSymbol}
+                        onChange={(event) =>
+                          props.onAssignFormChange((current) => ({
+                            ...current,
+                            unitSymbol: event.target.value,
+                          }))
+                        }
+                      >
+                        {measurementUnitCatalog.map((unit) => (
+                          <option key={unit.symbol} value={unit.symbol}>
+                            {unit.name} ({unit.symbol})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Starting quantity
+                      <input
+                        type="number"
+                        min="0"
+                        inputMode="decimal"
+                        value={props.assignForm.initialQuantity}
+                        step={quantityInputStep(selectedMeasurementUnit.isInteger)}
+                        placeholder="0"
+                        onChange={(event) =>
+                          props.onAssignFormChange((current) => ({
+                            ...current,
+                            initialQuantity: event.target.value,
+                          }))
+                        }
+                      />
+                      {props.assignIssues.initialQuantity ? (
+                        <span className="field-error">{props.assignIssues.initialQuantity}</span>
+                      ) : null}
+                    </label>
+                  </>
+                ) : null}
               </>
             )}
-            <label>
+            <label className="wide">
               Location
               <input
                 value={props.assignForm.location}
+                placeholder="e.g. Shelf A · Bin 7"
+                autoComplete="off"
                 onChange={(event) =>
                   props.onAssignFormChange((current) => ({
                     ...current,
@@ -271,6 +397,38 @@ export function ScanTab(props: ScanTabProps) {
                 <span className="field-error">{props.assignIssues.location}</span>
               ) : null}
             </label>
+            {props.knownLocations.length > 0 ? (
+              <div className="wide picker" role="listbox" aria-label="Known locations">
+                {(() => {
+                  const query = props.assignForm.location.trim().toLowerCase();
+                  const matches = query
+                    ? props.knownLocations.filter((loc) => loc.toLowerCase().includes(query))
+                    : props.knownLocations;
+                  const top = matches.slice(0, 12);
+                  if (top.length === 0) {
+                    return <p className="muted-copy">No matches — what you typed will be a new location.</p>;
+                  }
+                  return top.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      role="option"
+                      aria-selected={props.assignForm.location === loc}
+                      className={props.assignForm.location === loc ? "selected" : ""}
+                      onClick={() =>
+                        props.onAssignFormChange((current) => ({
+                          ...current,
+                          location: loc,
+                        }))
+                      }
+                    >
+                      <strong>{loc}</strong>
+                      <span>existing location</span>
+                    </button>
+                  ));
+                })()}
+              </div>
+            ) : null}
             <button
               type="button"
               className="disclosure"
@@ -280,35 +438,19 @@ export function ScanTab(props: ScanTabProps) {
             </button>
             {showAdvanced && (
               <>
-                {props.assignForm.partTypeMode === "new" ? (
-                  <label>
-                    Kind
-                    <select
-                      value={props.assignForm.entityKind}
-                      onChange={(event) =>
-                        props.onAssignFormChange((current) => ({
-                          ...current,
-                          entityKind: event.target.value as AssignQrRequest["entityKind"],
-                        }))
-                      }
-                    >
-                      <option value="instance">Physical instance</option>
-                      <option value="bulk">Bulk bin</option>
-                    </select>
-                  </label>
-                ) : (
+                {props.assignForm.partTypeMode === "existing" ? (
                   <div className="derived-kind">
                     <strong>Kind</strong>
                     <span>
-                      {props.assignForm.entityKind === "instance" ? "Physical instance" : "Bulk bin"}
+                      {props.assignForm.entityKind === "instance" ? "Physical instance" : "Bulk / measured"}
                     </span>
                   </div>
-                )}
+                ) : null}
                 {props.assignForm.entityKind === "instance" ? (
                   <label>
                     Initial status
                     <select
-                        value={props.assignForm.initialStatus}
+                      value={props.assignForm.initialStatus}
                       onChange={(event) =>
                         props.onAssignFormChange((current) => ({
                           ...current,
@@ -324,85 +466,27 @@ export function ScanTab(props: ScanTabProps) {
                     </select>
                   </label>
                 ) : (
-                  <>
-                    <label>
-                      Starting quantity
-                      <input
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        value={props.assignForm.initialQuantity}
-                        step={quantityInputStep(selectedMeasurementUnit.isInteger)}
-                        onChange={(event) =>
-                          props.onAssignFormChange((current) => ({
-                            ...current,
-                            initialQuantity: event.target.value,
-                          }))
-                        }
-                      />
-                      {props.assignIssues.initialQuantity ? (
-                        <span className="field-error">{props.assignIssues.initialQuantity}</span>
-                      ) : null}
-                    </label>
-                    <label>
-                      Low-stock threshold
-                      <input
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        value={props.assignForm.minimumQuantity}
-                        step={quantityInputStep(selectedMeasurementUnit.isInteger)}
-                        onChange={(event) =>
-                          props.onAssignFormChange((current) => ({
-                            ...current,
-                            minimumQuantity: event.target.value,
-                          }))
-                        }
-                        placeholder="Optional"
-                      />
-                      {props.assignIssues.minimumQuantity ? (
-                        <span className="field-error">{props.assignIssues.minimumQuantity}</span>
-                      ) : null}
-                    </label>
-                    {props.assignForm.partTypeMode === "new" ? (
-                      <label>
-                        Unit
-                        <select
-                          value={props.assignForm.unitSymbol}
-                          onChange={(event) =>
-                            props.onAssignFormChange((current) => ({
-                              ...current,
-                              unitSymbol: event.target.value,
-                            }))
-                          }
-                        >
-                          {measurementUnitCatalog.map((unit) => (
-                            <option key={unit.symbol} value={unit.symbol}>
-                              {unit.name} ({unit.symbol})
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                  </>
-                )}
-                {props.assignForm.partTypeMode === "new" ? (
                   <label>
-                    Countable
-                    <select
-                      value={String(props.assignForm.countable)}
+                    Low-stock threshold
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="decimal"
+                      value={props.assignForm.minimumQuantity}
+                      step={quantityInputStep(selectedMeasurementUnit.isInteger)}
                       onChange={(event) =>
                         props.onAssignFormChange((current) => ({
                           ...current,
-                          countable: event.target.value === "true",
+                          minimumQuantity: event.target.value,
                         }))
                       }
-                    >
-                      <option value="true">Discrete items</option>
-                      <option value="false">Bulk / non-countable</option>
-                    </select>
+                      placeholder="Optional"
+                    />
+                    {props.assignIssues.minimumQuantity ? (
+                      <span className="field-error">{props.assignIssues.minimumQuantity}</span>
+                    ) : null}
                   </label>
-                ) : null}
+                )}
                 <label className="wide">
                   Notes
                   <textarea
@@ -426,22 +510,29 @@ export function ScanTab(props: ScanTabProps) {
 
       {props.scanResult?.mode === "interact" ? (
         <div className="result-card">
-          <h3>
-            {props.scanResult.entity.partType.canonicalName} · {props.scanResult.entity.qrCode}
-          </h3>
-          <p>
-            {props.scanResult.entity.targetType} in {props.scanResult.entity.location} · current state{" "}
-            <strong>{props.scanResult.entity.state}</strong>
+          <h3>{props.scanResult.entity.partType.canonicalName}</h3>
+          <p className="muted-copy">
+            {props.scanResult.entity.qrCode} · {props.scanResult.entity.targetType} in {props.scanResult.entity.location}
           </p>
-          <p className="muted-copy">Part-DB sync: {props.scanResult.entity.partDbSyncStatus}</p>
           {props.scanResult.entity.targetType === "bulk" && props.scanResult.entity.quantity !== null ? (
-            <p className="muted-copy">
-              Quantity: {formatQuantity(props.scanResult.entity.quantity)} {props.scanResult.entity.partType.unit.symbol}
-              {props.scanResult.entity.minimumQuantity !== null
-                ? ` · threshold ${formatQuantity(props.scanResult.entity.minimumQuantity)} ${props.scanResult.entity.partType.unit.symbol}`
-                : ""}
+            <div className="quantity-display">
+              <span className="quantity-label">On hand</span>
+              <span className="quantity-value">
+                {formatQuantity(props.scanResult.entity.quantity)}
+                <span className="quantity-unit">{props.scanResult.entity.partType.unit.symbol}</span>
+              </span>
+              {props.scanResult.entity.minimumQuantity !== null ? (
+                <span className="quantity-threshold">
+                  min {formatQuantity(props.scanResult.entity.minimumQuantity)} {props.scanResult.entity.partType.unit.symbol}
+                </span>
+              ) : null}
+            </div>
+          ) : (
+            <p>
+              Current state: <strong>{props.scanResult.entity.state}</strong>
             </p>
-          ) : null}
+          )}
+          <p className="muted-copy" style={{ fontSize: "0.78rem" }}>Part-DB sync: {props.scanResult.entity.partDbSyncStatus}</p>
             <div className="action-buttons">
               {props.scanResult.availableActions.map((action) => (
                 <button

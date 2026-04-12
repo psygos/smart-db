@@ -11,9 +11,9 @@ export class PartDbStorageLocationsResource {
 
   list(query: URLSearchParams = new URLSearchParams()): Promise<Result<PartDbStorageLocationResponse[], PartDbError>> {
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return this.rest.getJson(
+    return this.rest.getCollection(
       `/api/storage_locations${suffix}`,
-      partDbStorageLocationResponseSchema.array(),
+      partDbStorageLocationResponseSchema,
       { resource: "storage_location" },
     );
   }

@@ -68,16 +68,20 @@ export class CategoryResolver {
   }
 
   private readCache(pathKey: string): string | null {
+    // Case-insensitive cache lookup so "Materials/PLA" and "materials/pla"
+    // resolve to the same Part-DB category.
     const row = this.db.prepare(
-      `SELECT partdb_iri FROM partdb_category_cache WHERE path_key = ?`,
+      `SELECT partdb_iri FROM partdb_category_cache WHERE LOWER(path_key) = LOWER(?)`,
     ).get(pathKey) as SqlRow | undefined;
     return row && typeof row.partdb_iri === "string" ? row.partdb_iri : null;
   }
 
   private writeCache(pathKey: string, iri: string): void {
+    // Store the cache key in lowercase so subsequent case-insensitive
+    // lookups land in the same slot regardless of typed casing.
     this.db.prepare(
       `INSERT OR REPLACE INTO partdb_category_cache (path_key, partdb_iri, cached_at) VALUES (?, ?, ?)`,
-    ).run(pathKey, iri, new Date().toISOString());
+    ).run(pathKey.toLowerCase(), iri, new Date().toISOString());
   }
 }
 

@@ -11,7 +11,7 @@ export class PartDbCategoriesResource {
 
   list(query: URLSearchParams = new URLSearchParams()): Promise<Result<PartDbCategoryResponse[], PartDbError>> {
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    return this.rest.getJson(`/api/categories${suffix}`, partDbCategoryResponseSchema.array(), {
+    return this.rest.getCollection(`/api/categories${suffix}`, partDbCategoryResponseSchema, {
       resource: "category",
     });
   }

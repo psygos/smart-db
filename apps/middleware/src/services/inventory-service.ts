@@ -132,6 +132,99 @@ export class InventoryService {
     return rows.map((row) => mapPartType(row as SqlRow));
   }
 
+  getInventorySummary(): Array<{
+    id: string;
+    canonicalName: string;
+    categoryPath: string[];
+    unit: { symbol: string; name: string; isInteger: boolean };
+    countable: boolean;
+    bins: number;
+    instanceCount: number;
+    onHand: number;
+    partDbSyncStatus: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          pt.id,
+          pt.canonical_name,
+          pt.category,
+          pt.category_path_json,
+          pt.unit_symbol,
+          pt.unit_name,
+          pt.unit_is_integer,
+          pt.countable,
+          pt.partdb_sync_status,
+          (SELECT COUNT(*) FROM bulk_stocks WHERE part_type_id = pt.id) AS bins,
+          COALESCE((SELECT SUM(quantity) FROM bulk_stocks WHERE part_type_id = pt.id), 0) AS on_hand,
+          (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS instance_count
+        FROM part_types pt
+        ORDER BY pt.canonical_name
+        `,
+      )
+      .all() as Array<{
+        id: string;
+        canonical_name: string;
+        category: string;
+        category_path_json: string;
+        unit_symbol: string;
+        unit_name: string;
+        unit_is_integer: number;
+        countable: number;
+        partdb_sync_status: string;
+        bins: number;
+        on_hand: number;
+        instance_count: number;
+      }>;
+
+    return rows.map((row) => {
+      let categoryPath: string[] = [];
+      try {
+        categoryPath = JSON.parse(row.category_path_json);
+        if (!Array.isArray(categoryPath)) categoryPath = [row.category];
+      } catch {
+        categoryPath = [row.category];
+      }
+      return {
+        id: row.id,
+        canonicalName: row.canonical_name,
+        categoryPath,
+        unit: {
+          symbol: row.unit_symbol,
+          name: row.unit_name,
+          isInteger: Boolean(row.unit_is_integer),
+        },
+        countable: Boolean(row.countable),
+        bins: Number(row.bins),
+        instanceCount: Number(row.instance_count),
+        onHand: Number(row.on_hand),
+        partDbSyncStatus: row.partdb_sync_status,
+      };
+    });
+  }
+
+  getKnownLocations(): string[] {
+    // Distinct location strings across instances and bulk stocks, ordered by recency.
+    const instanceRows = this.db
+      .prepare(`SELECT location, updated_at FROM physical_instances WHERE location IS NOT NULL AND TRIM(location) <> ''`)
+      .all() as Array<{ location: string; updated_at: string }>;
+    const bulkRows = this.db
+      .prepare(`SELECT location, updated_at FROM bulk_stocks WHERE location IS NOT NULL AND TRIM(location) <> ''`)
+      .all() as Array<{ location: string; updated_at: string }>;
+    const latest = new Map<string, string>();
+    for (const row of [...instanceRows, ...bulkRows]) {
+      const existing = latest.get(row.location);
+      if (!existing || row.updated_at > existing) {
+        latest.set(row.location, row.updated_at);
+      }
+    }
+    return Array.from(latest.entries())
+      .sort((a, b) => (a[1] < b[1] ? 1 : a[1] > b[1] ? -1 : a[0].localeCompare(b[0])))
+      .slice(0, 200)
+      .map(([loc]) => loc);
+  }
+
   getProvisionalPartTypes(): PartType[] {
     return this.db
       .prepare(
@@ -238,10 +331,10 @@ export class InventoryService {
     return { batch: persistedBatch, created, skipped };
   }
 
-  async scanCode(code: string): Promise<ScanResponse> {
+  async scanCode(code: string, actor: string | null = null, options: { autoIncrement?: boolean } = {}): Promise<ScanResponse> {
     const normalized = code.trim();
     const qrRow = this.db
-      .prepare(`SELECT * FROM qrcodes WHERE code = ?`)
+      .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
       .get(normalized) as SqlRow | undefined;
     const partDb = await this.partDbClient.getLookupSummary();
 
@@ -288,16 +381,41 @@ export class InventoryService {
         };
       }
 
+      // Auto-increment when an external (manufacturer) barcode is scanned for a bulk item
+      let autoIncremented = false;
+      let workingEntity = entity;
+      let workingRecentEvents = recentEvents;
+      const autoIncrementEnabled = options.autoIncrement !== false;
+      if (autoIncrementEnabled && qrCode.batchId === "external" && entity.targetType === "bulk") {
+        const incrementResult = this.autoIncrementExternalBulk(entity.id, actor);
+        if (incrementResult) {
+          autoIncremented = true;
+          workingEntity = { ...entity, quantity: incrementResult.newQuantity };
+          workingRecentEvents = this.db
+            .prepare(
+              `
+              SELECT * FROM stock_events
+              WHERE target_type = ? AND target_id = ?
+              ORDER BY rowid DESC
+              LIMIT 8
+              `,
+            )
+            .all(entity.targetType, entity.id)
+            .map((row) => mapStockEvent(row as SqlRow));
+        }
+      }
+
       return {
         mode: "interact",
         qrCode,
         entity: {
-          ...entity,
+          ...workingEntity,
           targetType: "bulk",
         },
-        recentEvents,
-        availableActions: getAvailableBulkActions(entity.quantity ?? 0),
+        recentEvents: workingRecentEvents,
+        availableActions: getAvailableBulkActions(workingEntity.quantity ?? 0),
         partDb,
+        ...(autoIncremented ? { autoIncremented: true } : {}),
       };
     }
 
@@ -320,16 +438,103 @@ export class InventoryService {
     };
   }
 
+  private autoIncrementExternalBulk(bulkId: string, actor: string | null): { newQuantity: number } | null {
+    const row = this.db
+      .prepare(`SELECT quantity FROM bulk_stocks WHERE id = ?`)
+      .get(bulkId) as { quantity: number } | undefined;
+    if (!row) return null;
+    const previous = row.quantity ?? 0;
+    const newQuantity = previous + 1;
+    const timestamp = nowIso();
+    const correlationId = randomUUID();
+
+    this.withTransaction(() => {
+      this.db
+        .prepare(`UPDATE bulk_stocks SET quantity = ?, updated_at = ? WHERE id = ?`)
+        .run(newQuantity, timestamp, bulkId);
+      this.db
+        .prepare(
+          `INSERT INTO stock_events (id, target_type, target_id, event, from_state, to_state, location, actor, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        )
+        .run(
+          randomUUID(),
+          "bulk",
+          bulkId,
+          "restocked",
+          String(previous),
+          String(newQuantity),
+          actor ?? "system",
+          "Auto-increment from external barcode scan",
+          timestamp,
+        );
+
+      // Propagate the new quantity to Part-DB via the outbox
+      this.enqueueLotUpdate(
+        { table: "bulk_stocks", rowId: bulkId, column: "partdb_lot_id" },
+        correlationId,
+        { amount: newQuantity },
+      );
+    });
+
+    return { newQuantity };
+  }
+
+  private ensureExternalBatch(): void {
+    const existing = this.db
+      .prepare(`SELECT id FROM qr_batches WHERE id = 'external'`)
+      .get();
+    if (existing) return;
+    this.db
+      .prepare(
+        `
+        INSERT INTO qr_batches (id, prefix, start_number, end_number, actor, created_at)
+        VALUES ('external', 'EXT', 0, 0, 'system', ?)
+        `,
+      )
+      .run(nowIso());
+  }
+
   assignQr(input: AssignQrCommand): InventoryEntitySummary {
-    const qrCodeValue = input.qrCode;
+    const qrCodeValue = input.qrCode.trim();
     const actor = input.actor;
-    const location = input.location;
-    const qrRow = this.db
-      .prepare(`SELECT * FROM qrcodes WHERE code = ?`)
+    // Snap the location to an existing canonical spelling if a case-insensitive
+    // match exists, so "Shelf 3" / "shelf 3" / "SHELF 3" all collapse together.
+    const rawLocation = input.location.trim().replace(/\s+/g, " ");
+    const canonicalLocation = (() => {
+      const existingInstance = this.db
+        .prepare(
+          `SELECT location FROM physical_instances WHERE LOWER(TRIM(location)) = LOWER(?) ORDER BY updated_at DESC LIMIT 1`,
+        )
+        .get(rawLocation) as { location: string } | undefined;
+      if (existingInstance) return existingInstance.location;
+      const existingBulk = this.db
+        .prepare(
+          `SELECT location FROM bulk_stocks WHERE LOWER(TRIM(location)) = LOWER(?) ORDER BY updated_at DESC LIMIT 1`,
+        )
+        .get(rawLocation) as { location: string } | undefined;
+      if (existingBulk) return existingBulk.location;
+      return rawLocation;
+    })();
+    const location = canonicalLocation;
+    let qrRow = this.db
+      .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
       .get(qrCodeValue) as SqlRow | undefined;
 
     if (!qrRow) {
-      throw new NotFoundError("QR code", qrCodeValue);
+      // External (manufacturer) barcode — auto-register against the external batch
+      this.ensureExternalBatch();
+      const externalNow = nowIso();
+      this.db
+        .prepare(
+          `INSERT INTO qrcodes (code, batch_id, status, assigned_kind, assigned_id, created_at, updated_at) VALUES (?, ?, ?, NULL, NULL, ?, ?)`,
+        )
+        .run(qrCodeValue, "external", "printed", externalNow, externalNow);
+      qrRow = this.db
+        .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
+        .get(qrCodeValue) as SqlRow | undefined;
+      if (!qrRow) {
+        throw new InvariantError("External barcode insertion failed.", { code: qrCodeValue });
+      }
     }
 
     const qrCode = mapQrCode(qrRow);
@@ -441,7 +646,7 @@ export class InventoryService {
       }
 
       const assignedQr = this.db
-        .prepare(`SELECT * FROM qrcodes WHERE code = ?`)
+        .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
         .get(qrCodeValue) as SqlRow;
       summary = this.getEntityByQr(mapQrCode(assignedQr));
     });
@@ -695,7 +900,7 @@ export class InventoryService {
   voidQrCode(code: string, actor: string): QRCode {
     const normalized = code.trim();
     const qrRow = this.db
-      .prepare(`SELECT * FROM qrcodes WHERE code = ?`)
+      .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
       .get(normalized) as SqlRow | undefined;
 
     if (!qrRow) {
@@ -779,7 +984,7 @@ export class InventoryService {
     });
 
     const updated = this.db
-      .prepare(`SELECT * FROM qrcodes WHERE code = ?`)
+      .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
       .get(normalized) as SqlRow;
     return mapQrCode(updated);
   }
@@ -1053,7 +1258,19 @@ export class InventoryService {
       return partType;
     }
 
-    const canonicalName = draft.canonicalName;
+    const canonicalName = draft.canonicalName.trim().replace(/\s+/g, " ");
+
+    // Case-insensitive duplicate guard: if a part type with the same normalized
+    // name already exists, return it instead of creating a near-duplicate.
+    const existingByName = this.db
+      .prepare(
+        `SELECT * FROM part_types WHERE LOWER(TRIM(canonical_name)) = LOWER(?)`,
+      )
+      .get(canonicalName) as SqlRow | undefined;
+    if (existingByName) {
+      return mapPartType(existingByName);
+    }
+
     const categoryPath = parseCategoryPathInput(draft.category);
     if (!categoryPath.ok) {
       throw new InvariantError("Parsed part type category path is invalid.", {

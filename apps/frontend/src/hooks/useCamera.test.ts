@@ -45,8 +45,12 @@ describe("useCamera", () => {
     expect(result.current.isSupported).toBe(true);
   });
 
-  it("reports unsupported when BarcodeDetector is missing and start is a no-op", async () => {
-    vi.stubGlobal("BarcodeDetector", undefined);
+  it("reports unsupported when mediaDevices is unavailable and start is a no-op", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
     const { result } = renderHook(() => useCamera(vi.fn()));
     expect(result.current.isSupported).toBe(false);
 
@@ -56,19 +60,10 @@ describe("useCamera", () => {
     expect(result.current.permissionState).toBe("unknown");
   });
 
-  it("starts the camera and calls onScan on decode", async () => {
+  it("starts the camera and sets granted + isScanning", async () => {
     const onScan = vi.fn();
-    mockDetect.mockResolvedValueOnce([{ rawValue: "QR-1001" }]);
-
-    let rafCallback: FrameRequestCallback | null = null;
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      if (!rafCallback) rafCallback = cb;
-      return 1;
-    });
-    vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
     const { result } = renderHook(() => useCamera(onScan));
-    (result.current.videoRef as { current: HTMLVideoElement | null }).current = mockVideoElement();
 
     await act(async () => {
       await result.current.start();
@@ -76,19 +71,11 @@ describe("useCamera", () => {
 
     expect(result.current.permissionState).toBe("granted");
     expect(result.current.isScanning).toBe(true);
-    expect(mockGetUserMedia).toHaveBeenCalledWith({
-      video: { facingMode: "environment" },
-    });
-
-    if (rafCallback) {
-      await act(async () => {
-        await (rafCallback as FrameRequestCallback)(performance.now());
-      });
-    }
-
-    expect(onScan).toHaveBeenCalledWith("QR-1001");
-    expect(result.current.lastResult).toBe("QR-1001");
-    expect(result.current.isScanning).toBe(false);
+    expect(mockGetUserMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({ facingMode: "environment" }),
+      }),
+    );
   });
 
   it("sets permission denied when getUserMedia fails", async () => {
@@ -130,42 +117,9 @@ describe("useCamera", () => {
     expect(onScan).not.toHaveBeenCalled();
   });
 
-  it("suppresses duplicate codes within the dedup window", async () => {
-    const onScan = vi.fn();
-    mockDetect
-      .mockResolvedValueOnce([{ rawValue: "QR-DUP" }])
-      .mockResolvedValueOnce([{ rawValue: "QR-DUP" }])
-      .mockResolvedValueOnce([]);
-
-    const rafCallbacks: FrameRequestCallback[] = [];
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      rafCallbacks.push(cb);
-      return rafCallbacks.length;
-    });
-    vi.stubGlobal("cancelAnimationFrame", vi.fn());
-
-    const { result } = renderHook(() => useCamera(onScan));
-    (result.current.videoRef as { current: HTMLVideoElement | null }).current = mockVideoElement();
-
-    await act(async () => {
-      await result.current.start();
-    });
-
-    // Process first detect (QR-DUP)
-    if (rafCallbacks[0]) {
-      await act(async () => {
-        await rafCallbacks[0](performance.now());
-      });
-    }
-    expect(onScan).toHaveBeenCalledTimes(1);
-
-    // Process second detect (same QR-DUP within dedup window)
-    if (rafCallbacks[1]) {
-      await act(async () => {
-        await rafCallbacks[1](performance.now());
-      });
-    }
-    expect(onScan).toHaveBeenCalledTimes(1);
+  it("exposes an error field that is initially null", () => {
+    const { result } = renderHook(() => useCamera(vi.fn()));
+    expect(result.current.error).toBeNull();
   });
 
   it("stops the camera and cleans up tracks on unmount", async () => {

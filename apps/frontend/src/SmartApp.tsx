@@ -21,10 +21,12 @@ import {
   api,
   downloadQrBatchLabelsPdf,
   loginUrl,
+  type InventorySummaryRow,
 } from "./api";
 import { PanelTitle } from "./components/PanelTitle";
 import { Metric } from "./components/Metric";
 import { ScanTab, type LastAssignment } from "./tabs/ScanTab";
+import { InventoryTab } from "./tabs/InventoryTab";
 import { ActivityTab, type ScanHistoryEntry } from "./tabs/ActivityTab";
 import { AdminTab } from "./tabs/AdminTab";
 import { TabBar } from "./components/TabBar";
@@ -80,7 +82,7 @@ const defaultBatchForm: RegisterQrBatchRequest = {
 const defaultAssignForm: AssignFormState = {
   qrCode: "",
   entityKind: "instance",
-  location: "Buffer Room A",
+  location: "",
   notes: "",
   partTypeMode: "existing",
   existingPartTypeId: "",
@@ -124,6 +126,9 @@ export default function SmartApp() {
   const [partDbSyncFailures, setPartDbSyncFailures] = useState<PartDbSyncFailure[]>([]);
   const [latestBatch, setLatestBatch] = useState<QrBatch | null>(null);
   const [catalogSuggestions, setCatalogSuggestions] = useState<PartType[]>([]);
+  const [knownLocations, setKnownLocations] = useState<string[]>([]);
+  const [inventorySummary, setInventorySummary] = useState<InventorySummaryRow[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
   const [provisionalPartTypes, setProvisionalPartTypes] = useState<PartType[]>([]);
   const [labelSearch, setLabelSearch] = useState<SearchState>(defaultSearchState);
   const [mergeSearch, setMergeSearch] = useState<SearchState>(defaultSearchState);
@@ -132,6 +137,11 @@ export default function SmartApp() {
   const [assignForm, setAssignForm] = useState(defaultAssignForm);
   const [eventForm, setEventForm] = useState(defaultEventForm);
   const [scanCode, setScanCode] = useState("");
+  // Scans are view-only — auto-increment is disabled at the application level.
+  // The backend still supports it via ?count=true, but the frontend never asks.
+  const scanMode: "increment" = "increment";
+  // Stub kept so other components compile without breaking.
+  function setScanMode(_mode: "increment" | "inspect"): void {}
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
   const [lastAssignment, setLastAssignment] = useState<LastAssignment | null>(null);
   const [cameraLookupCode, setCameraLookupCode] = useState<string | null>(null);
@@ -223,6 +233,8 @@ export default function SmartApp() {
     setPartDbSyncFailures([]);
     setLatestBatch(null);
     setCatalogSuggestions([]);
+    setKnownLocations([]);
+    setInventorySummary([]);
     setProvisionalPartTypes([]);
     setLabelSearch(defaultSearchState);
     setMergeSearch(defaultSearchState);
@@ -268,7 +280,7 @@ export default function SmartApp() {
     const canAccessAdmin =
       activeSession !== null && hasSmartDbRole(activeSession.roles, smartDbRoles.admin);
 
-    const [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult] =
+    const [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult, locationsResult, inventoryResult] =
       await Promise.allSettled([
         api.getDashboard(),
         api.getPartDbStatus(),
@@ -277,9 +289,11 @@ export default function SmartApp() {
         canAccessAdmin ? api.getProvisionalPartTypes() : Promise.resolve([]),
         api.searchPartTypes(""),
         canAccessAdmin ? api.getLatestQrBatch() : Promise.resolve(null),
+        api.getKnownLocations(),
+        api.getInventorySummary(),
       ]);
 
-    for (const result of [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult]) {
+    for (const result of [dashboardResult, partDbResult, syncStatusResult, syncFailuresResult, provisionalResult, partTypesResult, latestBatchResult, locationsResult, inventoryResult]) {
       if (result.status === "rejected" && handleApiFailure(result.reason)) {
         return;
       }
@@ -288,7 +302,15 @@ export default function SmartApp() {
     if (dashboardResult.status === "fulfilled") {
       setDashboard(dashboardResult.value);
     } else {
-      addToast(errorMessage(dashboardResult.reason), "error");
+      // dashboard refresh failures are silent; the part-db pill conveys connectivity
+    }
+
+    if (locationsResult.status === "fulfilled") {
+      setKnownLocations(locationsResult.value);
+    }
+
+    if (inventoryResult.status === "fulfilled") {
+      setInventorySummary(inventoryResult.value);
     }
 
     if (partDbResult.status === "fulfilled") {
@@ -476,7 +498,7 @@ export default function SmartApp() {
     }
 
     try {
-      const response = await api.scan(code, controller.signal);
+      const response = await api.scan(code, { signal: controller.signal, autoIncrement: true });
       if (requestId !== scanRequestRef.current) {
         return;
       }
@@ -501,6 +523,9 @@ export default function SmartApp() {
 
       if (response.mode === "interact") {
         setEventForm(buildDefaultEventFormForEntity(response.entity));
+        if (response.entity.targetType === "bulk" && (response as { autoIncremented?: boolean }).autoIncremented) {
+          addToast(`+1 ${response.entity.partType.canonicalName} (now ${(response.entity as { quantity?: number }).quantity ?? "?"})`, "success");
+        }
       }
     } catch (caught) {
       if (controller.signal.aborted) {
@@ -530,7 +555,7 @@ export default function SmartApp() {
     try {
       const response = await api.registerQrBatch(batchForm);
       addToast(
-        `Registered ${response.created} QR codes in ${response.batch.id}. ${response.skipped} were already present.`,
+        `Registered ${response.created} QR codes${response.skipped ? ` (${response.skipped} duplicates skipped)` : ""}`,
         "success",
       );
       setLatestBatch(response.batch);
@@ -570,7 +595,7 @@ export default function SmartApp() {
     setPendingAction("sync");
     try {
       const result = await api.drainPartDbSync();
-      addToast(`Sync drained: ${result.delivered} delivered, ${result.failed} failed.`, "success");
+      addToast(`Sync drained · ${result.delivered} delivered${result.failed ? `, ${result.failed} failed` : ""}`, result.failed ? "info" : "success");
       await loadAuthenticatedData();
     } catch (caught) {
       if (!handleApiFailure(caught)) {
@@ -586,7 +611,7 @@ export default function SmartApp() {
     try {
       const result = await api.backfillPartDbSync();
       addToast(
-        `Queued Part-DB backfill: ${result.queuedPartTypes} part types and ${result.queuedLots} lots.`,
+        `Backfill queued · ${result.queuedPartTypes} parts, ${result.queuedLots} lots`,
         "success",
       );
       await loadAuthenticatedData();
@@ -603,7 +628,7 @@ export default function SmartApp() {
     setPendingAction("sync");
     try {
       await api.retryPartDbSync(id);
-      addToast("Queued sync retry.", "success");
+      addToast("Retry queued", "info");
       await loadAuthenticatedData();
     } catch (caught) {
       if (!handleApiFailure(caught)) {
@@ -616,21 +641,28 @@ export default function SmartApp() {
 
   async function handleScan(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    await performScan(scanCode);
+    const code = scanCode.trim();
+    if (!code) return;
+    // Clear the input immediately so the next hardware-scanner value lands fresh.
+    setScanCode("");
+    await performScan(code);
+    // Refocus so the wedge scanner keeps typing into the right field.
+    scanInputRef.current?.focus();
   }
 
   async function handleCameraScan(code: string): Promise<void> {
     if (pendingAction !== null) {
-      addToast("Finish the current action before scanning another item.", "error");
+      addToast("Finish the current action first", "error");
       return;
     }
 
     if (hasInProgressScanWork(scanResult, assignForm, labelSearch.query, eventForm)) {
-      addToast("Finish or clear the current scan form before scanning another item.", "error");
+      addToast("Clear the current scan first", "error");
       return;
     }
 
-    setScanCode(code);
+    // Skip the input — the result card shows what was scanned.
+    // Keeping the input clean means the next wedge stroke starts fresh.
     await performScan(code, { source: "camera" });
   }
 
@@ -643,6 +675,31 @@ export default function SmartApp() {
     setLabelSearch(defaultSearchState);
   }
 
+  function handleRegisterUnknown(code: string): void {
+    setScanResult({
+      mode: "label",
+      qrCode: {
+        code,
+        batchId: "external",
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      suggestions: catalogSuggestions,
+      partDb: { configured: false, connected: false, message: "" },
+    });
+    setAssignForm({
+      ...defaultAssignForm,
+      qrCode: code,
+      entityKind: "bulk",
+      countable: false,
+      unitSymbol: "kg",
+    });
+    setLabelSearch({ query: "", results: catalogSuggestions, status: "idle", error: null });
+  }
+
   async function handleAssign(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setPendingAction("assign");
@@ -651,15 +708,18 @@ export default function SmartApp() {
     try {
       const request = buildAssignRequest(assignForm);
       const response = await api.assignQr(request);
-      addToast(`Assigned ${request.qrCode} to inventory.`, "success");
+      addToast(`${response.partType.canonicalName} assigned to ${request.qrCode}`, "success");
       setLastAssignment({
         partTypeName: response.partType.canonicalName,
         partTypeId: response.partType.id,
         location: response.location,
       });
       setAssignForm(defaultAssignForm);
-      setScanCode(request.qrCode);
+      // Clear the scan input so the next hardware-wedge keystrokes start fresh.
+      setScanCode("");
       await performScan(request.qrCode, { silent: true });
+      // Re-clear in case performScan repopulated it.
+      setScanCode("");
       await loadAuthenticatedData();
       scanInputRef.current?.focus();
     } catch (caught) {
@@ -683,15 +743,16 @@ export default function SmartApp() {
         location: lastAssignment.location,
       });
       const response = await api.assignQr(request);
-      addToast(`Assigned ${request.qrCode} to inventory.`, "success");
+      addToast(`${response.partType.canonicalName} assigned to ${request.qrCode}`, "success");
       setLastAssignment({
         partTypeName: response.partType.canonicalName,
         partTypeId: response.partType.id,
         location: response.location,
       });
       setAssignForm(defaultAssignForm);
-      setScanCode(request.qrCode);
+      setScanCode("");
       await performScan(request.qrCode, { silent: true });
+      setScanCode("");
       await loadAuthenticatedData();
       scanInputRef.current?.focus();
     } catch (caught) {
@@ -711,7 +772,7 @@ export default function SmartApp() {
     try {
       const request = buildEventRequest(eventForm);
       const response = await api.recordEvent(request);
-      addToast(`Saved ${actionLabel(response.event)} for ${request.targetType} ${request.targetId}.`, "success");
+      addToast(`${actionLabel(response.event)} recorded`, "success");
       if (scanResult?.mode === "interact") {
         await performScan(scanResult.qrCode.code, { silent: true });
       }
@@ -729,7 +790,7 @@ export default function SmartApp() {
   async function handleApprovePartType(id: string): Promise<void> {
     try {
       await api.approvePartType(id);
-      addToast("Approved provisional part type.", "success");
+      addToast("Part type approved", "success");
       setMergeSourceId("");
       await loadAuthenticatedData();
     } catch (caught) {
@@ -741,7 +802,7 @@ export default function SmartApp() {
 
   async function handleMergePartTypes(): Promise<void> {
     if (!mergeSourceId || !mergeDestinationId) {
-      addToast("Select both a provisional source and a canonical destination.", "error");
+      addToast("Pick a source and destination", "error");
       return;
     }
 
@@ -758,7 +819,7 @@ export default function SmartApp() {
         destinationPartTypeId: mergeDestinationId,
         aliasLabel: null,
       });
-      addToast("Merged provisional part type into canonical record.", "success");
+      addToast("Part types merged", "success");
       setMergeSourceId("");
       setMergeDestinationId("");
       await loadAuthenticatedData();
@@ -885,6 +946,8 @@ export default function SmartApp() {
             <ScanTab
               scanCode={scanCode}
               onScanCodeChange={setScanCode}
+              scanMode={scanMode}
+              onScanModeChange={setScanMode}
               scanInputRef={scanInputRef}
               scanResultRef={scanResultRef}
               scanResult={scanResult}
@@ -892,13 +955,16 @@ export default function SmartApp() {
               onScan={handleScan}
               onCameraScan={(code) => void handleCameraScan(code)}
               onScanNext={handleScanNext}
+              onRegisterUnknown={handleRegisterUnknown}
               cameraLookupCode={cameraLookupCode}
               cameraBlockedReason={cameraBlockedReason}
               labelSearch={labelSearch}
               labelOptions={labelOptions}
+              fullPartTypeCatalog={catalogSuggestions}
               assignForm={assignForm}
               assignIssues={assignIssues}
               onAssignFormChange={setAssignForm}
+              knownLocations={knownLocations}
               onLabelSearch={(query) => void performSearch("label", query)}
               onAssign={handleAssign}
               sessionUsername={authState.session.username}
@@ -911,6 +977,26 @@ export default function SmartApp() {
             />
           </section>
         )}
+        {activeTab === "inventory" && (
+          <InventoryTab
+            rows={inventorySummary}
+            isLoading={inventoryLoading}
+            onRefresh={async () => {
+              setInventoryLoading(true);
+              try {
+                const next = await api.getInventorySummary();
+                setInventorySummary(next);
+              } catch (caught) {
+                if (!handleApiFailure(caught)) {
+                  addToast(errorMessage(caught), "error");
+                }
+              } finally {
+                setInventoryLoading(false);
+              }
+            }}
+          />
+        )}
+
         {activeTab === "activity" && (
           <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity">
             <ActivityTab

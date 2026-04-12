@@ -10,3 +10,8 @@ data/*.db-wal
 apps/frontend/.vite
 apps/middleware/.env
 apps/frontend/.env
+.pnpm-store
+deploy/config/*.env
+deploy/state
+deploy/backups
+*.wasm

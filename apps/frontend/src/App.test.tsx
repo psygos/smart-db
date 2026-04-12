@@ -37,6 +37,8 @@ const apiMock = vi.hoisted(() => ({
   drainPartDbSync: vi.fn(),
   backfillPartDbSync: vi.fn(),
   retryPartDbSync: vi.fn(),
+  getKnownLocations: vi.fn(),
+  getInventorySummary: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -170,6 +172,8 @@ beforeEach(() => {
   apiMock.getLatestQrBatch.mockResolvedValue(latestBatch);
   apiMock.getProvisionalPartTypes.mockResolvedValue([partType]);
   apiMock.searchPartTypes.mockResolvedValue([partType]);
+  apiMock.getKnownLocations.mockResolvedValue([]);
+  apiMock.getInventorySummary.mockResolvedValue([]);
   apiMock.registerQrBatch.mockResolvedValue({
     batch: {
       id: "batch-1",
@@ -707,6 +711,7 @@ describe("App", () => {
       throw new Error("assign card was not rendered");
     }
     await user.click(within(assignCard).getByRole("radio", { name: /Arduino Uno R3/ }));
+    await user.type(within(assignCard).getByLabelText(/^Location/), "Buffer Room A");
     await user.click(within(assignCard).getByRole("button", { name: "More options" }));
     await user.selectOptions(within(assignCard).getByLabelText("Initial status"), "damaged");
     await user.click(screen.getByRole("button", { name: "Assign QR" }));
@@ -724,7 +729,7 @@ describe("App", () => {
         initialStatus: "damaged",
       });
     });
-    expect(await screen.findByText(/Assigned QR-1001 to inventory/)).toBeInTheDocument();
+    expect(await screen.findByText(/Arduino Uno R3 assigned to QR-1001/)).toBeInTheDocument();
   });
 
   it("supports manual search and new bulk labeling", async () => {
@@ -806,8 +811,8 @@ describe("App", () => {
     await user.clear(within(assignCard).getByLabelText(/^Location/));
     await user.type(within(assignCard).getByLabelText(/^Location/), "Fastener wall");
     await user.click(within(assignCard).getByRole("button", { name: "More options" }));
-    await user.selectOptions(within(assignCard).getByLabelText("Kind"), "bulk");
-    await user.selectOptions(within(assignCard).getByLabelText("Unit"), "g");
+    await user.click(within(assignCard).getByRole("radio", { name: "Bulk / measured" }));
+    await user.selectOptions(within(assignCard).getByLabelText("Unit of measure"), "g");
     await user.clear(within(assignCard).getByLabelText(/^Starting quantity/));
     await user.type(within(assignCard).getByLabelText(/^Starting quantity/), "4.5");
     await user.clear(within(assignCard).getByLabelText(/^Low-stock threshold/));
@@ -815,7 +820,6 @@ describe("App", () => {
     await user.type(within(assignCard).getByLabelText(/^New canonical name/), "M3 Screw");
     await user.clear(within(assignCard).getByLabelText(/^Category/));
     await user.type(within(assignCard).getByLabelText(/^Category/), "Fasteners");
-    await user.selectOptions(within(assignCard).getByLabelText("Countable"), "false");
     await user.type(within(assignCard).getByLabelText("Notes"), "drawer stock");
     await user.click(within(assignCard).getByRole("button", { name: "Assign QR" }));
 
@@ -885,6 +889,7 @@ describe("App", () => {
     await user.click(within(assignCard).getByRole("radio", { name: "Create new type" }));
     await user.type(within(assignCard).getByLabelText(/^New canonical name/), "Widget");
     await user.type(within(assignCard).getByLabelText(/^Category/), "Misc");
+    await user.type(within(assignCard).getByLabelText(/^Location/), "Shelf A");
     await user.click(within(assignCard).getByRole("button", { name: "Assign QR" }));
     expect(await screen.findByText("assign failed")).toBeInTheDocument();
   });
@@ -976,7 +981,7 @@ describe("App", () => {
 
     await user.type(screen.getByPlaceholderText("Scan or type a QR / barcode"), "QR-1001");
     await user.click(screen.getByRole("button", { name: "Open" }));
-    expect(await screen.findByText(/Arduino Uno R3 · QR-1001/)).toBeInTheDocument();
+    expect(await screen.findByText("Arduino Uno R3")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Check out" }));
     await user.type(screen.getByLabelText("Assignee"), "Ayesha");
@@ -994,7 +999,7 @@ describe("App", () => {
         assignee: "Ayesha",
       });
     });
-    expect(await screen.findByText(/Saved Check out/)).toBeInTheDocument();
+    expect(await screen.findByText(/Check out recorded/)).toBeInTheDocument();
   });
 
   it("covers bulk interaction controls and record failures", async () => {
@@ -1035,7 +1040,7 @@ describe("App", () => {
     await screen.findByRole("button", { name: "Logout" });
     await user.type(screen.getByPlaceholderText("Scan or type a QR / barcode"), "QR-1006");
     await user.click(screen.getByRole("button", { name: "Open" }));
-    const interactHeading = await screen.findByText(/M3 Screw · QR-1006/);
+    const interactHeading = await screen.findByText("M3 Screw");
     expect(interactHeading).toBeInTheDocument();
     const interactCard = interactHeading.closest(".result-card");
     if (!interactCard) {
@@ -1081,7 +1086,7 @@ describe("App", () => {
     apiMock.getDashboard.mockRejectedValueOnce("not-an-error");
 
     render(<SmartApp />);
-    expect(await screen.findByText("Something went wrong.")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Logout" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Activity" }));
     expect(await screen.findByText("No events yet.")).toBeInTheDocument();
   });
@@ -1116,7 +1121,7 @@ describe("App", () => {
     expect(await screen.findByText("Part-DB linked")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Admin" }));
     await user.click(screen.getByRole("button", { name: "Merge provisional type" }));
-    expect(await screen.findByText("Select both a provisional source and a canonical destination.")).toBeInTheDocument();
+    expect(await screen.findByText("Pick a source and destination")).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText("Provisional source"), "part-1");
     await user.type(screen.getByLabelText("Find canonical destination"), "arduino");
@@ -1128,7 +1133,7 @@ describe("App", () => {
     });
     await user.click(screen.getAllByRole("radio", { name: /Arduino Uno R3/ })[0]);
     await user.click(screen.getByRole("button", { name: "Merge provisional type" }));
-    expect(await screen.findByText("Merged provisional part type into canonical record.")).toBeInTheDocument();
+    expect(await screen.findByText("Part types merged")).toBeInTheDocument();
   });
 
   it("shows merge-search errors and aborts merge search on logout", async () => {
@@ -1387,7 +1392,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(apiMock.approvePartType).toHaveBeenCalledWith("part-1");
     });
-    expect(await screen.findByText("Approved provisional part type.")).toBeInTheDocument();
+    expect(await screen.findByText("Part type approved")).toBeInTheDocument();
   });
 
   it("repeats the last assignment using 'Assign Same'", async () => {
@@ -1438,6 +1443,7 @@ describe("App", () => {
     const assignHeading = await screen.findByText("Assign QR-2001");
     const card = assignHeading.closest(".result-card")!;
     await user.click(within(card).getByRole("radio", { name: /Arduino Uno R3/ }));
+    await user.type(within(card).getByLabelText(/^Location/), "Shelf A");
     await user.click(screen.getByRole("button", { name: "Assign QR" }));
     await waitFor(() => { expect(apiMock.assignQr).toHaveBeenCalledTimes(1); });
 

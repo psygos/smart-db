@@ -39,6 +39,24 @@ export class PartDbRestClient {
     return this.requestJson("GET", path, schema, options);
   }
 
+  async getCollection<TSchema extends z.ZodTypeAny>(
+    path: string,
+    itemSchema: TSchema,
+    options: Omit<RequestOptions, "body"> = {},
+  ): Promise<Result<z.output<TSchema>[], PartDbError>> {
+    // Part-DB returns JSON-LD Hydra collections; unwrap hydra:member.
+    const collectionSchema = z
+      .object({
+        "hydra:member": z.array(itemSchema).optional(),
+        "member": z.array(itemSchema).optional(),
+      })
+      .passthrough();
+    const result = await this.requestJson("GET", path, collectionSchema, options);
+    if (!result.ok) return result;
+    const items = result.value["hydra:member"] ?? result.value["member"] ?? [];
+    return Ok(items as z.output<TSchema>[]);
+  }
+
   async postJson<TSchema extends z.ZodTypeAny>(
     path: string,
     body: unknown,
@@ -124,12 +142,14 @@ export class PartDbRestClient {
     body: unknown,
   ): Promise<Response> {
     const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
+    // Part-DB requires application/merge-patch+json for PATCH and application/ld+json for POST.
+    const contentType = method === "PATCH" ? "application/merge-patch+json" : "application/ld+json";
     const requestInit: RequestInit = {
       method,
       headers: {
-        Accept: "application/json",
+        Accept: "application/ld+json",
         Authorization: `Bearer ${this.config.apiToken}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(body === undefined ? {} : { "Content-Type": contentType }),
       },
       signal: timeoutSignal,
     };

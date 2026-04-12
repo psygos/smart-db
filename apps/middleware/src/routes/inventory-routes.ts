@@ -50,6 +50,14 @@ export async function registerInventoryRoutes(
     return inventoryService.searchPartTypes(query.q);
   });
 
+  app.get("/api/inventory/summary", authenticated, async () =>
+    inventoryService.getInventorySummary(),
+  );
+
+  app.get("/api/locations", authenticated, async () =>
+    inventoryService.getKnownLocations(),
+  );
+
   app.get("/api/part-types/provisional", admin, async () =>
     inventoryService.getProvisionalPartTypes(),
   );
@@ -82,7 +90,14 @@ export async function registerInventoryRoutes(
 
   app.post("/api/scan", authenticated, async (request) => {
     const command = parseWithSchema(scanRequestSchema, request.body, "scan request");
-    return inventoryService.scanCode(command.code);
+    // Optional ?count=false disables auto-increment for the scan (inspect-only mode).
+    const query = request.query as Record<string, string | undefined> | undefined;
+    const autoIncrement = query?.count !== "false";
+    return inventoryService.scanCode(
+      command.code,
+      request.authContext?.session.username ?? null,
+      { autoIncrement },
+    );
   });
 
   app.post("/api/assignments", authenticatedMutation, async (request) => {

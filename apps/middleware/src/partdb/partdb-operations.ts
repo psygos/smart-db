@@ -93,7 +93,7 @@ export class PartDbOperations {
           tags: operation.payload.tags.join(","),
           needs_review: operation.payload.needsReview,
           min_amount: operation.payload.minAmount,
-          default_measurement_unit: unitIri,
+          partUnit: unitIri,
         });
         return created.ok ? Ok({ iri: created.value["@id"], body: created.value }) : created;
       }

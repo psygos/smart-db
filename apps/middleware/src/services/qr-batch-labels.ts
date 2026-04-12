@@ -2,16 +2,24 @@ import QRCode from "qrcode";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { QrBatch } from "@smart-db/contracts";
 
-const pageWidth = 595.28; // A4 portrait
-const pageHeight = 841.89;
-const margin = 24;
-const columns = 3;
-const rows = 7;
-const horizontalGap = 8;
-const verticalGap = 8;
-const labelWidth = (pageWidth - margin * 2 - horizontalGap * (columns - 1)) / columns;
-const labelHeight = (pageHeight - margin * 2 - verticalGap * (rows - 1)) / rows;
-const qrSize = 88;
+// ── A4 page constants ──────────────────────────────────────────────
+const PAGE_WIDTH = 595.28;
+const PAGE_HEIGHT = 841.89;
+const MM = 2.834645669;          // 1 mm in PDF points
+const MARGIN = 10 * MM;          // 10mm margin all sides
+
+const COLUMNS = 6;
+const ROWS = 15;
+
+// Cells touch — borders are shared (no gap)
+const USABLE_W = PAGE_WIDTH - 2 * MARGIN;
+const USABLE_H = PAGE_HEIGHT - 2 * MARGIN;
+const CELL_W = USABLE_W / COLUMNS;
+const CELL_H = USABLE_H / ROWS;
+
+const LABEL_H = 8 * MM;          // 8mm bottom strip for code text
+const CELL_PAD = 2;              // 2pt internal padding around QR
+const FONT_SIZE = Math.min(7, LABEL_H * 0.55);
 
 export async function buildQrBatchLabelsPdf(batch: QrBatch): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
@@ -19,83 +27,95 @@ export async function buildQrBatchLabelsPdf(batch: QrBatch): Promise<Uint8Array>
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const codes = codesForBatch(batch);
 
-  let page = pdf.addPage([pageWidth, pageHeight]);
-  for (let index = 0; index < codes.length; index += 1) {
-    if (index > 0 && index % (columns * rows) === 0) {
-      page = pdf.addPage([pageWidth, pageHeight]);
+  // Pre-generate QR images in parallel
+  const images = await Promise.all(
+    codes.map((code) => embedQrImage(pdf, code)),
+  );
+
+  let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const labelsPerPage = COLUMNS * ROWS;
+
+  for (let i = 0; i < codes.length; i++) {
+    if (i > 0 && i % labelsPerPage === 0) {
+      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     }
 
-    const slot = index % (columns * rows);
-    const column = slot % columns;
-    const row = Math.floor(slot / columns);
-    const x = margin + column * (labelWidth + horizontalGap);
-    const y = pageHeight - margin - (row + 1) * labelHeight - row * verticalGap;
-    const code = codes[index]!;
-    const image = await embedQrImage(pdf, code);
+    const slot = i % labelsPerPage;
+    const col = slot % COLUMNS;
+    const row = Math.floor(slot / COLUMNS);
 
+    // Bottom-left of the cell (PDF origin is bottom-left)
+    const x = MARGIN + col * CELL_W;
+    const y = PAGE_HEIGHT - MARGIN - (row + 1) * CELL_H;
+
+    // Cell border — adjacent cells share edges, single line where they meet
     page.drawRectangle({
       x,
       y,
-      width: labelWidth,
-      height: labelHeight,
-      borderWidth: 0.75,
-      borderColor: rgb(0.78, 0.8, 0.84),
-      color: rgb(1, 1, 1),
+      width: CELL_W,
+      height: CELL_H,
+      borderWidth: 0.5,
+      borderColor: rgb(0, 0, 0),
     });
 
-    page.drawImage(image, {
-      x: x + (labelWidth - qrSize) / 2,
-      y: y + 24,
+    // QR image — centred above the label strip
+    const code = codes[i]!;
+    const qrAreaH = CELL_H - LABEL_H;
+    const qrSize = Math.min(CELL_W - 2 * CELL_PAD, qrAreaH - 2 * CELL_PAD);
+    const qrX = x + (CELL_W - qrSize) / 2;
+    const qrY = y + LABEL_H + (qrAreaH - qrSize) / 2;
+
+    page.drawImage(images[i]!, {
+      x: qrX,
+      y: qrY,
       width: qrSize,
       height: qrSize,
     });
 
+    // Code text — centred in the bottom label strip
+    const codeWidth = bold.widthOfTextAtSize(code, FONT_SIZE);
     page.drawText(code, {
-      x: x + 10,
-      y: y + 12,
-      size: 9.5,
+      x: x + (CELL_W - codeWidth) / 2,
+      y: y + (LABEL_H - FONT_SIZE) / 2,
+      size: FONT_SIZE,
       font: bold,
-      color: rgb(0.1, 0.12, 0.16),
-      maxWidth: labelWidth - 20,
+      color: rgb(0, 0, 0),
     });
-
-    if (row === 0) {
-      page.drawText(batch.id, {
-        x: x + 10,
-        y: y + labelHeight - 12,
-        size: 6.5,
-        font,
-        color: rgb(0.45, 0.47, 0.5),
-        maxWidth: labelWidth - 20,
-      });
-    }
   }
+
+  // Footer on page 1 with batch metadata
+  const meta = `${batch.id}  |  ${batch.prefix}-${batch.startNumber}  to  ${batch.prefix}-${batch.endNumber}  |  ${codes.length} labels`;
+  const firstPage = pdf.getPage(0);
+  firstPage.drawText(meta, {
+    x: MARGIN,
+    y: MARGIN / 2 - 2,
+    size: 5.5,
+    font,
+    color: rgb(0.55, 0.57, 0.6),
+  });
 
   return pdf.save();
 }
 
 export const qrBatchLabelInternals = {
   codesForBatch,
-  labelsPerPage: columns * rows,
+  labelsPerPage: COLUMNS * ROWS,
 };
 
 function codesForBatch(batch: QrBatch): string[] {
   const codes: string[] = [];
-  for (let number = batch.startNumber; number <= batch.endNumber; number += 1) {
-    codes.push(`${batch.prefix}-${number}`);
+  for (let n = batch.startNumber; n <= batch.endNumber; n++) {
+    codes.push(`${batch.prefix}-${n}`);
   }
   return codes;
 }
 
 async function embedQrImage(pdf: PDFDocument, code: string) {
-  const dataUrl = await QRCode.toDataURL(code, {
+  const buffer = await (QRCode as unknown as { toBuffer: (text: string, opts: Record<string, unknown>) => Promise<Buffer> }).toBuffer(code, {
     errorCorrectionLevel: "M",
     margin: 1,
     width: 256,
-    color: {
-      dark: "#111111",
-      light: "#FFFFFF",
-    },
+    color: { dark: "#000000", light: "#FFFFFF" },
   });
-  return pdf.embedPng(dataUrl);
+  return pdf.embedPng(buffer);
 }

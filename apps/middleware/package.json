@@ -9,7 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "partdb:backfill": "tsx src/scripts/backfill-partdb.ts",
     "partdb:reconcile-deletes": "tsx src/scripts/reconcile-partdb-deletes.ts",
-    "smartdb:reset": "tsx src/scripts/reset-smartdb.ts"
+    "smartdb:reset": "tsx src/scripts/reset-smartdb.ts",
+    "smartdb:seed-catalog": "tsx src/scripts/seed-catalog.ts",
+    "smartdb:seed-fdm": "tsx src/scripts/seed-fdm-filaments.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

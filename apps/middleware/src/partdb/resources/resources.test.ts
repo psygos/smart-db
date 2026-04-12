@@ -8,6 +8,7 @@ import { PartDbStorageLocationsResource } from "./storage-locations.js";
 function restStub() {
   return {
     getJson: vi.fn(),
+    getCollection: vi.fn(),
     postJson: vi.fn(),
     patchJson: vi.fn(),
     deleteResource: vi.fn(),
@@ -22,7 +23,7 @@ describe("partdb resource wrappers", () => {
     await resource.list(new URLSearchParams({ name: "SMD" }));
     await resource.create({ name: "SMD", parent: "/api/categories/17" });
 
-    expect(rest.getJson).toHaveBeenCalledWith(
+    expect(rest.getCollection).toHaveBeenCalledWith(
       "/api/categories?name=SMD",
       expect.anything(),
       { resource: "category" },
@@ -59,7 +60,7 @@ describe("partdb resource wrappers", () => {
       expect.anything(),
       { resource: "storage_location" },
     );
-    expect(rest.getJson).toHaveBeenCalledWith(
+    expect(rest.getCollection).toHaveBeenCalledWith(
       "/api/measurement_units",
       expect.anything(),
       { resource: "measurement_unit" },

@@ -695,6 +695,7 @@ export const interactBulkScanResponseSchema = z
     recentEvents: z.array(stockEventSchema),
     availableActions: z.array(bulkActionSchema),
     partDb: partDbLookupSummarySchema,
+    autoIncremented: z.boolean().optional(),
   })
   .strict();
 

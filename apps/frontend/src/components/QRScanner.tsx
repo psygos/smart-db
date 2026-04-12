@@ -32,7 +32,7 @@ export function QRScanner({
   if (camera.permissionState === "denied") {
     return (
       <div className="qr-scanner">
-        <p className="banner error">Camera permission denied. Use manual input instead.</p>
+        <p className="banner error">{camera.error ?? "Camera permission denied. Use manual input instead."}</p>
       </div>
     );
   }

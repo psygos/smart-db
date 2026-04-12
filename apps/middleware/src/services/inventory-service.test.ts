@@ -796,25 +796,7 @@ describe("InventoryService", () => {
   it("raises designed errors for missing resources and conflicts", async () => {
     const { db, service } = makeService();
 
-    expect(() =>
-      service.assignQr({
-        qrCode: "QR-404",
-        actor: "labeler",
-        entityKind: "instance",
-        location: "Shelf",
-        notes: null,
-        partType: {
-          kind: "new",
-          canonicalName: "Unknown",
-          category: "Misc",
-          aliases: [],
-          notes: null,
-          imageUrl: null,
-          countable: true,
-        },
-        initialStatus: "available",
-      }),
-    ).toThrowError(NotFoundError);
+    // Unknown QR codes now auto-register as external barcodes, so no NotFoundError.
 
     service.registerQrBatch({
       actor: "lab-admin",

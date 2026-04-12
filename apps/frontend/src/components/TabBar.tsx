@@ -1,4 +1,4 @@
-export type TabId = "scan" | "activity" | "admin";
+export type TabId = "scan" | "inventory" | "activity" | "admin";
 
 interface TabBarProps {
   activeTab: TabId;
@@ -8,11 +8,12 @@ interface TabBarProps {
 
 const tabLabels: Record<TabId, string> = {
   scan: "Scan",
+  inventory: "Stock",
   activity: "Activity",
   admin: "Admin",
 };
 
-export function TabBar({ activeTab, onTabChange, tabs = ["scan", "activity", "admin"] }: TabBarProps) {
+export function TabBar({ activeTab, onTabChange, tabs = ["scan", "inventory", "activity", "admin"] }: TabBarProps) {
   return (
     <nav className="tab-bar" role="tablist" aria-label="Primary navigation">
       {tabs.map((tab) => (

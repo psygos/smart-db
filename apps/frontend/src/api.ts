@@ -114,6 +114,23 @@ function idempotencyHeaders(): Record<string, string> {
   return { "X-Idempotency-Key": crypto.randomUUID() };
 }
 
+export const inventorySummaryRowSchema = z.object({
+  id: z.string(),
+  canonicalName: z.string(),
+  categoryPath: z.array(z.string()),
+  unit: z.object({
+    symbol: z.string(),
+    name: z.string(),
+    isInteger: z.boolean(),
+  }),
+  countable: z.boolean(),
+  bins: z.number(),
+  instanceCount: z.number(),
+  onHand: z.number(),
+  partDbSyncStatus: z.string(),
+});
+export type InventorySummaryRow = z.output<typeof inventorySummaryRowSchema>;
+
 export const api = {
   getSession(signal?: AbortSignal): Promise<AuthSession> {
     return request(authSessionSchema, "/api/auth/session", signal ? { signal } : undefined);
@@ -162,6 +179,12 @@ export const api = {
   getProvisionalPartTypes(): Promise<PartType[]> {
     return request(partTypeSchema.array(), "/api/part-types/provisional");
   },
+  getKnownLocations(): Promise<string[]> {
+    return request(z.array(z.string()), "/api/locations");
+  },
+  getInventorySummary(): Promise<InventorySummaryRow[]> {
+    return request(inventorySummaryRowSchema.array(), "/api/inventory/summary");
+  },
   searchPartTypes(query: string, signal?: AbortSignal): Promise<PartType[]> {
     return request(
       partTypeSchema.array(),
@@ -176,21 +199,20 @@ export const api = {
       headers: idempotencyHeaders(),
     });
   },
-  scan(code: string, signal?: AbortSignal): Promise<ScanResponse> {
-    return request(
-      scanResponseSchema,
-      "/api/scan",
-      signal
-        ? {
-            method: "POST",
-            body: JSON.stringify({ code }),
-            signal,
-          }
-        : {
-            method: "POST",
-            body: JSON.stringify({ code }),
-          },
-    );
+  scan(
+    code: string,
+    options: { signal?: AbortSignal; autoIncrement?: boolean } = {},
+  ): Promise<ScanResponse> {
+    const autoIncrement = options.autoIncrement !== false;
+    const path = autoIncrement ? "/api/scan" : "/api/scan?count=false";
+    const init: ApiRequestInit = {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    };
+    if (options.signal) {
+      init.signal = options.signal;
+    }
+    return request(scanResponseSchema, path, init);
   },
   assignQr(payload: AssignQrRequest) {
     return request(inventoryEntitySummarySchema, "/api/assignments", {
