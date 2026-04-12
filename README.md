@@ -1,8 +1,15 @@
-# Smart DB
+<p align="center">
+  <img src="docs/images/logo.svg" alt="Smart DB" width="400" />
+</p>
 
-A fast-ingest inventory system for university makerspaces. Built for the Mphasis AI & Applied Tech Lab at Ashoka University.
+<p align="center">
+  A fast-ingest inventory system for university makerspaces.<br/>
+  Built for the Mphasis AI & Applied Tech Lab at Ashoka University.
+</p>
 
-[![CI](https://github.com/psygos/smart-db/actions/workflows/ci.yml/badge.svg)](https://github.com/psygos/smart-db/actions/workflows/ci.yml)
+<p align="center">
+  <a href="https://github.com/psygos/smart-db/actions/workflows/ci.yml"><img src="https://github.com/psygos/smart-db/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+</p>
 
 <p align="center">
   <img src="docs/images/main_page.png" alt="Smart DB main interface" width="320" />
