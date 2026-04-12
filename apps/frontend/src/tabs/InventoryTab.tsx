@@ -79,27 +79,6 @@ export function InventoryTab({ rows, isLoading, onRefresh }: InventoryTabProps) 
       aria-labelledby="tab-inventory"
       className="panel"
     >
-      <header className="stock-header">
-        <div className="stock-title">
-          <p className="eyebrow">Inventory</p>
-          <h2>{totals.parts} part types</h2>
-        </div>
-        <button type="button" className="stock-refresh" onClick={onRefresh} disabled={isLoading}>
-          {isLoading ? "..." : "Refresh"}
-        </button>
-      </header>
-
-      <div className="stock-stats">
-        <div className="stock-stat">
-          <span className="stock-stat-value">{totals.bulks + totals.instances}</span>
-          <span className="stock-stat-label">tracked items</span>
-        </div>
-        <div className="stock-stat">
-          <span className="stock-stat-value">{rows.filter(r => r.onHand === 0 && r.bins === 0 && r.instanceCount === 0).length}</span>
-          <span className="stock-stat-label">empty</span>
-        </div>
-      </div>
-
       <div className="stock-controls">
         <input
           type="search"
