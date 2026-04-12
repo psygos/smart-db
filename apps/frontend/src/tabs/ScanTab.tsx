@@ -111,44 +111,11 @@ export function ScanTab(props: ScanTabProps) {
         </button>
       </form>
 
-      <div className="scan-mode-section">
-        <div className="mode-toggle" role="radiogroup" aria-label="Scan mode">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={props.scanMode === "increment"}
-            className={props.scanMode === "increment" ? "selected" : ""}
-            onClick={() => props.onScanModeChange("increment")}
-          >
-            Auto-count
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={props.scanMode === "inspect"}
-            className={props.scanMode === "inspect" ? "selected" : ""}
-            onClick={() => props.onScanModeChange("inspect")}
-          >
-            View only
-          </button>
-        </div>
-        {props.scanMode === "increment" ? (
-          <div className="picker increment-picker" role="radiogroup" aria-label="Increment amount">
-            {[1, 5, 10, 25].map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={props.incrementAmount === n}
-                className={props.incrementAmount === n ? "selected" : ""}
-                onClick={() => props.onIncrementAmountChange(n)}
-              >
-                <strong>+{n}</strong>
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      {props.scanMode === "increment" ? (
+        <p className="scan-mode-hint">Each scan adds +1 to count</p>
+      ) : (
+        <p className="scan-mode-hint">View only — scanning won't change quantities</p>
+      )}
 
 
 

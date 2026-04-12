@@ -51,13 +51,17 @@ export function QRScanner({
       {camera.permissionState !== "granted" && enabled ? (
         <button
           type="button"
+          className="camera-btn"
           disabled={Boolean(blockedReason) || isLookingUp}
           onClick={() => {
             setShowManual(false);
             void camera.start();
           }}
         >
-          Enable camera
+          <span className="camera-ascii" aria-hidden="true">
+            {"┌──────────┐\n│  ◉  ▣▣  │\n└──────────┘"}
+          </span>
+          <span>Tap to scan</span>
         </button>
       ) : null}
       {camera.isScanning ? (

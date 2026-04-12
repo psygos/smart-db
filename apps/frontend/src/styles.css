@@ -19,8 +19,8 @@
   --ink-2: #52525b;
   --ink-3: #a1a1aa;
 
-  --blue: #2563eb;
-  --blue-hover: #3b82f6;
+  --blue: #1d4ed8;
+  --blue-hover: #2563eb;
   --blue-bg: rgba(37, 99, 235, 0.06);
 
   --orange: #ea580c;
@@ -309,9 +309,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .assign-same-bar button:hover:not(:disabled) { opacity: 0.9; }
 
 .scan-next-bottom { width: 100%; margin-top: 0.75rem; }
-.scan-mode-section { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.5rem 0 1rem; }
-.increment-picker { gap: 0.5rem; }
-.increment-picker button { flex: 0 1 auto; min-width: 52px; min-height: 44px; padding: 0.375rem 0.75rem; text-align: center; }
+
+
 
 .latest-batch-card { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 0.75rem 1rem; margin-bottom: 0.75rem; }
 .latest-batch-card strong { font-weight: 600; font-size: 1rem; }
@@ -341,12 +340,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .inventory-toggle { display: inline-flex; align-items: center; gap: 0.375rem; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); cursor: pointer; min-height: 44px; }
 .inventory-toggle input { width: 18px; height: 18px; min-height: auto; margin: 0; accent-color: var(--blue); border-radius: 3px; }
 
-.inventory-group + .inventory-group { margin-top: 1.5rem; }
+.inventory-group + .inventory-group { margin-top: 2rem; }
 .inventory-group-title {
   display: flex; align-items: baseline; justify-content: space-between;
   font-size: 0.75rem; font-weight: 600; font-family: var(--mono);
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3);
-  padding: 0.5rem 0; border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0; border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 2; background: var(--bg);
 }
 /* ascii divider */
@@ -356,7 +355,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .inventory-row {
   display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0.75rem;
-  padding: 0.625rem 0; border: none; border-bottom: 1px solid var(--border);
+  padding: 0.875rem 0; border: none; border-bottom: 1px solid var(--border);
   background: transparent; color: var(--ink); text-align: left; width: 100%; min-height: 44px; cursor: pointer;
 }
 .inventory-row:hover:not(:disabled) { background: var(--dim); }
@@ -394,3 +393,48 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .sync-status-card strong { display: block; font-family: var(--mono); font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
 .sync-status-card span { display: block; font-family: var(--mono); font-size: 1.25rem; font-weight: 400; color: var(--ink); margin-top: 0.125rem; line-height: 1; }
 .sync-actions { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+
+/* ── scan mode hint ──── */
+.scan-mode-hint {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  margin: 0 0 1rem;
+  letter-spacing: 0.02em;
+}
+
+.scan-mode-hint::before {
+  content: "◆ ";
+  color: var(--orange);
+}
+
+/* ── camera ascii art button ── */
+.camera-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  background: var(--surface);
+  border: 1px dashed var(--border-2);
+  color: var(--ink-2);
+  width: 100%;
+}
+
+.camera-btn:hover:not(:disabled) {
+  background: var(--dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.camera-ascii {
+  font-family: var(--mono);
+  font-size: 1rem;
+  line-height: 1.3;
+  white-space: pre;
+  color: var(--ink-3);
+}
+
+.camera-btn:hover .camera-ascii {
+  color: var(--blue);
+}

@@ -35,7 +35,7 @@ describe("QRScanner", () => {
   it("shows enable button when permission is prompt", () => {
     mockUseCamera.mockReturnValue(baseCameraResult());
     render(<QRScanner onScan={vi.fn()} enabled />);
-    expect(screen.getByRole("button", { name: "Enable camera" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tap to scan" })).toBeInTheDocument();
   });
 
   it("calls start when enable button is clicked", async () => {
@@ -43,7 +43,7 @@ describe("QRScanner", () => {
     const start = vi.fn();
     mockUseCamera.mockReturnValue({ ...baseCameraResult(), start });
     render(<QRScanner onScan={vi.fn()} enabled />);
-    await user.click(screen.getByRole("button", { name: "Enable camera" }));
+    await user.click(screen.getByRole("button", { name: "Tap to scan" }));
     expect(start).toHaveBeenCalled();
   });
 
