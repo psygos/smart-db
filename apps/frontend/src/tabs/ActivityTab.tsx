@@ -1,5 +1,4 @@
-import type { DashboardSummary, PartDbConnectionStatus } from "@smart-db/contracts";
-import { PanelTitle } from "../components/PanelTitle";
+import type { DashboardSummary, StockEvent } from "@smart-db/contracts";
 import { actionLabel, formatTimestamp } from "../SmartApp.helpers";
 
 export interface ScanHistoryEntry {
@@ -10,55 +9,94 @@ export interface ScanHistoryEntry {
 
 interface ActivityTabProps {
   dashboard: DashboardSummary | null;
-  partDbStatus: PartDbConnectionStatus | null;
+  partDbStatus: unknown;
   scanHistory: ScanHistoryEntry[];
 }
 
+function describeEvent(e: StockEvent): { title: string; detail: string; time: string } {
+  const action = actionLabel(e.event);
+  const who = e.actor ?? "system";
+
+  let detail = "";
+  if (e.toState && e.fromState) {
+    detail = `${e.fromState} → ${e.toState}`;
+  } else if (e.toState) {
+    detail = e.toState;
+  }
+
+  if (e.location) {
+    detail = detail ? `${detail} · ${e.location}` : e.location;
+  }
+
+  return {
+    title: `${action} by ${who}`,
+    detail,
+    time: formatTimestamp(e.createdAt),
+  };
+}
+
+function scanModeLabel(mode: string): string {
+  switch (mode) {
+    case "interact": return "opened";
+    case "label": return "ready to assign";
+    case "unknown": return "unregistered";
+    default: return mode;
+  }
+}
+
 export function ActivityTab(props: ActivityTabProps) {
+  const events = props.dashboard?.recentEvents ?? [];
+  const hasEvents = events.length > 0;
+  const hasScans = props.scanHistory.length > 0;
+
   return (
     <section className="panel">
-      <PanelTitle
-        title="Recent events"
-        copy="Counts are derived from event-backed state, not from hand-edited integers."
-      />
-      <div className="event-list">
-        {props.dashboard?.recentEvents.map((stockEvent) => (
-          <article key={stockEvent.id}>
-            <strong>{actionLabel(stockEvent.event)}</strong>
-            <span>
-              {stockEvent.targetType} · {stockEvent.actor}
-            </span>
-            <small>
-              {stockEvent.fromState ?? "none"} → {stockEvent.toState ?? "none"} · {formatTimestamp(stockEvent.createdAt)}
-            </small>
-          </article>
-        )) ?? <p>No events yet.</p>}
-      </div>
+      <header className="activity-header">
+        <p className="eyebrow">Activity</p>
+        <h2>Recent events</h2>
+      </header>
 
-      {props.scanHistory.length > 0 && (
-        <div className="event-list">
-          <h3>Recent Scans</h3>
-          {props.scanHistory.map((entry, index) => (
-            <article key={`${entry.code}-${index}`}>
-              <strong>{entry.code}</strong>
-              <span>{entry.mode}</span>
-              <small>{formatTimestamp(entry.timestamp)}</small>
-            </article>
-          ))}
-        </div>
-      )}
+      {!hasEvents && !hasScans ? (
+        <p className="activity-empty">
+          No activity yet. Events appear here as you scan and update inventory.
+        </p>
+      ) : null}
 
-      <div className="resource-list">
-        <h3>Discovered Part-DB resources</h3>
-        <ul>
-          <li>Parts: {props.partDbStatus?.discoveredResources.partsPath ?? "not discovered"}</li>
-          <li>Part lots: {props.partDbStatus?.discoveredResources.partLotsPath ?? "not discovered"}</li>
-          <li>
-            Storage locations:{" "}
-            {props.partDbStatus?.discoveredResources.storageLocationsPath ?? "not discovered"}
-          </li>
+      {hasEvents ? (
+        <ul className="activity-list">
+          {events.map((e) => {
+            const info = describeEvent(e);
+            return (
+              <li key={e.id} className="activity-item">
+                <div className="activity-item-header">
+                  <span className="activity-action">{info.title}</span>
+                  <span className="activity-time">{info.time}</span>
+                </div>
+                {info.detail ? (
+                  <span className="activity-detail">{info.detail}</span>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
-      </div>
+      ) : null}
+
+      {hasScans ? (
+        <>
+          <h3 className="activity-section-title">This session</h3>
+          <ul className="activity-list">
+            {props.scanHistory.map((entry, i) => (
+              <li key={`${entry.code}-${i}`} className="activity-item">
+                <div className="activity-item-header">
+                  <code className="activity-code">{entry.code}</code>
+                  <span className="activity-time">{formatTimestamp(entry.timestamp)}</span>
+                </div>
+                <span className="activity-detail">{scanModeLabel(entry.mode)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </section>
   );
 }

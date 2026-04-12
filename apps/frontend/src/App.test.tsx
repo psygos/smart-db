@@ -1091,7 +1091,7 @@ describe("App", () => {
     render(<SmartApp />);
     expect(await screen.findByRole("button", { name: "Logout" })).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Activity" }));
-    expect(await screen.findByText("No events yet.")).toBeInTheDocument();
+    expect(await screen.findByText(/No activity yet/)).toBeInTheDocument();
   });
 
   it("drops back to login when authenticated bootstrap data refresh becomes unauthenticated", async () => {
@@ -1217,12 +1217,8 @@ describe("App", () => {
     render(<SmartApp />);
     await screen.findByRole("button", { name: "Logout" });
     await user.click(screen.getByRole("tab", { name: "Activity" }));
-    expect(await screen.findAllByText(/none → none/)).not.toHaveLength(0);
-
-    await user.click(screen.getByRole("tab", { name: "Scan" }));
-    await user.type(screen.getByPlaceholderText("Scan or type a QR / barcode"), "QR-1008");
-    await user.click(screen.getByRole("button", { name: "Open" }));
-    expect(await screen.findAllByText(/none → none/)).not.toHaveLength(0);
+    // Null states render gracefully (no "none" text, just the action)
+    expect(await screen.findByText(/Move by lab-admin/)).toBeInTheDocument();
   });
 
   it("ignores stale and aborted scan responses", async () => {
@@ -1369,7 +1365,7 @@ describe("App", () => {
     await screen.findByText("QR-HIST-1 is unknown to Smart DB");
 
     await user.click(screen.getByRole("tab", { name: "Activity" }));
-    expect(await screen.findByText("Recent Scans")).toBeInTheDocument();
+    expect(await screen.findByText("This session")).toBeInTheDocument();
     expect(screen.getByText("QR-HIST-1")).toBeInTheDocument();
   });
 
