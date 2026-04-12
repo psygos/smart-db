@@ -137,11 +137,25 @@ export default function SmartApp() {
   const [assignForm, setAssignForm] = useState(defaultAssignForm);
   const [eventForm, setEventForm] = useState(defaultEventForm);
   const [scanCode, setScanCode] = useState("");
-  // Scans are view-only — auto-increment is disabled at the application level.
-  // The backend still supports it via ?count=true, but the frontend never asks.
-  const scanMode: "increment" = "increment";
-  // Stub kept so other components compile without breaking.
-  function setScanMode(_mode: "increment" | "inspect"): void {}
+  const [scanMode, setScanModeRaw] = useState<"increment" | "inspect">(() => {
+    try {
+      return localStorage.getItem("smartdb:scanMode") === "inspect" ? "inspect" : "increment";
+    } catch { return "increment"; }
+  });
+  const [incrementAmount, setIncrementAmountRaw] = useState<number>(() => {
+    try {
+      const n = Number(localStorage.getItem("smartdb:incrementAmount"));
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    } catch { return 1; }
+  });
+  function setScanMode(mode: "increment" | "inspect"): void {
+    setScanModeRaw(mode);
+    try { localStorage.setItem("smartdb:scanMode", mode); } catch {}
+  }
+  function setIncrementAmount(amount: number): void {
+    setIncrementAmountRaw(amount);
+    try { localStorage.setItem("smartdb:incrementAmount", String(amount)); } catch {}
+  }
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
   const [lastAssignment, setLastAssignment] = useState<LastAssignment | null>(null);
   const [cameraLookupCode, setCameraLookupCode] = useState<string | null>(null);
@@ -498,7 +512,14 @@ export default function SmartApp() {
     }
 
     try {
-      const response = await api.scan(code, { signal: controller.signal, autoIncrement: true });
+      const scanOptions: { signal: AbortSignal; autoIncrement: boolean; incrementAmount?: number } = {
+        signal: controller.signal,
+        autoIncrement: scanMode === "increment",
+      };
+      if (scanMode === "increment") {
+        scanOptions.incrementAmount = incrementAmount;
+      }
+      const response = await api.scan(code, scanOptions);
       if (requestId !== scanRequestRef.current) {
         return;
       }
@@ -524,7 +545,7 @@ export default function SmartApp() {
       if (response.mode === "interact") {
         setEventForm(buildDefaultEventFormForEntity(response.entity));
         if (response.entity.targetType === "bulk" && (response as { autoIncremented?: boolean }).autoIncremented) {
-          addToast(`+1 ${response.entity.partType.canonicalName} (now ${(response.entity as { quantity?: number }).quantity ?? "?"})`, "success");
+          addToast(`+${incrementAmount} ${response.entity.partType.canonicalName} (now ${(response.entity as { quantity?: number }).quantity ?? "?"})`, "success");
         }
       }
     } catch (caught) {
@@ -948,6 +969,8 @@ export default function SmartApp() {
               onScanCodeChange={setScanCode}
               scanMode={scanMode}
               onScanModeChange={setScanMode}
+              incrementAmount={incrementAmount}
+              onIncrementAmountChange={setIncrementAmount}
               scanInputRef={scanInputRef}
               scanResultRef={scanResultRef}
               scanResult={scanResult}

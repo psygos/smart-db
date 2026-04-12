@@ -331,7 +331,7 @@ export class InventoryService {
     return { batch: persistedBatch, created, skipped };
   }
 
-  async scanCode(code: string, actor: string | null = null, options: { autoIncrement?: boolean } = {}): Promise<ScanResponse> {
+  async scanCode(code: string, actor: string | null = null, options: { autoIncrement?: boolean; incrementAmount?: number } = {}): Promise<ScanResponse> {
     const normalized = code.trim();
     const qrRow = this.db
       .prepare(`SELECT * FROM qrcodes WHERE LOWER(code) = LOWER(?)`)
@@ -387,7 +387,10 @@ export class InventoryService {
       let workingRecentEvents = recentEvents;
       const autoIncrementEnabled = options.autoIncrement !== false;
       if (autoIncrementEnabled && qrCode.batchId === "external" && entity.targetType === "bulk") {
-        const incrementResult = this.autoIncrementExternalBulk(entity.id, actor);
+        const amount = options.incrementAmount && Number.isFinite(options.incrementAmount) && options.incrementAmount > 0
+          ? options.incrementAmount
+          : 1;
+        const incrementResult = this.autoIncrementExternalBulk(entity.id, actor, amount);
         if (incrementResult) {
           autoIncremented = true;
           workingEntity = { ...entity, quantity: incrementResult.newQuantity };
@@ -438,13 +441,13 @@ export class InventoryService {
     };
   }
 
-  private autoIncrementExternalBulk(bulkId: string, actor: string | null): { newQuantity: number } | null {
+  private autoIncrementExternalBulk(bulkId: string, actor: string | null, amount: number = 1): { newQuantity: number } | null {
     const row = this.db
       .prepare(`SELECT quantity FROM bulk_stocks WHERE id = ?`)
       .get(bulkId) as { quantity: number } | undefined;
     if (!row) return null;
     const previous = row.quantity ?? 0;
-    const newQuantity = previous + 1;
+    const newQuantity = previous + amount;
     const timestamp = nowIso();
     const correlationId = randomUUID();
 
@@ -464,7 +467,7 @@ export class InventoryService {
           String(previous),
           String(newQuantity),
           actor ?? "system",
-          "Auto-increment from external barcode scan",
+          `Auto-increment +${amount} from external barcode scan`,
           timestamp,
         );
 

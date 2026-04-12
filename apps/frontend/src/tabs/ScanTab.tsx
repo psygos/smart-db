@@ -41,6 +41,8 @@ interface ScanTabProps {
   onScanCodeChange: (value: string) => void;
   scanMode: "increment" | "inspect";
   onScanModeChange: (mode: "increment" | "inspect") => void;
+  incrementAmount: number;
+  onIncrementAmountChange: (amount: number) => void;
   scanInputRef: React.RefObject<HTMLInputElement | null>;
   scanResultRef: React.RefObject<HTMLDivElement | null>;
   scanResult: ScanResponse | null;
@@ -114,6 +116,45 @@ export function ScanTab(props: ScanTabProps) {
           {props.pendingAction === "scan" ? "Opening..." : "Open"}
         </button>
       </form>
+
+      <div className="scan-mode-section">
+        <div className="mode-toggle" role="radiogroup" aria-label="Scan mode">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={props.scanMode === "increment"}
+            className={props.scanMode === "increment" ? "selected" : ""}
+            onClick={() => props.onScanModeChange("increment")}
+          >
+            Auto-count
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={props.scanMode === "inspect"}
+            className={props.scanMode === "inspect" ? "selected" : ""}
+            onClick={() => props.onScanModeChange("inspect")}
+          >
+            View only
+          </button>
+        </div>
+        {props.scanMode === "increment" ? (
+          <div className="picker increment-picker" role="radiogroup" aria-label="Increment amount">
+            {[1, 5, 10, 25].map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={props.incrementAmount === n}
+                className={props.incrementAmount === n ? "selected" : ""}
+                onClick={() => props.onIncrementAmountChange(n)}
+              >
+                <strong>+{n}</strong>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
 
 

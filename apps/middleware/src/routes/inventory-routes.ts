@@ -90,13 +90,15 @@ export async function registerInventoryRoutes(
 
   app.post("/api/scan", authenticated, async (request) => {
     const command = parseWithSchema(scanRequestSchema, request.body, "scan request");
-    // Optional ?count=false disables auto-increment for the scan (inspect-only mode).
+    // Optional ?count=false disables auto-increment. ?amount=N sets increment amount (default 1).
     const query = request.query as Record<string, string | undefined> | undefined;
     const autoIncrement = query?.count !== "false";
+    const rawAmount = Number(query?.amount);
+    const incrementAmount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : 1;
     return inventoryService.scanCode(
       command.code,
       request.authContext?.session.username ?? null,
-      { autoIncrement },
+      { autoIncrement, incrementAmount },
     );
   });
 
