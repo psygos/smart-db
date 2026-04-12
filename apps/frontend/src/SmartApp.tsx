@@ -99,7 +99,7 @@ const defaultEventForm: EventFormState = {
   targetType: "instance",
   targetId: "",
   event: "moved",
-  location: "Unknown",
+  location: "",
   quantityDelta: "",
   quantity: "",
   quantityIsInteger: true,
@@ -1014,7 +1014,6 @@ export default function SmartApp() {
               knownCategories={knownCategories}
               onLabelSearch={(query) => void performSearch("label", query)}
               onAssign={handleAssign}
-              sessionUsername={authState.session.username}
               lastAssignment={lastAssignment}
               onAssignSame={() => void handleAssignSame()}
               eventForm={eventForm}
@@ -1086,7 +1085,7 @@ export default function SmartApp() {
       <TabBar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        tabs={isAdmin ? ["scan", "activity", "admin"] : ["scan", "activity"]}
+        tabs={isAdmin ? ["scan", "inventory", "activity", "admin"] : ["scan", "inventory", "activity"]}
       />
     </div>
   );

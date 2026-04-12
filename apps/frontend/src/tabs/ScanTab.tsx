@@ -64,7 +64,6 @@ interface ScanTabProps {
   knownCategories: string[];
   onLabelSearch: (query: string) => void;
   onAssign: (event: FormEvent<HTMLFormElement>) => void;
-  sessionUsername: string;
   lastAssignment: LastAssignment | null;
   onAssignSame: () => void;
   // Interact
