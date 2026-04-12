@@ -27,3 +27,43 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  deploy:
+    name: Deploy to server
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /opt/smart-db
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Install dependencies
+        run: |
+          cd /opt/smart-db
+          docker run --rm -v "$(pwd)":/workspace -w /workspace node:24-bookworm-slim \
+            bash -c "corepack enable && pnpm install --frozen-lockfile"
+
+      - name: Build and restart containers
+        run: |
+          cd /opt/smart-db/deploy
+          docker compose build --no-cache middleware gateway
+          docker compose up -d
+
+      - name: Wait for health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4000/health > /dev/null 2>&1; then
+              echo "Middleware healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check failed after 30s"
+          docker compose -f /opt/smart-db/deploy/docker-compose.yml logs middleware --tail 20
+          exit 1
+
+      - name: Verify frontend
+        run: curl -sf https://10.42.200.4/health || (echo "Gateway unreachable" && exit 1)
