@@ -76,7 +76,7 @@ This keeps Smart DB honest: it owns per-instance reality, while Part-DB remains 
 ## Repository Layout
 
 - `apps/frontend`
-  - React app aimed at phone use in the lab
+  - vanilla TypeScript/HTML/CSS app aimed at phone use in the lab
   - handles scan, assign, event logging, and provisional merge
 - `apps/middleware`
   - Fastify API

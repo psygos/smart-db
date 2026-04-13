@@ -40,7 +40,7 @@ The plan is intentionally systems-first:
 - `scanResponse.availableActions` is typed wider than the actual FSM.
 - Self-merge is representable in the request schema even though the service rejects it.
 - Error taxonomy cannot represent `403 Forbidden`.
-- Legacy dead code (`App.tsx`) has drifted away from the real contract model and is excluded from typecheck.
+- The legacy dead shell had drifted away from the real contract model and was excluded from typecheck before the rewrite.
 
 ### Service / FSM Layer
 
@@ -160,10 +160,10 @@ Goal:
 - Replace implicit camera/form coupling with an explicit scan-session machine.
 
 Scope:
-- `useCamera`
-- `QRScanner`
-- `ScanTab`
-- `SmartApp`
+- camera scanner service
+- scan route renderer
+- scan route controller state
+- rewrite app controller
 - frontend tests
 
 Acceptance:

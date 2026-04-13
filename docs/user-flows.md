@@ -2,9 +2,12 @@
 
 End-to-end documentation of every user flow in Smart DB, traced through both frontend and backend.
 
+Note:
+- This doc now describes the current vanilla TypeScript frontend runtime.
+
 ## 1. Authentication
 
-The entry point is `SmartApp.tsx`. On mount, it calls `GET /api/auth/session` to check for an existing Smart DB session cookie.
+The entry point is `apps/frontend/src/main.ts`, which boots the rewrite controller and immediately calls `GET /api/auth/session` to check for an existing Smart DB session cookie.
 
 **No session**: The user sees a login screen with a single "Continue With SSO" control.
 
@@ -25,7 +28,7 @@ The entry point is `SmartApp.tsx`. On mount, it calls `GET /api/auth/session` to
 ## 2. Dashboard (the authenticated home)
 
 Once authenticated, the user sees:
-- **Header**: Signed-in username, Part-DB connection status (linked/degraded), token expiry, logout button
+- **Header**: Signed-in username, Part-DB connection status (linked/degraded), sync status when applicable, logout button
 - **Metrics bar**: Part type count, instance count, bulk bin count, provisional count, unassigned QR count — all from `GET /api/dashboard`, which runs 5 aggregate `COUNT(*)` queries against SQLite
 - **Four panels**: QR Batch Registration, Scan, Merge, Recent Events
 
@@ -38,7 +41,7 @@ All data refreshes after every mutation via `loadAuthenticatedData()`.
 **Purpose**: Before any physical labeling can happen, QR sticker ranges must be pre-registered. This establishes which codes the system recognizes.
 
 **Flow**:
-1. User fills in prefix (default `"QR"`), start number (default `1001`), and count (default `500`)
+1. User fills in prefix (default `"QR"`), start number (default `1001`), and count (default `25`)
 2. Submit calls `POST /api/qr-batches` with `{ prefix, startNumber, count }`
 3. The route handler overrides `actor` with the authenticated username (the server always uses the session identity)
 4. `InventoryService.registerQrBatch()` runs inside a transaction:

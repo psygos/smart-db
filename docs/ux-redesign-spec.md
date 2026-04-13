@@ -627,7 +627,7 @@ Phase 2 (advanced): Queue mutations in IndexedDB, replay on reconnect.
 | SQLite busy timeout: `PRAGMA busy_timeout = 5000` | `database.ts` | 1 line |
 | Graceful aliases JSON: catch → return `[]` instead of throw | `inventory-service.ts` | 1 line change |
 | QR prefix regex: `/^[A-Za-z0-9_-]+$/` | `schemas.ts` | 1 line |
-| Disable scan button when input empty | `SmartApp.tsx` | 1 attribute |
+| Disable scan button when input empty | scan shell | 1 attribute |
 
 ### 11.2 Corrective Events (Undo Equivalent)
 
@@ -670,7 +670,7 @@ POST /api/qr-codes/:code/void
 
 ### 11.5 Scan History
 
-Maintain a list of the last 20 scanned codes with their results in React state:
+Maintain a list of the last 20 scanned codes with their results in local controller state:
 
 ```
 { code: "QR-1042", mode: "interact", partType: "Arduino Mega", timestamp: "...", entityState: "available" }

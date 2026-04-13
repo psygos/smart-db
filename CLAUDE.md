@@ -37,7 +37,7 @@ Smart DB is an intake-first inventory system for a university makerspace. Monore
 
 - **`packages/contracts`** — Zod schemas, typed errors, Result type, FSM transitions. Both apps import from `@smart-db/contracts`.
 - **`apps/middleware`** — Fastify 5 API + SQLite (Node.js native `node:sqlite`, WAL mode). Port 4000.
-- **`apps/frontend`** — React 19 + Vite phone-first UI. Port 5173.
+- **`apps/frontend`** — TypeScript + HTML/CSS phone-first UI, built with Vite. Port 5173.
 
 ### Deployment Model
 
@@ -59,10 +59,10 @@ Smart DB is an intake-first inventory system for a university makerspace. Monore
 | `apps/middleware/src/partdb/category-resolver.ts` | Category hierarchy with cache |
 | `apps/middleware/src/outbox/partdb-outbox.ts` | Outbox store (enqueue, claim, deliver) |
 | `apps/middleware/src/outbox/partdb-worker.ts` | Background worker draining outbox |
-| `apps/frontend/src/SmartApp.tsx` | Main app shell, all state, all handlers |
-| `apps/frontend/src/tabs/ScanTab.tsx` | Scan + assign + event recording UI |
-| `apps/frontend/src/tabs/InventoryTab.tsx` | Stock-on-hand view |
-| `apps/frontend/src/hooks/useCamera.ts` | Hybrid jsQR + barcode-detector scanner |
+| `apps/frontend/src/rewrite/app-controller.ts` | Main frontend controller, app state, orchestration |
+| `apps/frontend/src/rewrite/render.ts` | DOM-first rendering layer |
+| `apps/frontend/src/rewrite/services/camera-scanner-service.ts` | Hybrid jsQR + barcode-detector scanner |
+| `apps/frontend/src/rewrite/parsers/*` | Parse-first form command modules |
 
 ---
 
@@ -237,7 +237,7 @@ Dependencies are respected: a `create_lot` waits for its `create_part` to be `de
 - **No bidirectional sync**: Part-DB never writes back to SmartDB. It's a one-way mirror.
 - **No speculative abstractions**: Three similar lines of code is better than a premature helper function.
 - **No backwards-compatibility shims**: If something is unused, delete it completely.
-- **No feature flags**: If a feature isn't ready, don't ship it. The scan mode toggle is the one exception (hardcoded to inspect; flip `false` to `true` in SmartApp.tsx line ~501).
+- **No feature flags**: If a feature isn't ready, don't ship it. Keep behavior explicit in the active rewrite runtime.
 - **No CDN or external runtime dependencies**: The app must work on the local 10.42.200.x network with no internet.
 - **No SF Symbols or icon libraries**: Text-only UI. The only icons are the toast status badges (✓ / ! / i) rendered as text in styled circles.
 - **No default locations**: The assign form starts with an empty location. Users pick from the known-locations picker or type a new one.
@@ -284,10 +284,10 @@ Fixed catalog in `schemas.ts`: pcs, g, kg, mg, m, cm, mm, mL, L, oz, lb. Integer
 
 ## Test Conventions
 
-- **100% coverage** enforced by vitest config (excludes App.tsx, auth/types.ts, vite-env.d.ts).
+- **100% coverage** enforced by vitest config (excludes auth/types.ts and vite-env.d.ts).
 - **Frontend tests in jsdom**: Matched by `environmentMatchGlobs` in vitest.config.ts.
 - **Backend tests mock at the REST layer**: `restStub()` returns `{ getJson, getCollection, postJson, patchJson, deleteResource }`.
-- **Frontend tests mock the entire api object**: `apiMock` in App.test.tsx must include ALL methods from `api.ts` including `getKnownLocations` and `getInventorySummary`.
+- **Frontend tests mock the entire api object**: frontend controller/runtime tests must include all methods used from `api.ts`, including `getKnownLocations` and `getInventorySummary`.
 
 ---
 

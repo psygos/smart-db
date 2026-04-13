@@ -8,7 +8,7 @@ Prepared for the Smart DB makerspace inventory system. This report analyzes the 
 
 ### 1.1 Current State
 
-The scan input in `SmartApp.tsx` (line 730-738) is a plain `<input>` element with a submit button. The user must manually type a code like `QR-1042`. On a phone, this means: tap the field, wait for keyboard, type 7+ characters accurately, tap "Open." For the primary interaction of a scanning app, this is catastrophically slow.
+The pre-rewrite scan input was a plain `<input>` element with a submit button. The user had to manually type a code like `QR-1042`. On a phone, this meant: tap the field, wait for keyboard, type 7+ characters accurately, tap "Open." For the primary interaction of a scanning app, this was catastrophically slow.
 
 ### 1.2 Recommended Library: html5-qrcode (or BarcodeDetector API with polyfill)
 
@@ -39,7 +39,7 @@ This keeps the bundle lean for the majority of mobile users (Chrome Android + Sa
 
 ### 1.3 Barcode Format Support
 
-The system mentions "manufacturer barcodes" in the unknown-code flow (line 746-748 of SmartApp.tsx). Support these formats:
+The system mentions manufacturer barcodes in the unknown-code flow. Support these formats:
 
 | Format | Use Case | Priority |
 |--------|----------|----------|
@@ -407,7 +407,7 @@ Tapping a chip fills the input. This eliminates typing for repeated locations.
 If the user scans faster than the server responds (e.g., rapid continuous scanning), the current implementation aborts the previous scan request:
 
 ```typescript
-// SmartApp.tsx lines 402-407
+// legacy frontend scan shell
 scanAbortRef.current?.abort();
 scanRequestRef.current += 1;
 const requestId = scanRequestRef.current;

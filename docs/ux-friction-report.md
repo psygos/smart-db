@@ -1,6 +1,9 @@
 # Smart DB UX Friction Report
 
-Prepared by walking through every user journey in the frontend codebase (`SmartApp.tsx`, `App.tsx`, `api.ts`, `styles.css`, `schemas.ts`) as five distinct personas operating on a phone in a busy makerspace.
+Prepared by walking through the pre-rewrite frontend codebase as five distinct personas operating on a phone in a busy makerspace.
+
+Historical note:
+- This document audits the legacy frontend shell and intentionally retains historical flow observations.
 
 ---
 
@@ -313,7 +316,7 @@ These are friction points that could be fixed with small, low-risk changes:
 
 | # | Quick Win | Fixes | Effort |
 |---|-----------|-------|--------|
-| QW1 | **Move success/error banners to a fixed-position toast at the bottom of the viewport** | P4 | CSS change + minor React refactor. Add `position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%)` with auto-dismiss timer |
+| QW1 | **Move success/error banners to a fixed-position toast at the bottom of the viewport** | P4 | CSS change + minor frontend refactor. Add `position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%)` with auto-dismiss timer |
 | QW2 | **Persist last-used part type and location in `sessionStorage`; pre-fill on next label scan** | P1, P2 | ~20 lines. After successful assignment, save `{ partTypeId, location }` to sessionStorage. On next label mode, pre-select that part type and pre-fill that location. Add a visible "Same as last" shortcut button |
 | QW3 | **Auto-derive nextStatus/nextLevel from event type selection** | P3 | ~15 lines in the `onChange` handler for the event dropdown. When event is "checked_out", set nextStatus to "checked_out". When "returned", set to "available". When "consumed", set to "consumed". Etc. |
 | QW4 | **Auto-increment batch start number after successful registration** | A2 | 1 line: after batch success, `setBatchForm(c => ({...c, startNumber: c.startNumber + c.count}))` |

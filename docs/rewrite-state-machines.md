@@ -7,7 +7,7 @@ Status:
 - frontend cutover complete: the browser entrypoint is now the vanilla TypeScript runtime
 - explicit machine map and typed actors are live for auth and scan flows
 - parse-first command modules are live for assign, event, batch, and merge forms
-- React shell removed from the active frontend
+- legacy shell removed from the active frontend
 
 The rewrite will:
 
@@ -441,4 +441,4 @@ No module will receive a giant mutable props bag.
 4. Port scan/intake flow first
 5. Port inventory and activity routes
 6. Port admin routes
-7. Remove React entrypoint and React dependencies
+7. Remove the old entrypoint and its legacy dependencies

@@ -1,6 +1,9 @@
 # Smart DB Exhaustive FSM Audit
 
-Produced 2026-03-28. Covers every state machine in `SmartApp.tsx` (primary frontend), `App.tsx` (legacy frontend), `inventory-service.ts`, `auth-service.ts`, `partdb-client.ts`, `api.ts`, and all Zod schemas in `packages/contracts`.
+Historical note:
+- This document audits the pre-rewrite frontend shell and retains historical file names and behaviors for context.
+
+Produced 2026-03-28. Covers every state machine in the pre-rewrite frontend shell, `inventory-service.ts`, `auth-service.ts`, `partdb-client.ts`, `api.ts`, and all Zod schemas in `packages/contracts`.
 
 ---
 
@@ -115,7 +118,7 @@ De-auth happens in two paths:
 
 ### 1.8 Two-tab scenario
 
-Each tab has its own React state. They share the same `localStorage` key (`smart-db.partdb-api-token`).
+Each tab had its own local shell state. They shared the same `localStorage` key (`smart-db.partdb-api-token`).
 
 - Tab A logs in: token is saved to localStorage.
 - Tab B opens: `hydrateSessionToken()` reads the same token. Both tabs are authenticated.
@@ -127,7 +130,7 @@ Each tab has its own React state. They share the same `localStorage` key (`smart
 ### 1.9 Token revocation during mid-form-fill
 
 If Part-DB revokes the token while the user is editing a form:
-- The form state is purely local React state. It is not lost until an API call is made.
+- The form state was purely local shell state. It was not lost until an API call was made.
 - When the user submits the form, the API call will return 401.
 - `handleApiFailure()` catches `code === "unauthenticated"` and triggers full de-auth.
 - All form state is lost in `resetAuthenticatedView()`.
@@ -145,7 +148,7 @@ When `handleAuthenticationFailure` fires:
 
 ### 1.11 Gap between "token invalid" and "UI shows login"
 
-The gap is exactly one render cycle (synchronous React state update). `handleAuthenticationFailure()` calls `setAuthState({ status: "unauthenticated" })` which triggers a re-render. The conditional at line 579 (`if (authState.status !== "authenticated")`) immediately shows the login shell on the next render. There is no intermediate "loading" state during this transition.
+The gap is exactly one render cycle in the old shell state model. `handleAuthenticationFailure()` called `setAuthState({ status: "unauthenticated" })`, which immediately swapped to the login shell on the next render. There was no intermediate loading state.
 
 **FINDING**: The transition is atomic from a UI perspective. No gap.
 
@@ -236,7 +239,7 @@ What happens:
 
 This is a single-page application with no client-side routing. There is no "navigate away". The only way to leave the authenticated view is logout/auth failure. On those transitions, `resetAuthenticatedView()` clears `scanResult` to null.
 
-Browser back/forward buttons have no effect on SPA state. A page refresh destroys all React state; `scanResult` is lost. The only persistent state is the auth token in localStorage.
+Browser back/forward buttons have no effect on SPA state. A page refresh destroyed all local shell state; `scanResult` was lost. The only persistent state was the auth token in localStorage.
 
 ---
 
@@ -395,13 +398,13 @@ This validates that `nextLevel` is a valid bulk level string, but does NOT check
 
 ## 5. Form State Machines
 
-### 5.1 Login Form (SmartApp only)
+### 5.1 Login Form (Legacy Shell Only)
 
 #### States
 | State | Conditions |
 |---|---|
 | idle | `authState.status === "unauthenticated"`, `pendingAction === null` |
-| filling | User types in token input (no explicit state; React controlled input) |
+| filling | User types in token input (no explicit machine state; controlled input) |
 | submitting | `pendingAction === "login"`, `authState.status === "authenticating"` |
 | success | `authState.status === "authenticated"` (form disappears from DOM) |
 | error | `authState.status === "unauthenticated"`, `authState.error !== null` |
@@ -462,7 +465,7 @@ This validates that `nextLevel` is a valid bulk level string, but does NOT check
 - No. `pendingAction !== null` disables all submit buttons.
 
 #### Can the user change form values during submit?
-- The React controlled inputs are not explicitly disabled during submit. The user CAN type into fields while the submit is in flight. However, the form reset at line 504 on success will overwrite any concurrent edits.
+- The controlled inputs were not explicitly disabled during submit. The user could still type into fields while the submit was in flight. However, the form reset on success would overwrite any concurrent edits.
 
 **GAP**: Form inputs are not disabled during submission. User edits during in-flight submit are silently lost on success.
 
@@ -520,7 +523,7 @@ So `pendingAction` remains `"event"` throughout the rescan and data reload. **Do
 
 ### 6.1 Architecture
 
-Two independent search machines exist in SmartApp:
+Two independent search machines existed in the legacy shell:
 - `labelSearch: SearchState` with `labelSearchAbortRef` and `labelSearchRequestRef`
 - `mergeSearch: SearchState` with `mergeSearchAbortRef` and `mergeSearchRequestRef`
 
@@ -594,14 +597,14 @@ On failure (not aborted, not auth error):
 - After `loadAuthenticatedData()` completes, if `query` is still empty, `results` is backfilled with `partTypes` from the initial `searchPartTypes("")` call (lines 249-268).
 - For `labelSearch`, when a scan returns mode=label, the results are replaced with `scanResult.suggestions` (line 427-432).
 
-### 6.9 Legacy App.tsx search issues
+### 6.9 Legacy Prototype Search Issues
 
-The legacy `App.tsx` uses a single shared `partTypeQuery` and `partTypeResults` for BOTH the label search and the merge search (line 695-697 share the same `partTypeQuery` input). This means:
+The legacy prototype used a single shared `partTypeQuery` and `partTypeResults` for BOTH the label search and the merge search. This meant:
 - Typing in the merge search panel also changes the label search results.
 - There are no abort controllers or request ordering.
 - Out-of-order responses will corrupt results.
 
-**GAP (legacy only)**: `App.tsx` has a shared search state problem. `SmartApp.tsx` correctly separates them.
+**GAP (legacy only)**: the legacy prototype had a shared search state problem. The later shell separated them correctly.
 
 ---
 
@@ -787,19 +790,19 @@ Any event can be applied to any instance status. A `consumed` item can be `check
 Bulk stock levels can transition in any direction. `empty` -> `full` in a single `level_changed` event. No validation that levels change monotonically or sensibly.
 
 ### G4: nextStatus field is misleading
-**Location**: `inventory-service.ts:345-369`, `SmartApp.tsx:968-984`
+**Location**: `inventory-service.ts:345-369`, legacy shell inventory scan path
 The event form shows a `nextStatus` dropdown for instances, but the middleware hardcodes the resulting status based on the event type (checked_out -> checked_out, returned -> available, etc.). The user's `nextStatus` selection is ignored for all events except `moved` (where the status does not change at all). The dropdown gives the false impression that the user controls the resulting status.
 
 ### G5: Stale scan result after conflict
-**Location**: `SmartApp.tsx:494-516`
+**Location**: legacy shell assignment flow
 If an assignment fails with a ConflictError (QR was assigned by someone else), the scan result still shows label mode for that QR. The user must manually rescan to see the updated state.
 
 ### G6: Message state survives auth transitions
-**Location**: `SmartApp.tsx:198-216`
+**Location**: legacy shell auth restore flow
 `resetAuthenticatedView()` does not clear `message` or `error`. Success/error messages from a previous session can persist on the login screen after a 401 de-auth.
 
 ### G7: No token expiry warning
-**Location**: `SmartApp.tsx:648-650`
+**Location**: legacy shell scan reset flow
 The session expiry time is displayed in the UI, but there is no timer or check that warns the user before the token expires. The user discovers expiry only when their next API call fails with 401.
 
 ### G8: No cross-tab synchronization
@@ -807,15 +810,15 @@ The session expiry time is displayed in the UI, but there is no timer or check t
 The `sessionToken` module-level variable and `localStorage` are not synchronized across tabs. There is no `storage` event listener. Logout in one tab does not propagate to other tabs.
 
 ### G9: Batch form not cleared after success
-**Location**: `SmartApp.tsx:468-487`
+**Location**: legacy shell search flow
 After successful batch registration, the form retains its values. The user could re-submit the same batch.
 
 ### G10: Form inputs not disabled during submission
-**Location**: `SmartApp.tsx` (multiple forms)
+**Location**: legacy shell (multiple forms)
 While mutation buttons are disabled during `pendingAction`, form inputs (text fields, dropdowns) remain editable. User edits during an in-flight mutation are silently lost if the mutation succeeds (form gets reset).
 
 ### G11: Promise.all in loadAuthenticatedData kills all updates on single failure
-**Location**: `SmartApp.tsx:239-276`
+**Location**: legacy shell authenticated bootstrap
 If any of the four parallel requests fails, none of the state updates execute. Independent data (like the dashboard) could have been successfully loaded but is discarded.
 
 ### G12: No fetch timeout
@@ -827,11 +830,11 @@ No explicit timeout is set on fetch requests. A hanging server or network could 
 Events are append-only. There is no mechanism to undo or correct a mistaken event (e.g., accidentally marking an item as consumed).
 
 ### G14: Silent rescan failure is swallowed
-**Location**: `SmartApp.tsx:506-507, 529-530`
+**Location**: legacy shell form reset paths
 After successful assign or event recording, a silent rescan fires. If this rescan fails, the error is caught by `performScan`'s catch block, but since `silent=true`, `pendingAction` is not affected. The error sets the global error banner, but the scan result may show stale data from the previous successful scan rather than the updated state.
 
-### G15: Legacy App.tsx shared search state
-**Location**: `App.tsx:89, 695-697`
+### G15: Legacy Prototype Shared Search State
+**Location**: legacy prototype shared search path
 The legacy app shares a single `partTypeQuery` and `partTypeResults` between the label search and merge search, and has no abort controllers or request ordering. This is a correctness bug in the legacy app.
 
 ### G16: No QR unassignment path

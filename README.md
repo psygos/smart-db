@@ -58,7 +58,7 @@ Phone/Scanner --> Caddy (TLS) --> Fastify API --> SQLite
 |---------|-------|------|
 | `packages/contracts` | Zod, TypeScript | Shared schemas, FSM transition tables, Result types |
 | `apps/middleware` | Fastify 5, node:sqlite | API server, domain logic, outbox worker |
-| `apps/frontend` | React 19, Vite | Phone-first scanning and management UI |
+| `apps/frontend` | TypeScript, HTML, CSS, XState, Vite | Phone-first scanning and management UI |
 
 Deployed via Docker Compose on a self-hosted runner with CI/CD through GitHub Actions. Three containers: Caddy gateway, Node.js middleware, Part-DB.
 

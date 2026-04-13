@@ -196,10 +196,10 @@ Purpose:
 - Update forms and admin UI to speak quantity/category path/unit and show sync state.
 
 Files:
-- `apps/frontend/src/SmartApp.tsx`
-- `apps/frontend/src/SmartApp.helpers.ts`
-- `apps/frontend/src/tabs/ScanTab.tsx`
-- `apps/frontend/src/tabs/AdminTab.tsx`
+- `apps/frontend/src/rewrite/app-controller.ts`
+- `apps/frontend/src/rewrite/presentation-helpers.ts`
+- `apps/frontend/src/rewrite/render.ts`
+- `apps/frontend/src/rewrite/parsers/*`
 - styles/tests
 
 Refinements:
