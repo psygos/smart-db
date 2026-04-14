@@ -665,12 +665,20 @@ export class CameraScannerService {
     try {
       video.muted = true;
       video.playsInline = true;
+      video.autoplay = true;
       video.srcObject = this.stream;
+      // Muted autoplay is allowed without gesture on all modern mobile browsers.
+      // play() can still reject on desktop or restrictive browsers.
       await video.play();
     } catch (error) {
-      const failure = createPlaybackFailure("play-rejected", error);
-      this.failAndStop(failure);
-      return { ok: false, failure };
+      // AbortError means autoplay already started playback — not a real failure.
+      if (error instanceof DOMException && error.name === "AbortError") {
+        // Already playing via autoplay, continue.
+      } else {
+        const failure = createPlaybackFailure("play-rejected", error);
+        this.failAndStop(failure);
+        return { ok: false, failure };
+      }
     }
 
     if (this.destroyed || token !== this.sessionToken) {

@@ -314,7 +314,7 @@ function renderScanner(state: RewriteUiState, isLookingUp: boolean, blockedReaso
         </button>
       ` : ""}
       <div class="viewfinder"${state.camera.activeStream ? "" : " hidden"}>
-        <video id="rewrite-camera-video" playsinline muted></video>
+        <video id="rewrite-camera-video" playsinline muted autoplay></video>
         <div class="viewfinder-guide"></div>
         ${state.camera.lastResult && state.camera.activeStream ? `<div class="scan-flash"></div>` : ""}
       </div>

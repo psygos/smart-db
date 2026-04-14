@@ -1180,10 +1180,8 @@ export class RewriteAppController {
       return;
     }
 
-    // Suppress renders during the camera start flow. The start() call
-    // emits multiple snapshot updates (requestingPermission → ready → scanning)
-    // each of which would trigger render() → innerHTML replacement → destroy
-    // the video element. Instead, batch all updates and render once at the end.
+    // Suppress renders during start() — it emits multiple snapshot updates
+    // that would each trigger innerHTML replacement, destroying the video element.
     this.renderSuppressed = true;
 
     const result = await this.cameraService.start();
@@ -1196,12 +1194,13 @@ export class RewriteAppController {
       return;
     }
 
-    // Single render with the final camera state (scanning + activeStream).
+    // Render once with final camera state. This creates the video element.
     this.render();
 
-    // Now the DOM has a fresh video element. Attach it to the camera service.
+    // Attach the fresh video element and bind the stream.
+    // Use a microtask to ensure the DOM has settled.
     const video = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
-    if (video) {
+    if (video && this.cameraService.getSnapshot().activeStream) {
       await this.cameraService.attachVideoElement(video);
     }
   }
