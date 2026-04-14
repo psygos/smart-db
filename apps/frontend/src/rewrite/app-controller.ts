@@ -112,6 +112,7 @@ export class RewriteAppController {
     label: 0,
     merge: 0,
   };
+  private renderSuppressed = false;
   private readonly cameraService = new CameraScannerService({
     onScan: (code) => {
       void this.handleCameraScan(code);
@@ -1179,26 +1180,29 @@ export class RewriteAppController {
       return;
     }
 
-    const video = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
-    if (video) {
-      const attachResult = await this.cameraService.attachVideoElement(video);
-      if (!attachResult.ok) {
-        this.addToast(attachResult.failure.message, "error");
-        return;
-      }
-    }
+    // Suppress renders during the camera start flow. The start() call
+    // emits multiple snapshot updates (requestingPermission → ready → scanning)
+    // each of which would trigger render() → innerHTML replacement → destroy
+    // the video element. Instead, batch all updates and render once at the end.
+    this.renderSuppressed = true;
 
     const result = await this.cameraService.start();
+
+    this.renderSuppressed = false;
+
     if (!result.ok) {
+      this.render();
       this.addToast(result.failure.message, "error");
       return;
     }
 
-    // After start(), the render cycle may have recreated the video element.
-    // Re-attach the current DOM element so the stream binds to the live node.
-    const freshVideo = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
-    if (freshVideo) {
-      await this.cameraService.attachVideoElement(freshVideo);
+    // Single render with the final camera state (scanning + activeStream).
+    this.render();
+
+    // Now the DOM has a fresh video element. Attach it to the camera service.
+    const video = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
+    if (video) {
+      await this.cameraService.attachVideoElement(video);
     }
   }
 
@@ -1688,27 +1692,31 @@ export class RewriteAppController {
       ...this.state,
       ...nextPatch,
     };
-    this.render();
+    if (!this.renderSuppressed) {
+      this.render();
+    }
   }
 
   private render(): void {
     const focusSnapshot = this.captureFocus();
-    // Preserve the live video element across renders so the camera stream isn't interrupted.
-    // The video element holds the active srcObject — if innerHTML destroys it, the stream dies.
-    const existingVideo = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
-    const hasLiveStream = existingVideo && existingVideo.srcObject;
-    if (hasLiveStream) {
-      existingVideo.remove();
+
+    // If the camera is actively scanning, preserve the live video element.
+    // innerHTML replacement would destroy it and kill the stream.
+    const liveVideo = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
+    const isLive = liveVideo && liveVideo.srcObject;
+    if (isLive) {
+      liveVideo.remove();
     }
+
     this.root.innerHTML = renderApp(this.state);
-    const slot = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
-    if (hasLiveStream && slot) {
-      slot.replaceWith(existingVideo);
-    } else if (slot && this.state.camera.activeStream) {
-      void this.cameraService.attachVideoElement(slot);
-    } else if (!slot) {
-      void this.cameraService.attachVideoElement(null);
+
+    if (isLive) {
+      const placeholder = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
+      if (placeholder) {
+        placeholder.replaceWith(liveVideo);
+      }
     }
+
     this.restoreFocus(focusSnapshot);
   }
 
