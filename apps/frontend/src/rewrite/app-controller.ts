@@ -1191,6 +1191,14 @@ export class RewriteAppController {
     const result = await this.cameraService.start();
     if (!result.ok) {
       this.addToast(result.failure.message, "error");
+      return;
+    }
+
+    // After start(), the render cycle may have recreated the video element.
+    // Re-attach the current DOM element so the stream binds to the live node.
+    const freshVideo = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
+    if (freshVideo) {
+      await this.cameraService.attachVideoElement(freshVideo);
     }
   }
 
@@ -1685,20 +1693,20 @@ export class RewriteAppController {
 
   private render(): void {
     const focusSnapshot = this.captureFocus();
-    const preservedVideo =
-      this.state.camera.activeStream
-        ? this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video")
-        : null;
-    this.root.innerHTML = renderApp(this.state);
-    const nextVideo = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
-    if (preservedVideo && nextVideo && preservedVideo !== nextVideo) {
-      nextVideo.replaceWith(preservedVideo);
+    // Preserve the live video element across renders so the camera stream isn't interrupted.
+    // The video element holds the active srcObject — if innerHTML destroys it, the stream dies.
+    const existingVideo = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
+    const hasLiveStream = existingVideo && existingVideo.srcObject;
+    if (hasLiveStream) {
+      existingVideo.remove();
     }
-    if (this.state.camera.activeStream) {
-      if (!preservedVideo) {
-        void this.cameraService.attachVideoElement(nextVideo);
-      }
-    } else if (!nextVideo) {
+    this.root.innerHTML = renderApp(this.state);
+    const slot = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
+    if (hasLiveStream && slot) {
+      slot.replaceWith(existingVideo);
+    } else if (slot && this.state.camera.activeStream) {
+      void this.cameraService.attachVideoElement(slot);
+    } else if (!slot) {
       void this.cameraService.attachVideoElement(null);
     }
     this.restoreFocus(focusSnapshot);
