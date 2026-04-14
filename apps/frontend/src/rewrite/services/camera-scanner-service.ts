@@ -167,8 +167,6 @@ const DEFAULT_DUPLICATE_WINDOW_MS = 3000;
 const DEFAULT_VIDEO_CONSTRAINTS: MediaStreamConstraints = {
   video: {
     facingMode: "environment",
-    width: { ideal: 720 },
-    height: { ideal: 1280 },
   },
 };
 
