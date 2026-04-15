@@ -72,9 +72,9 @@ export function getAssignFormIssues(form: AssignFormState): AssignFormIssues {
   }
 
   if (form.entityKind === "bulk") {
-    const initialQuantity = parseNonNegativeNumber(form.initialQuantity);
+    const initialQuantity = parsePositiveNumber(form.initialQuantity);
     if (initialQuantity === null) {
-      issues.initialQuantity = "Starting quantity must be zero or greater.";
+      issues.initialQuantity = "Starting quantity must be greater than zero.";
     } else if (unit?.isInteger && !Number.isInteger(initialQuantity)) {
       issues.initialQuantity = `${unit.symbol} quantities must be whole numbers.`;
     }

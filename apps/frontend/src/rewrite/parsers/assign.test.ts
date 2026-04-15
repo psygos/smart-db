@@ -31,6 +31,35 @@ describe("parseAssignForm", () => {
     });
   });
 
+  it("rejects existing bulk assignments when the starting quantity is zero", () => {
+    const result = parseAssignForm({
+      qrCode: "QR-1501",
+      entityKind: "bulk",
+      location: "Shelf A",
+      notes: "",
+      partTypeMode: "existing",
+      existingPartTypeId: "part-bulk-1",
+      initialQuantity: "0",
+      minimumQuantity: "",
+      unitSymbol: "kg",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.error.message).toBe(
+      "Could not parse assignment form: Starting quantity must be greater than zero.",
+    );
+    expect(result.error.issues).toEqual([
+      {
+        path: "initialQuantity",
+        message: "Starting quantity must be greater than zero.",
+      },
+    ]);
+  });
+
   it("allows a new countable part type to start as a bulk pool", () => {
     const result = parseAssignForm({
       qrCode: "QR-2001",

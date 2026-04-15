@@ -152,12 +152,13 @@ describe("schemas", () => {
         qrCode: "QR-1002",
         entityKind: "bulk",
         location: "Bin 4",
-      partType: {
-        kind: "new",
-        canonicalName: "M3 Screw",
-        category: "Fasteners",
-        countable: false,
+        partType: {
+          kind: "new",
+          canonicalName: "M3 Screw",
+          category: "Fasteners",
+          countable: false,
         },
+        initialQuantity: 1,
       }),
     ).toEqual({
       qrCode: "QR-1002",
@@ -178,7 +179,7 @@ describe("schemas", () => {
           isInteger: true,
         },
       },
-      initialQuantity: 0,
+      initialQuantity: 1,
       minimumQuantity: null,
     });
 
@@ -198,6 +199,21 @@ describe("schemas", () => {
 
     expect(() =>
       assignQrRequestSchema.parse({
+        qrCode: "QR-1003A",
+        entityKind: "bulk",
+        location: "Bin 4",
+        partType: {
+          kind: "new",
+          canonicalName: "Zero Bulk",
+          category: "Fasteners",
+          countable: false,
+        },
+        initialQuantity: 0,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      assignQrRequestSchema.parse({
         qrCode: "QR-1004",
         entityKind: "bulk",
         location: "Bin 4",
@@ -212,6 +228,7 @@ describe("schemas", () => {
             isInteger: false,
           },
         },
+        initialQuantity: 1,
       }),
     ).toThrow(/integer unit/i);
   });

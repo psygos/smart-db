@@ -376,7 +376,7 @@ export const bulkAssignQrRequestSchema = z
     location: nonEmptyString,
     notes: nullableLooseString.default(null),
     partType: partTypeDraftSchema,
-    initialQuantity: z.number().nonnegative().default(0),
+    initialQuantity: z.number().positive(),
     minimumQuantity: z.number().nonnegative().nullable().default(null),
   })
   .strict();

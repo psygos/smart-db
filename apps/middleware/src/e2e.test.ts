@@ -249,6 +249,7 @@ describe("E2E: full intake → lifecycle → merge workflow", () => {
         qrCode: "E2E-2",
         entityKind: "bulk",
         location: "Bin 7",
+        initialQuantity: 5,
         partType: {
           kind: "new",
           canonicalName: "M3 Screw",

@@ -732,7 +732,7 @@ export class InventoryService {
           createdAt: timestamp,
         });
       } else {
-        const initialQuantity = requireFiniteNonNegativeQuantity(input.initialQuantity, "initialQuantity");
+        const initialQuantity = requireFinitePositiveQuantity(input.initialQuantity, "initialQuantity");
         const minimumQuantity =
           input.minimumQuantity === null
             ? null
@@ -2157,6 +2157,16 @@ function formatQuantity(value: number): string {
 function requireFiniteNonNegativeQuantity(value: number, field: string): number {
   if (!Number.isFinite(value) || value < 0) {
     throw new InvariantError(`Parsed bulk command is missing a valid ${field}.`, {
+      field,
+    });
+  }
+
+  return value;
+}
+
+function requireFinitePositiveQuantity(value: number, field: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new InvariantError(`Parsed bulk command is missing a positive ${field}.`, {
       field,
     });
   }

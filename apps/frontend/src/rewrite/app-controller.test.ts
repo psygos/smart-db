@@ -131,6 +131,20 @@ const partType: PartType = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const measuredPartType: PartType = {
+  ...partType,
+  id: "part-bulk-1",
+  canonicalName: "Black PLA+",
+  category: "3D Printing",
+  categoryPath: ["Materials", "3D Printing"],
+  countable: false,
+  unit: {
+    symbol: "kg",
+    name: "Kilograms",
+    isInteger: false,
+  },
+};
+
 async function flush() {
   await Promise.resolve();
   await Promise.resolve();
@@ -302,6 +316,72 @@ describe("RewriteAppController", () => {
       "qr-1001",
       expect.objectContaining({ autoIncrement: false }),
     );
+    controller.dispose();
+  });
+
+  it("requires a positive starting quantity for existing bulk ingest", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    apiMock.scan.mockResolvedValueOnce({
+      mode: "label",
+      qrCode: {
+        code: "ESUN-BLACK-PLA",
+        batchId: "external",
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      suggestions: [measuredPartType],
+      partDb: {
+        configured: false,
+        connected: false,
+        message: "not found",
+      },
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('input[name="scanCode"]');
+    expect(scanInput).not.toBeNull();
+    scanInput!.value = "ESUN-BLACK-PLA";
+    scanInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    const scanForm = document.querySelector<HTMLFormElement>('form[data-form="scan"]');
+    expect(scanForm).not.toBeNull();
+    scanForm!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    const selectPart = document.querySelector<HTMLButtonElement>('[data-action="select-existing-part"]');
+    expect(selectPart).not.toBeNull();
+    selectPart!.click();
+    await flush();
+
+    const quantityInput = document.querySelector<HTMLInputElement>('input[name="assign.initialQuantity"]');
+    expect(quantityInput).not.toBeNull();
+    expect(quantityInput!.value).toBe("0");
+
+    const locationInput = document.querySelector<HTMLInputElement>('input[name="assign.location"]');
+    expect(locationInput).not.toBeNull();
+    locationInput!.value = "Shelf A";
+    locationInput!.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const assignForm = document.querySelector<HTMLFormElement>('form[data-form="assign"]');
+    expect(assignForm).not.toBeNull();
+    assignForm!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(apiMock.assignQr).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Starting quantity must be greater than zero.");
     controller.dispose();
   });
 

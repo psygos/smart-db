@@ -85,8 +85,8 @@ export function parseAssignForm(input: unknown): ParseResult<AssignCommand> {
         record,
         "initialQuantity",
         issues,
-        "Starting quantity must be zero or greater.",
-        { nonnegative: true },
+        "Starting quantity must be greater than zero.",
+        { positive: true },
       )
     : null;
   const bulkMinimumQuantity = entityKind === "bulk"

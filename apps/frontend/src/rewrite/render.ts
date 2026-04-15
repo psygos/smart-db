@@ -401,6 +401,34 @@ function renderExistingPartTypePicker(
         Create a variant of "${escapeHtml(selected.canonicalName)}"
       </button>
     ` : ""}
+    ${selected && state.assignForm.entityKind === "bulk" ? `
+      <label class="wide">
+        Starting quantity (${escapeHtml(selected.unit.symbol)})
+        <input
+          type="number"
+          min="${selected.unit.isInteger ? "1" : "0.000001"}"
+          inputmode="decimal"
+          name="assign.initialQuantity"
+          value="${attr(state.assignForm.initialQuantity)}"
+          step="${quantityInputStep(selected.unit.isInteger)}"
+          placeholder="${selected.unit.isInteger ? "1" : "0.1"}"
+        />
+        ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
+      </label>
+      <label class="wide">
+        Low-stock threshold (${escapeHtml(selected.unit.symbol)})
+        <input
+          type="number"
+          min="0"
+          inputmode="decimal"
+          name="assign.minimumQuantity"
+          value="${attr(state.assignForm.minimumQuantity)}"
+          step="${quantityInputStep(selected.unit.isInteger)}"
+          placeholder="Optional"
+        />
+        ${assignIssues.minimumQuantity ? `<span class="field-error">${escapeHtml(assignIssues.minimumQuantity)}</span>` : ""}
+      </label>
+    ` : ""}
   `;
 }
 

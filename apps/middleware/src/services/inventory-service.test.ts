@@ -666,12 +666,12 @@ describe("InventoryService", () => {
         imageUrl: null,
         countable: false,
       },
-      initialQuantity: 0,
+      initialQuantity: 1,
       minimumQuantity: null,
     });
 
     expect(bulkSummary.targetType).toBe("bulk");
-    expect(fallbackBulk.state).toBe("0 pcs on hand");
+    expect(fallbackBulk.state).toBe("1 pcs on hand");
     await expect(service.scanCode("QR-1003")).resolves.toMatchObject({
       mode: "interact",
       availableActions: ["moved", "restocked", "consumed", "stocktaken", "adjusted"],
@@ -1179,6 +1179,38 @@ describe("InventoryService", () => {
         id: assigned.id,
       },
     });
+  });
+
+  it("rejects zero-quantity bulk assignment commands as impossible ingest", () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6400,
+      count: 1,
+    });
+
+    expect(() =>
+      service.assignQr({
+        qrCode: "QR-6400",
+        actor: "labeler",
+        entityKind: "bulk",
+        location: "Shelf A",
+        notes: null,
+        partType: {
+          kind: "new",
+          canonicalName: "Impossible Empty Ingest",
+          category: "Materials",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: false,
+        },
+        initialQuantity: 0,
+        minimumQuantity: null,
+      }),
+    ).toThrowError(InvariantError);
   });
 
   it("rejects ambiguous normalized barcode matches instead of choosing arbitrarily", async () => {
