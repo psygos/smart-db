@@ -129,7 +129,7 @@ describe("AuthService", () => {
     expect(completed.session).toMatchObject({
       subject: "zitadel-user-1",
       username: "labeler",
-      roles: ["smartdb.labeler"],
+      roles: ["smartdb.admin", "smartdb.labeler"],
     });
     expect(service.getSession(completed.sessionId)).toMatchObject({
       username: "labeler",

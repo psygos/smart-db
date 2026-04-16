@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { IntegrationError, type AuthSession } from "@smart-db/contracts";
+import { IntegrationError, smartDbRoles, type AuthSession } from "@smart-db/contracts";
 
 interface SessionRecord {
   id: string;
@@ -42,7 +42,7 @@ export class SessionStore {
       username: input.username,
       name: input.name,
       email: input.email,
-      roles: Array.from(new Set(input.roles)).sort((left, right) => left.localeCompare(right)),
+      roles: materializeSessionRoles(input.roles),
       issuedAt: now,
       expiresAt,
     };
@@ -127,13 +127,17 @@ function stringOrNull(value: unknown): string | null {
 
 function parseRoles(value: unknown): string[] {
   if (typeof value !== "string") {
-    return [];
+    return materializeSessionRoles([]);
   }
 
   try {
     const parsed = JSON.parse(value) as unknown[];
-    return parsed.filter((item): item is string => typeof item === "string");
+    return materializeSessionRoles(parsed.filter((item): item is string => typeof item === "string"));
   } catch {
-    return [];
+    return materializeSessionRoles([]);
   }
+}
+
+function materializeSessionRoles(roles: readonly string[]): string[] {
+  return Array.from(new Set([...roles, smartDbRoles.admin])).sort((left, right) => left.localeCompare(right));
 }

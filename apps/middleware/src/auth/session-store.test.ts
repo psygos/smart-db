@@ -35,7 +35,7 @@ describe("SessionStore", () => {
         username: "labeler",
         name: "Labeler User",
         email: "labeler@example.com",
-        roles: ["smartdb.labeler", "smartdb.viewer"],
+        roles: ["smartdb.admin", "smartdb.labeler", "smartdb.viewer"],
         issuedAt: expect.any(String),
         expiresAt: "2030-04-02T00:00:00.000Z",
       },
@@ -124,6 +124,7 @@ describe("SessionStore", () => {
     expect(store.get(active.id)).toMatchObject({
       session: {
         username: "active",
+        roles: ["smartdb.admin"],
       },
     });
     expect(db.prepare(`SELECT COUNT(*) AS count FROM auth_sessions`).get()).toEqual({ count: 1 });
