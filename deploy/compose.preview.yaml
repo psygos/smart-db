@@ -1,0 +1,47 @@
+# Slim stack for staging and PR previews — no Part-DB.
+# Required env vars:
+#   COMPOSE_PROJECT_NAME  e.g. smartdb-staging or smartdb-pr-42
+#   HTTPS_PORT            e.g. 9443 (staging) or 10042 (PR #42)
+#   CADDY_HOST            IP of this LXC, e.g. 192.168.7.3
+#   SMART_DB_STATE        absolute path to per-environment state dir
+#   SMART_DB_CONFIG       absolute path to dir containing middleware.env
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
+      args:
+        VITE_API_BASE_URL: ""
+        CADDYFILE: deploy/Caddyfile.preview
+    environment:
+      CADDY_HOST: ${CADDY_HOST}
+      CADDY_PORT: ${HTTPS_PORT}
+    depends_on:
+      middleware:
+        condition: service_healthy
+    networks:
+      - smartdb
+    ports:
+      - "${HTTPS_PORT}:${HTTPS_PORT}"
+    restart: unless-stopped
+    volumes:
+      - ${SMART_DB_STATE}/caddy/certs/server.crt:/certs/server.crt:ro
+      - ${SMART_DB_STATE}/caddy/certs/server.key:/certs/server.key:ro
+
+  middleware:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.middleware
+    image: ${COMPOSE_PROJECT_NAME}-middleware:current
+    env_file:
+      - ${SMART_DB_CONFIG}/middleware.env
+    networks:
+      - smartdb
+    restart: unless-stopped
+    volumes:
+      - ${SMART_DB_STATE}/data:/workspace/data
+
+networks:
+  smartdb:
+    driver: bridge

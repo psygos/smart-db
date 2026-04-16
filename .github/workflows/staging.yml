@@ -1,0 +1,91 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [dev]
+
+env:
+  NODE_VERSION: "24"
+  PROJECT: smartdb-staging
+  HTTPS_PORT: "9443"
+  CADDY_HOST: "192.168.7.3"
+  SMART_DB_STATE: /opt/smart-db/state/staging
+  SMART_DB_CONFIG: /opt/smart-db/config/staging
+
+jobs:
+  check:
+    uses: ./.github/workflows/_check.yml
+
+  deploy:
+    name: Deploy → staging-lxc
+    needs: check
+    runs-on: [self-hosted, smartdb-staging-lxc]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Snapshot current image tags for rollback
+        run: |
+          docker tag "${PROJECT}-gateway:current"   "${PROJECT}-gateway:prev"   2>/dev/null || true
+          docker tag "${PROJECT}-middleware:current" "${PROJECT}-middleware:prev" 2>/dev/null || true
+        env:
+          PROJECT: ${{ env.PROJECT }}
+
+      - name: Sync workspace to staging build dir
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            "$GITHUB_WORKSPACE/" /opt/smart-db/builds/staging/
+
+      - name: Ensure state directory exists
+        run: mkdir -p "${{ env.SMART_DB_STATE }}/data"
+
+      - name: Build containers
+        working-directory: /opt/smart-db/builds/staging/deploy
+        run: |
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+          HTTPS_PORT=${{ env.HTTPS_PORT }} \
+          CADDY_HOST=${{ env.CADDY_HOST }} \
+          SMART_DB_STATE=${{ env.SMART_DB_STATE }} \
+          SMART_DB_CONFIG=${{ env.SMART_DB_CONFIG }} \
+            docker compose -f compose.preview.yaml build --no-cache middleware gateway
+
+      - name: Start containers
+        working-directory: /opt/smart-db/builds/staging/deploy
+        run: |
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+          HTTPS_PORT=${{ env.HTTPS_PORT }} \
+          CADDY_HOST=${{ env.CADDY_HOST }} \
+          SMART_DB_STATE=${{ env.SMART_DB_STATE }} \
+          SMART_DB_CONFIG=${{ env.SMART_DB_CONFIG }} \
+            docker compose -f compose.preview.yaml up -d
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -skf "https://${{ env.CADDY_HOST }}:${{ env.HTTPS_PORT }}/health" > /dev/null 2>&1; then
+              echo "Healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check failed after 30s"
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+            docker compose -f /opt/smart-db/builds/staging/deploy/compose.preview.yaml logs middleware --tail 30
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed — rolling back to previous images"
+          docker tag "${PROJECT}-gateway:prev"   "${PROJECT}-gateway:current"   2>/dev/null || true
+          docker tag "${PROJECT}-middleware:prev" "${PROJECT}-middleware:current" 2>/dev/null || true
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+          HTTPS_PORT=${{ env.HTTPS_PORT }} \
+          CADDY_HOST=${{ env.CADDY_HOST }} \
+          SMART_DB_STATE=${{ env.SMART_DB_STATE }} \
+          SMART_DB_CONFIG=${{ env.SMART_DB_CONFIG }} \
+            docker compose -f /opt/smart-db/builds/staging/deploy/compose.preview.yaml up -d --no-build
+        env:
+          PROJECT: ${{ env.PROJECT }}
