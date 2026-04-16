@@ -1311,6 +1311,22 @@ export class InventoryService {
 
     const canonicalName = input.canonicalName.trim().replace(/\s+/g, " ");
     const category = categoryLeafFromPath(categoryPath.value);
+    const conflictingPartType = this.findConflictingSharedPartTypeDefinition(
+      input.partTypeId,
+      canonicalName,
+      categoryPath.value,
+    );
+    if (conflictingPartType) {
+      throw new ConflictError(
+        "A shared part type with this name and category already exists. Reassign this scanned item/bin to that type instead of renaming the shared type.",
+        {
+          partTypeId: input.partTypeId,
+          conflictingPartTypeId: conflictingPartType.id,
+          canonicalName,
+          categoryPath: categoryPath.value,
+        },
+      );
+    }
     const timestamp = nowIso();
     const correlationId = randomUUID();
     const before = {
@@ -2453,6 +2469,24 @@ export class InventoryService {
     }
   }
 
+  private findConflictingSharedPartTypeDefinition(
+    currentPartTypeId: string,
+    canonicalName: string,
+    categoryPath: string[],
+  ): PartType | null {
+    const candidates = this.db
+      .prepare(`
+        SELECT *
+        FROM part_types
+        WHERE id != ?
+          AND LOWER(TRIM(canonical_name)) = LOWER(?)
+      `)
+      .all(currentPartTypeId, canonicalName)
+      .map((row) => mapPartType(row as SqlRow));
+
+    return candidates.find((candidate) => sameCategoryPath(candidate.categoryPath, categoryPath)) ?? null;
+  }
+
   private assertOnlyLabeledHistory(targetType: InventoryTargetKind, targetId: string): void {
     const rows = this.db
       .prepare(`
@@ -2913,6 +2947,14 @@ function requireUnitCompatibleQuantity(
       unit: unit.symbol,
     });
   }
+}
+
+function sameCategoryPath(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((segment, index) => segment.trim().toLowerCase() === (right[index] ?? "").trim().toLowerCase());
 }
 
 export const inventoryServiceTestInternals = {

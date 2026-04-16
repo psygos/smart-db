@@ -17,7 +17,7 @@ import {
 } from "./presentation-helpers";
 import { attr, checked, disabled, escapeHtml, joinHtml, selected } from "./html";
 import type { RewriteUiState, TabId, ToastRecord } from "./ui-state";
-import { getPartDbHealthPill, getPartDbSyncPill } from "./view-helpers";
+import { findSharedTypeConflictCandidates, getPartDbHealthPill, getPartDbSyncPill } from "./view-helpers";
 
 export function renderApp(state: RewriteUiState): string {
   if (state.authState.status === "checking") {
@@ -901,6 +901,13 @@ function scanModeLabel(mode: string): string {
 function renderCorrectionTarget(state: RewriteUiState): string {
   const target = state.correctionUi.target!;
   const targetEntity = target.entity;
+  const usage = state.inventorySummary.find((row) => row.id === targetEntity.partType.id) ?? null;
+  const sharedEditConflicts = findSharedTypeConflictCandidates(
+    state.inventorySummary,
+    targetEntity.partType.id,
+    state.correctionUi.sharedCanonicalName,
+    state.correctionUi.sharedCategory,
+  );
   const compatibleReplacementTypes = (state.correctionUi.search.results.length > 0 ? state.correctionUi.search.results : state.catalogSuggestions)
     .filter((partType) => partType.id !== targetEntity.partType.id)
     .filter((partType) => {
@@ -921,7 +928,7 @@ function renderCorrectionTarget(state: RewriteUiState): string {
       </p>
       <div class="wide mode-toggle" role="radiogroup" aria-label="Correction action">
         <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "reassign")}" class="${state.correctionUi.action === "reassign" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="reassign">Fix this item/bin only</button>
-        <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "editShared")}" class="${state.correctionUi.action === "editShared" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="editShared">Edit shared part type</button>
+        <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "editShared")}" class="${state.correctionUi.action === "editShared" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="editShared">Rename shared type (all linked items)</button>
         <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "reverseIngest")}" class="${state.correctionUi.action === "reverseIngest" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="reverseIngest">Reverse ingest</button>
       </div>
 
@@ -950,6 +957,10 @@ function renderCorrectionTarget(state: RewriteUiState): string {
 
       ${state.correctionUi.action === "editShared" ? `
         <form class="form-grid" data-form="correction-edit-shared">
+          <p class="banner error wide">
+            This renames the shared catalog type itself, not just the scanned item.
+            ${usage ? escapeHtml(` It is currently linked to ${usage.instanceCount} tracked items and ${usage.bins} bulk bins.`) : ""}
+          </p>
           <label class="wide">
             Shared canonical name
             <input name="correction.sharedCanonicalName" value="${attr(state.correctionUi.sharedCanonicalName)}" />
@@ -958,11 +969,24 @@ function renderCorrectionTarget(state: RewriteUiState): string {
             Shared category path
             <input name="correction.sharedCategory" value="${attr(state.correctionUi.sharedCategory)}" />
           </label>
+          ${sharedEditConflicts.length > 0 ? `
+            <div class="wide">
+              <p class="banner error">A matching part type already exists. Reassign this scanned item to it instead of renaming the shared type.</p>
+              <div class="picker" role="listbox" aria-label="Existing matching part types">
+                ${sharedEditConflicts.map((match) => `
+                  <button type="button" role="option" data-action="use-correction-match" data-part-id="${attr(match.id)}" data-query="${attr(match.canonicalName)}">
+                    <strong>${escapeHtml(match.canonicalName)}</strong>
+                    <span>${escapeHtml(formatCategoryPath(match.categoryPath))}</span>
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          ` : ""}
           <label class="wide">
             Reason
             <textarea name="correction.reason">${escapeHtml(state.correctionUi.reason)}</textarea>
           </label>
-          <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Edit shared part type"}</button>
+          <button type="submit" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
         </form>
       ` : ""}
 

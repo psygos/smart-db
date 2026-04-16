@@ -52,6 +52,7 @@ import {
 import {
   buildDefaultEventFormForEntity,
   consumeAuthError,
+  findSharedTypeConflictCandidates,
   hasInProgressScanWork,
 } from "./view-helpers";
 
@@ -267,6 +268,26 @@ export class RewriteAppController {
               replacementPartTypeId: actionEl.dataset.partId,
             },
           });
+        }
+        break;
+      case "use-correction-match":
+        if (actionEl.dataset.partId) {
+          this.patch({
+            correctionUi: {
+              ...this.state.correctionUi,
+              action: "reassign",
+              replacementPartTypeId: actionEl.dataset.partId,
+              reason: "",
+              search: {
+                ...this.state.correctionUi.search,
+                query: actionEl.dataset.query ?? "",
+                results: [...this.state.catalogSuggestions],
+                status: "idle",
+                error: null,
+              },
+            },
+          });
+          void this.performSearch("correction", actionEl.dataset.query ?? "");
         }
         break;
       case "select-existing-part":
@@ -1394,6 +1415,7 @@ export class RewriteAppController {
           scanCode: code,
           target: response,
           history,
+          action: "reassign",
           search: {
             query: "",
             results: [...this.state.catalogSuggestions],
@@ -1488,6 +1510,28 @@ export class RewriteAppController {
       });
       if (!parsed.ok) {
         this.addToast(this.failureMessage(parsed.error), "error");
+        return;
+      }
+
+      const conflicts = this.findCorrectionSharedEditConflicts();
+      if (conflicts.length > 0) {
+        this.addToast(
+          `A part type named '${conflicts[0]!.canonicalName}' already exists in ${conflicts[0]!.categoryPath.join(" / ")}. Use 'Fix this item/bin only' to reassign this scanned item instead of renaming the shared type.`,
+          "error",
+        );
+        return;
+      }
+
+      const usage = this.state.inventorySummary.find((row) => row.id === target.entity.partType.id);
+      const linkedCount = (usage?.bins ?? 0) + (usage?.instanceCount ?? 0);
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm(
+          linkedCount > 0
+            ? `Rename the shared type '${target.entity.partType.canonicalName}' for ${linkedCount} linked inventory rows? This is not item-only.`
+            : `Rename the shared type '${target.entity.partType.canonicalName}'? This changes the catalog definition itself, not just the scanned item.`,
+        )
+      ) {
         return;
       }
 
@@ -2030,6 +2074,20 @@ export class RewriteAppController {
     return failure.kind === "parse"
       ? failure.issues[0]?.message ?? failure.message
       : failure.message;
+  }
+
+  private findCorrectionSharedEditConflicts() {
+    const target = this.state.correctionUi.target;
+    if (!target) {
+      return [];
+    }
+
+    return findSharedTypeConflictCandidates(
+      this.state.inventorySummary,
+      target.entity.partType.id,
+      this.state.correctionUi.sharedCanonicalName,
+      this.state.correctionUi.sharedCategory,
+    );
   }
 
   private patch(nextPatch: Partial<RewriteUiState>): void {

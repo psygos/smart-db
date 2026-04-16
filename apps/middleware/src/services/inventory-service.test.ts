@@ -1346,6 +1346,75 @@ describe("InventoryService", () => {
     expect(service.getCorrectionHistory("part_type", entity.partType.id)).toHaveLength(1);
   });
 
+  it("rejects shared type renames that would collide with an existing seeded type", () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6610,
+      count: 2,
+    });
+
+    const wrong = service.assignQr({
+      qrCode: "QR-6610",
+      actor: "labeler",
+      entityKind: "instance",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "6000 RPM Motor",
+        category: "Motors / DC",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+      },
+      initialStatus: "available",
+    });
+
+    const seededEntity = service.assignQr({
+      qrCode: "QR-6611",
+      actor: "labeler",
+      entityKind: "instance",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "60 RPM Motor",
+        category: "Motors / DC",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+      },
+      initialStatus: "available",
+    });
+    const seeded = service.reverseIngestAssignment({
+      qrCode: "QR-6611",
+      assignedKind: "instance",
+      assignedId: seededEntity.id,
+      actor: "admin",
+      reason: "Keep as zero-stock seed type",
+    });
+
+    expect(() =>
+      service.editPartTypeDefinition({
+        partTypeId: wrong.partType.id,
+        expectedUpdatedAt: wrong.partType.updatedAt,
+        canonicalName: "60 RPM Motor",
+        category: "Motors / DC",
+        actor: "admin",
+        reason: "Test rename collision",
+      }),
+    ).toThrowError(ConflictError);
+
+    expect(service.searchPartTypes("6000 RPM Motor").map((partType) => partType.id)).toContain(wrong.partType.id);
+    expect(seeded.qrCode.status).toBe("printed");
+    expect(service.searchPartTypes("60 RPM Motor")).toHaveLength(1);
+  });
+
   it("reverses a fresh ingest, returns the QR to printed, and records a correction event", () => {
     const { service } = makeService();
 

@@ -3,11 +3,13 @@ import type {
   PartDbSyncStatusResponse,
   ScanResponse,
 } from "@smart-db/contracts";
+import { parseCategoryPathInput } from "@smart-db/contracts";
 import type {
   AssignFormState,
   EventFormState,
 } from "./presentation-helpers";
 import { defaultAssignForm, defaultEventForm } from "./ui-state";
+import type { InventorySummaryRow } from "../api";
 
 export function getPartDbHealthPill(
   status: PartDbConnectionStatus | null,
@@ -133,4 +135,35 @@ export function prefersReducedMotion(): boolean {
     typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
     : false;
+}
+
+export function findSharedTypeConflictCandidates(
+  inventorySummary: readonly InventorySummaryRow[],
+  currentPartTypeId: string,
+  canonicalName: string,
+  category: string,
+): InventorySummaryRow[] {
+  const normalizedName = canonicalName.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!normalizedName) {
+    return [];
+  }
+
+  const parsedCategory = parseCategoryPathInput(category);
+  if (!parsedCategory.ok) {
+    return [];
+  }
+
+  return inventorySummary.filter((row) =>
+    row.id !== currentPartTypeId &&
+    row.canonicalName.trim().replace(/\s+/g, " ").toLowerCase() === normalizedName &&
+    sameCategoryPath(row.categoryPath, parsedCategory.value)
+  );
+}
+
+function sameCategoryPath(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((segment, index) => segment.trim().toLowerCase() === (right[index] ?? "").trim().toLowerCase());
 }
