@@ -147,7 +147,7 @@ export const defaultAssignForm: AssignFormState = {
   countable: true,
   unitSymbol: "pcs",
   initialStatus: "available",
-  initialQuantity: "0",
+  initialQuantity: "1",
   minimumQuantity: "",
 };
 

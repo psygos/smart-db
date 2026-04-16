@@ -434,7 +434,9 @@ describe("RewriteAppController", () => {
 
     const quantityInput = document.querySelector<HTMLInputElement>('input[name="assign.initialQuantity"]');
     expect(quantityInput).not.toBeNull();
-    expect(quantityInput!.value).toBe("0");
+    expect(quantityInput!.value).toBe("1");
+    quantityInput!.value = "0";
+    quantityInput!.dispatchEvent(new Event("input", { bubbles: true }));
 
     const locationInput = document.querySelector<HTMLInputElement>('input[name="assign.location"]');
     expect(locationInput).not.toBeNull();

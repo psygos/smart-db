@@ -481,7 +481,7 @@ function renderNewPartTypeForm(
       </label>
       <label>
         Starting quantity
-        <input type="number" min="0" inputmode="decimal" name="assign.initialQuantity" value="${attr(state.assignForm.initialQuantity)}" step="${quantityInputStep((measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger)}" placeholder="0" />
+        <input type="number" min="${(measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger ? "1" : "0.000001"}" inputmode="decimal" name="assign.initialQuantity" value="${attr(state.assignForm.initialQuantity)}" step="${quantityInputStep((measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger)}" placeholder="${(measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger ? "1" : "0.1"}" />
         ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
       </label>
     ` : ""}

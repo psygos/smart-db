@@ -1945,7 +1945,7 @@ export class RewriteAppController {
         countable: selected.countable,
         unitSymbol: selected.unit.symbol,
         initialStatus: "available",
-        initialQuantity: "0",
+        initialQuantity: "1",
         minimumQuantity: "",
       },
     });
