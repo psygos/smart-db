@@ -18,9 +18,9 @@ jobs:
           cp deploy/Caddyfile.preview-router /opt/smart-db/router/Caddyfile.preview-router
           cp deploy/compose.preview-router.yaml /opt/smart-db/router/compose.preview-router.yaml
 
-      - name: Start preview router
+      - name: Start (or restart) preview router
         working-directory: /opt/smart-db/router
-        run: docker compose -f compose.preview-router.yaml up -d
+        run: docker compose -f compose.preview-router.yaml up -d --force-recreate
 
       - name: Verify
         run: |
