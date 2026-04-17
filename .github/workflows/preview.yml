@@ -135,18 +135,38 @@ jobs:
           PREVIEW_URL="https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}"
           COMMIT="${{ github.event.pull_request.head.sha }}"
           BODY="### Preview deployed
-          **URL:** ${PREVIEW_URL}
-          **Commit:** \`${COMMIT:0:7}\`
+**URL:** ${PREVIEW_URL}
+**Commit:** \`${COMMIT:0:7}\`
 
-          > Data resets on every push. Torn down when this PR closes."
+> Data resets on every push. Torn down when this PR closes."
 
-          gh pr comment ${{ env.PR_N }} \
-            --repo "${{ github.repository }}" \
-            --edit-last \
-            --body "$BODY" 2>/dev/null || \
-          gh pr comment ${{ env.PR_N }} \
-            --repo "${{ github.repository }}" \
-            --body "$BODY"
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$BODY")
+
+          EXISTING=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.PR_N }}/comments?per_page=100" \
+            | python3 -c "
+import json,sys
+cs=[c for c in json.load(sys.stdin) if '### Preview' in c.get('body','')]
+print(cs[-1]['id'] if cs else '')
+" 2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            curl -sf -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/comments/$EXISTING" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null
+          else
+            curl -sf -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.PR_N }}/comments" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null
+          fi
 
   teardown:
     name: Tear down preview
@@ -175,8 +195,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr comment ${{ env.PR_N }} \
-            --repo "${{ github.repository }}" \
-            --edit-last \
-            --body "### Preview torn down
-          PR #${{ env.PR_N }} closed — preview environment removed." 2>/dev/null || true
+          BODY="### Preview torn down
+PR #${{ env.PR_N }} closed — preview environment removed."
+
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$BODY")
+
+          EXISTING=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.PR_N }}/comments?per_page=100" \
+            | python3 -c "
+import json,sys
+cs=[c for c in json.load(sys.stdin) if '### Preview' in c.get('body','')]
+print(cs[-1]['id'] if cs else '')
+" 2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            curl -sf -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/comments/$EXISTING" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null || true
+          fi
