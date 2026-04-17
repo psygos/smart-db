@@ -1,0 +1,29 @@
+{
+	default_sni 192.168.7.3
+	email off
+}
+
+https://192.168.7.3:9444 {
+	tls /certs/server.crt /certs/server.key
+
+	# /pr/5 (no trailing slash) → redirect to /pr/5/
+	@preview_bare path_regexp pbare ^/pr/(\d+)$
+	redir @preview_bare /pr/{http.regexp.pbare.1}/ 302
+
+	# /pr/5/... → strip prefix, proxy to that PR's gateway container
+	@preview path_regexp pr ^/pr/(\d+)(/.*)$
+	handle @preview {
+		rewrite * {http.regexp.pr.2}
+		reverse_proxy smartdb-pr-{http.regexp.pr.1}-gateway-1:443 {
+			transport http {
+				tls_insecure_skip_verify
+				tls_server_name 192.168.7.3
+			}
+		}
+	}
+
+	# Anything else → 404
+	handle {
+		respond "Not found" 404
+	}
+}

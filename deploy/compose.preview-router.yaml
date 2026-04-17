@@ -1,0 +1,24 @@
+# Persistent reverse-proxy that routes all PR previews through a single
+# stable origin: https://192.168.7.3:9444/pr/{N}/
+#
+# One-time setup on the runner host:
+#   docker network create smartdb-previews
+#   docker compose -f deploy/compose.preview-router.yaml up -d
+
+services:
+  preview-router:
+    image: caddy:2.10-alpine
+    ports:
+      - "9444:9444"
+    volumes:
+      - ./Caddyfile.preview-router:/etc/caddy/Caddyfile:ro
+      - /opt/smart-db/state/staging/caddy/certs/server.crt:/certs/server.crt:ro
+      - /opt/smart-db/state/staging/caddy/certs/server.key:/certs/server.key:ro
+    networks:
+      - smartdb-previews
+    restart: unless-stopped
+
+networks:
+  smartdb-previews:
+    external: true
+    name: smartdb-previews
