@@ -68,6 +68,7 @@ type RewritePatch = {
 
 export class RewriteAppController {
   private state: RewriteUiState = {
+    theme: this.restoreTheme(),
     authState: {
       status: "checking",
       session: null,
@@ -157,6 +158,7 @@ export class RewriteAppController {
     window.addEventListener("online", this.handleOnline);
     window.addEventListener("offline", this.handleOffline);
 
+    this.applyThemeToDOM(this.state.theme);
     this.render();
     void this.restoreSession(this.authAbortController.signal, consumeAuthError());
   }
@@ -219,6 +221,9 @@ export class RewriteAppController {
         break;
       case "logout":
         void this.handleLogout();
+        break;
+      case "toggle-theme":
+        this.setTheme(this.state.theme === "dark" ? "light" : "dark");
         break;
       case "dismiss-toast":
         if (actionEl.dataset.toastId) {
@@ -2026,6 +2031,35 @@ export class RewriteAppController {
   private restoreScanMode(): "increment" | "inspect" {
     // Always start in view-only mode. User opts into auto-count per session.
     return "inspect";
+  }
+
+  private applyThemeToDOM(theme: "light" | "dark", animated = false): void {
+    if (animated) {
+      document.documentElement.classList.add("theme-transition");
+      window.setTimeout(() => document.documentElement.classList.remove("theme-transition"), 250);
+    }
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.content = theme === "dark" ? "#111113" : "#fafafa";
+  }
+
+  private setTheme(theme: "light" | "dark"): void {
+    try {
+      localStorage.setItem("smartdb:theme", theme);
+    } catch {}
+    this.applyThemeToDOM(theme, true);
+    this.patch({ theme });
+  }
+
+  private restoreTheme(): "light" | "dark" {
+    try {
+      const stored = localStorage.getItem("smartdb:theme");
+      if (stored === "dark" || stored === "light") return stored;
+    } catch {}
+    if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+      return "dark";
+    }
+    return "light";
   }
 
   private addToast(message: string, type: ToastRecord["type"]): void {

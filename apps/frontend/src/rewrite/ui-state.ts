@@ -93,6 +93,7 @@ export interface CorrectionUiState {
 }
 
 export interface RewriteUiState {
+  readonly theme: "light" | "dark";
   readonly authState: AuthViewState;
   readonly dashboard: DashboardSummary | null;
   readonly partDbStatus: PartDbConnectionStatus | null;
