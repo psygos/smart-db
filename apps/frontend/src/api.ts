@@ -86,7 +86,7 @@ async function request<TSchema extends z.ZodTypeAny>(
     ...restInit,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      ...(restInit.body != null ? { "Content-Type": "application/json" } : {}),
       ...(initHeaders ?? {}),
     },
     signal: combinedSignal,

@@ -23,7 +23,6 @@ describe("parseConfig", () => {
         issuer: null,
         clientId: null,
         clientSecret: null,
-        postLogoutRedirectUri: null,
         roleClaim: null,
         sessionCookieSecret: null,
       },
