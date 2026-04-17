@@ -76,6 +76,9 @@ jobs:
       - name: Write preview config
         run: |
           mkdir -p /opt/smart-db/config/preview-${{ env.PR_N }}
+          # GitHub does not pass secrets to fork PR workflows.
+          # Zitadel credentials are read from a runner-local file instead.
+          source /opt/smart-db/config/zitadel.env
           SESSION_COOKIE_SECRET=$(openssl rand -base64 48)
           printf '%s\n' \
             "PORT=4000" \
@@ -85,10 +88,10 @@ jobs:
             "PARTDB_BASE_URL=" \
             "PARTDB_API_TOKEN=" \
             "SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET}" \
-            "ZITADEL_ISSUER=${{ secrets.ZITADEL_ISSUER }}" \
-            "ZITADEL_CLIENT_ID=${{ secrets.ZITADEL_CLIENT_ID }}" \
-            "ZITADEL_CLIENT_SECRET=${{ secrets.ZITADEL_CLIENT_SECRET }}" \
-            "ZITADEL_ROLE_CLAIM=${{ secrets.ZITADEL_ROLE_CLAIM }}" \
+            "ZITADEL_ISSUER=${ZITADEL_ISSUER}" \
+            "ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID}" \
+            "ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET}" \
+            "ZITADEL_ROLE_CLAIM=${ZITADEL_ROLE_CLAIM}" \
             > /opt/smart-db/config/preview-${{ env.PR_N }}/middleware.env
 
       - name: Ensure state directory exists
