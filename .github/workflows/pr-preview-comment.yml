@@ -1,0 +1,87 @@
+name: PR Preview Comment
+
+on:
+  workflow_run:
+    workflows: ["PR Preview"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  comment:
+    name: Post preview comment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download metadata artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ARTIFACT_ID=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
+            | python3 -c "import json,sys;arts=json.load(sys.stdin)['artifacts'];a=next((x for x in arts if x['name']=='pr-preview-meta'),None);print(a['id'] if a else '')")
+
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "No pr-preview-meta artifact found — skipping."
+            exit 0
+          fi
+
+          curl -sf -L \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" \
+            -o meta.zip
+
+          unzip -p meta.zip > meta.env
+
+      - name: Post or update PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ ! -f meta.env ]; then exit 0; fi
+          source meta.env
+
+          if [ "$EVENT" = "deploy" ]; then
+            if [ "$CONCLUSION" = "success" ]; then
+              BODY=$(printf '### Preview deployed\n**URL:** %s\n**Commit:** `%s`\n\n> Data resets on every push. Torn down when this PR closes.' \
+                "$PREVIEW_URL" "${COMMIT:0:7}")
+            else
+              BODY=$(printf '### Preview deploy failed\n**Commit:** `%s`\n\n[View run](%s) for details.' \
+                "${COMMIT:0:7}" "$RUN_URL")
+            fi
+          elif [ "$EVENT" = "teardown" ]; then
+            BODY=$(printf '### Preview torn down\nPR #%s closed — preview environment removed.' "$PR_N")
+          else
+            exit 0
+          fi
+
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$BODY")
+
+          EXISTING=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_N}/comments?per_page=100" \
+            | python3 -c "import json,sys;cs=[c for c in json.load(sys.stdin) if '### Preview' in c.get('body','')];print(cs[-1]['id'] if cs else '')" \
+            2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            curl -sf -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/comments/$EXISTING" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null
+          else
+            curl -sf -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${PR_N}/comments" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null
+          fi
