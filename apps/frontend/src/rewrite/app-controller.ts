@@ -53,6 +53,7 @@ import {
   defaultBulkQueueState,
   defaultCameraState,
   defaultScanEditState,
+  defaultScanLocationsState,
   defaultScanMode,
   defaultEventForm,
   defaultInventoryUiState,
@@ -112,6 +113,7 @@ export class RewriteAppController {
     inventorySummary: [],
     inventoryUi: defaultInventoryUiState,
     scanEdit: defaultScanEditState,
+    scanLocations: defaultScanLocationsState,
     provisionalPartTypes: [],
     labelSearch: defaultSearchState,
     mergeSearch: defaultSearchState,
@@ -157,6 +159,8 @@ export class RewriteAppController {
     bulkLabel: 0,
     edit: 0,
   };
+  private scanLocationsAbortController: AbortController | null = null;
+  private scanLocationsRequestId = 0;
   private renderSuppressed = false;
   private readonly cameraService = new CameraScannerService({
     onScan: (code) => {
@@ -227,6 +231,7 @@ export class RewriteAppController {
     this.searchControllers.merge?.abort();
     this.searchControllers.bulkLabel?.abort();
     this.searchControllers.edit?.abort();
+    this.scanLocationsAbortController?.abort();
     this.scanAbortController?.abort();
     this.authActor.stop();
     this.scanActor.stop();
@@ -962,6 +967,7 @@ export class RewriteAppController {
     this.searchControllers.merge?.abort();
     this.searchControllers.bulkLabel?.abort();
     this.searchControllers.edit?.abort();
+    this.scanLocationsAbortController?.abort();
     this.scanAbortController?.abort();
     this.bulkQueueActor.send({ type: "QUEUE.CLEAR_REQUESTED" });
     this.patch({
@@ -1400,8 +1406,48 @@ export class RewriteAppController {
       scanHistory: nextHistory,
       eventForm: buildDefaultEventFormForEntity(response.entity),
     });
+    void this.loadScanLocations(response.entity.partType.id);
     if (response.entity.targetType === "bulk" && (response as { autoIncremented?: boolean }).autoIncremented) {
       this.addToast(`+1 ${response.entity.partType.canonicalName} (now ${response.entity.quantity ?? "?"})`, "success");
+    }
+  }
+
+  private async loadScanLocations(partTypeId: string): Promise<void> {
+    this.scanLocationsAbortController?.abort();
+    const controller = new AbortController();
+    this.scanLocationsAbortController = controller;
+    this.scanLocationsRequestId += 1;
+    const requestId = this.scanLocationsRequestId;
+
+    this.patch({
+      scanLocations: { status: "loading", partTypeId },
+    });
+
+    try {
+      const data = await api.getPartTypeItems(partTypeId);
+      if (requestId !== this.scanLocationsRequestId) {
+        return;
+      }
+      this.patch({
+        scanLocations: { status: "ready", partTypeId, data },
+      });
+    } catch (caught) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (requestId !== this.scanLocationsRequestId) {
+        return;
+      }
+      if (this.handleApiFailure(caught)) {
+        return;
+      }
+      this.patch({
+        scanLocations: {
+          status: "error",
+          partTypeId,
+          message: errorMessage(caught),
+        },
+      });
     }
   }
 

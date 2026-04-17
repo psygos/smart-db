@@ -176,6 +176,20 @@ export type ScanEditForm =
       readonly reason: string;
     };
 
+export type ScanLocationsState =
+  | { readonly status: "idle" }
+  | { readonly status: "loading"; readonly partTypeId: string }
+  | {
+      readonly status: "ready";
+      readonly partTypeId: string;
+      readonly data: PartTypeItemsResponse;
+    }
+  | {
+      readonly status: "error";
+      readonly partTypeId: string;
+      readonly message: string;
+    };
+
 export type ScanEditState =
   | { readonly status: "closed" }
   | {
@@ -199,6 +213,7 @@ export interface RewriteUiState {
   readonly inventorySummary: readonly InventorySummaryRow[];
   readonly inventoryUi: InventoryUiState;
   readonly scanEdit: ScanEditState;
+  readonly scanLocations: ScanLocationsState;
   readonly provisionalPartTypes: readonly PartType[];
   readonly labelSearch: SearchState;
   readonly mergeSearch: SearchState;
@@ -318,6 +333,10 @@ export const defaultInventoryUiState: InventoryUiState = {
 
 export const defaultScanEditState: ScanEditState = {
   status: "closed",
+};
+
+export const defaultScanLocationsState: ScanLocationsState = {
+  status: "idle",
 };
 
 export function makeReassignForm(): Extract<ScanEditForm, { action: "reassign" }> {

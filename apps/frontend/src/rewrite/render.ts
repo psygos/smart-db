@@ -870,6 +870,7 @@ function renderInteractCard(
           ${state.pendingAction === "event" ? "Saving..." : escapeHtml(`Confirm ${actionLabel(state.eventForm.event)}`)}
         </button>
       </form>
+      ${renderScanLocations(state)}
       <div class="event-list">
         ${state.scanResult.recentEvents.map((stockEvent) => `
           <article>
@@ -883,6 +884,57 @@ function renderInteractCard(
         ? `<button type="button" class="disclosure" data-action="scan-edit-open" ${disabled(state.pendingAction !== null)}>Edit this part</button>`
         : renderScanEditPanel(state)}
     </div>
+  `;
+}
+
+function renderScanLocations(state: RewriteUiState): string {
+  if (!state.scanResult || state.scanResult.mode !== "interact") {
+    return "";
+  }
+  const locations = state.scanLocations;
+  const currentPartTypeId = state.scanResult.entity.partType.id;
+  const scannedId = state.scanResult.entity.id;
+  const unit = state.scanResult.entity.partType.unit;
+
+  if (locations.status === "idle") {
+    return "";
+  }
+  if (locations.partTypeId !== currentPartTypeId) {
+    return "";
+  }
+  if (locations.status === "loading") {
+    return `<p class="muted-copy" style="margin-top:0.5rem">Loading other locations...</p>`;
+  }
+  if (locations.status === "error") {
+    return `<p class="banner error" style="margin-top:0.5rem">${escapeHtml(locations.message)}</p>`;
+  }
+  const { bulkStocks, instances } = locations.data;
+  const total = bulkStocks.length + instances.length;
+  if (total <= 1) {
+    return `<p class="muted-copy" style="margin-top:0.5rem">No other ${escapeHtml(state.scanResult.entity.partType.canonicalName)} on record.</p>`;
+  }
+
+  return `
+    <section class="scan-locations" aria-label="Other locations for this part" style="margin-top:0.75rem">
+      <p class="muted-copy">At ${total} places:</p>
+      <ul class="inventory-detail-list">
+        ${bulkStocks.map((bulk) => `
+          <li class="inventory-detail-item${bulk.id === scannedId ? " selected" : ""}">
+            <code>${escapeHtml(bulk.qrCode)}</code>
+            <span>${escapeHtml(bulk.location)}</span>
+            <strong>${escapeHtml(String(bulk.quantity))} ${escapeHtml(unit.symbol)}</strong>
+          </li>
+        `).join("")}
+        ${instances.map((instance) => `
+          <li class="inventory-detail-item${instance.id === scannedId ? " selected" : ""}">
+            <code>${escapeHtml(instance.qrCode)}</code>
+            <span>${escapeHtml(instance.location)}</span>
+            <strong>${escapeHtml(instance.status)}</strong>
+            ${instance.assignee ? `<span>${escapeHtml(instance.assignee)}</span>` : ""}
+          </li>
+        `).join("")}
+      </ul>
+    </section>
   `;
 }
 

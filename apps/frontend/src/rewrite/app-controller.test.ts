@@ -1135,6 +1135,71 @@ describe("RewriteAppController", () => {
     controller.dispose();
   });
 
+  it("renders every location a scanned part type is stored at", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    apiMock.scan.mockResolvedValueOnce({
+      mode: "interact",
+      qrCode: {
+        code: "QR-9200",
+        batchId: "batch-1",
+        status: "assigned",
+        assignedKind: "bulk",
+        assignedId: "bulk-9200",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      entity: {
+        id: "bulk-9200",
+        targetType: "bulk",
+        qrCode: "QR-9200",
+        partType: measuredPartType,
+        location: "Shelf A",
+        state: "1.5 kg",
+        assignee: null,
+        partDbSyncStatus: "never",
+        quantity: 1.5,
+        minimumQuantity: 0.5,
+      },
+      recentEvents: [],
+      availableActions: ["moved", "restocked", "consumed", "stocktaken", "adjusted"],
+      partDb: { configured: false, connected: false, message: "not found" },
+    });
+    apiMock.getPartTypeItems.mockResolvedValueOnce({
+      bulkStocks: [
+        { id: "bulk-9200", qrCode: "QR-9200", quantity: 1.5, location: "Shelf A", minimumQuantity: 0.5 },
+        { id: "bulk-9201", qrCode: "QR-9201", quantity: 2, location: "Shelf B", minimumQuantity: null },
+      ],
+      instances: [],
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('input[name="scanCode"]')!;
+    scanInput.value = "QR-9200";
+    scanInput.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLFormElement>('form[data-form="scan"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(apiMock.getPartTypeItems).toHaveBeenCalledWith(measuredPartType.id);
+    const locationsList = document.querySelector<HTMLUListElement>(".scan-locations .inventory-detail-list");
+    expect(locationsList).not.toBeNull();
+    expect(locationsList!.querySelectorAll("li")).toHaveLength(2);
+    expect(document.body.textContent).toContain("At 2 places");
+    expect(document.body.textContent).toContain("Shelf B");
+    controller.dispose();
+  });
+
   it("closes the scan-edit panel and discards unsaved form fields", async () => {
     const { startRewriteApp } = await import("./app-controller");
     apiMock.getSession.mockResolvedValueOnce({
