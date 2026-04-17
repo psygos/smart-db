@@ -20,5 +20,6 @@ RUN pnpm --filter @smart-db/frontend build
 
 FROM caddy:2.10-alpine
 
-COPY deploy/Caddyfile /etc/caddy/Caddyfile
+ARG CADDYFILE=deploy/Caddyfile
+COPY ${CADDYFILE} /etc/caddy/Caddyfile
 COPY --from=build /workspace/apps/frontend/dist /srv

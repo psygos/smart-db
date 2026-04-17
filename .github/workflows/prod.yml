@@ -1,0 +1,79 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: "24"
+  PROJECT: smartdb-prod
+
+jobs:
+  check:
+    uses: ./.github/workflows/_check.yml
+
+  deploy:
+    name: Deploy → prod-lxc
+    needs: check
+    runs-on: [self-hosted, smartdb]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Snapshot current image tags for rollback
+        run: |
+          docker tag "${PROJECT}-gateway:current"    "${PROJECT}-gateway:prev"    2>/dev/null || true
+          docker tag "${PROJECT}-middleware:current"  "${PROJECT}-middleware:prev"  2>/dev/null || true
+        env:
+          PROJECT: ${{ env.PROJECT }}
+
+      - name: Sync workspace to server
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='deploy/state' \
+            --exclude='deploy/config' \
+            "$GITHUB_WORKSPACE/" /opt/smart-db/
+
+      - name: Build containers
+        working-directory: /opt/smart-db/deploy
+        run: |
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+            docker compose build --no-cache middleware gateway
+
+      - name: Start containers
+        working-directory: /opt/smart-db/deploy
+        run: |
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+            docker compose up -d
+
+      - name: Health check — middleware
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4000/health > /dev/null 2>&1; then
+              echo "Healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check failed after 30s"
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+            docker compose -f /opt/smart-db/deploy/compose.yaml logs middleware --tail 30
+          exit 1
+
+      - name: Health check — gateway
+        run: |
+          curl -skf https://10.42.200.4/health || \
+            (echo "Gateway unreachable" && exit 1)
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed — rolling back to previous images"
+          docker tag "${PROJECT}-gateway:prev"   "${PROJECT}-gateway:current"   2>/dev/null || true
+          docker tag "${PROJECT}-middleware:prev" "${PROJECT}-middleware:current" 2>/dev/null || true
+          COMPOSE_PROJECT_NAME=${{ env.PROJECT }} \
+            docker compose -f /opt/smart-db/deploy/compose.yaml up -d --no-build
+        env:
+          PROJECT: ${{ env.PROJECT }}
