@@ -15,7 +15,7 @@ jobs:
   deploy:
     name: Deploy → prod-lxc
     needs: check
-    runs-on: [self-hosted, smartdb-prod-lxc]
+    runs-on: [self-hosted, smartdb]
 
     steps:
       - uses: actions/checkout@v4
