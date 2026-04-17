@@ -237,6 +237,76 @@ export class InventoryService {
     };
   }
 
+  listEntitiesForPartType(partTypeId: string): Array<{
+    id: string;
+    qrCode: string;
+    partTypeId: string;
+    location: string;
+    quantity: number;
+    minimumQuantity: number | null;
+    status: "available" | "checked_out" | "consumed" | "damaged" | "lost";
+    assignee: string | null;
+    sourceKind: "instance" | "bulk";
+    partDbLotId: string | null;
+    partDbSyncStatus: string;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          qr_code AS qrCode,
+          part_type_id AS partTypeId,
+          location,
+          quantity,
+          minimum_quantity AS minimumQuantity,
+          status,
+          assignee,
+          source_kind AS sourceKind,
+          partdb_lot_id AS partDbLotId,
+          partdb_sync_status AS partDbSyncStatus,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM entities
+        WHERE part_type_id = ?
+        ORDER BY location, qr_code
+      `,
+      )
+      .all(partTypeId) as Array<{
+        id: string;
+        qrCode: string;
+        partTypeId: string;
+        location: string;
+        quantity: number;
+        minimumQuantity: number | null;
+        status: string;
+        assignee: string | null;
+        sourceKind: string;
+        partDbLotId: string | null;
+        partDbSyncStatus: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      qrCode: row.qrCode,
+      partTypeId: row.partTypeId,
+      location: row.location,
+      quantity: Number(row.quantity),
+      minimumQuantity: row.minimumQuantity !== null ? Number(row.minimumQuantity) : null,
+      status: row.status as "available" | "checked_out" | "consumed" | "damaged" | "lost",
+      assignee: row.assignee,
+      sourceKind: row.sourceKind as "instance" | "bulk",
+      partDbLotId: row.partDbLotId,
+      partDbSyncStatus: row.partDbSyncStatus,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
   getOpenBorrow(instanceId: string): OpenBorrowSummary | null {
     const row = this.db
       .prepare(
@@ -1750,6 +1820,7 @@ export class InventoryService {
       this.db.prepare(`DELETE FROM borrow_records`).run();
       this.db.prepare(`DELETE FROM correction_events`).run();
       this.db.prepare(`DELETE FROM stock_events`).run();
+      this.db.prepare(`DELETE FROM entities`).run();
       this.db.prepare(`DELETE FROM physical_instances`).run();
       this.db.prepare(`DELETE FROM bulk_stocks`).run();
       this.db.prepare(`DELETE FROM qrcodes`).run();

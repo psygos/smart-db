@@ -259,6 +259,39 @@ export const bulkStockSchema = z
   })
   .strict();
 
+export const entityStatusSchema = z.enum([
+  "available",
+  "checked_out",
+  "consumed",
+  "damaged",
+  "lost",
+]);
+
+export type EntityStatus = z.output<typeof entityStatusSchema>;
+
+export const entitySourceKindSchema = z.enum(["instance", "bulk"]);
+export type EntitySourceKind = z.output<typeof entitySourceKindSchema>;
+
+export const entitySchema = z
+  .object({
+    id: identifierSchema,
+    qrCode: nonEmptyString,
+    partTypeId: identifierSchema,
+    location: nonEmptyString,
+    quantity: z.number().nonnegative(),
+    minimumQuantity: z.number().nonnegative().nullable(),
+    status: entityStatusSchema,
+    assignee: z.string().nullable(),
+    sourceKind: entitySourceKindSchema,
+    partDbLotId: nullableLooseString.nullable(),
+    partDbSyncStatus: partDbSyncStatusSchema,
+    createdAt: isoTimestampSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export type Entity = z.output<typeof entitySchema>;
+
 export const qrCodeSchema = z
   .object({
     code: nonEmptyString,

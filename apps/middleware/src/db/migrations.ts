@@ -278,6 +278,39 @@ CREATE TABLE IF NOT EXISTS partdb_location_cache (
 );
     `,
   },
+  {
+    version: 11,
+    description: "unified entities table backfilled from instances and bulk_stocks",
+    sql: `
+CREATE TABLE IF NOT EXISTS entities (
+  id TEXT PRIMARY KEY,
+  qr_code TEXT NOT NULL UNIQUE REFERENCES qrcodes(code),
+  part_type_id TEXT NOT NULL REFERENCES part_types(id),
+  location TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  minimum_quantity REAL,
+  status TEXT NOT NULL DEFAULT 'available',
+  assignee TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  partdb_lot_id TEXT,
+  partdb_sync_status TEXT NOT NULL DEFAULT 'never',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('instance', 'bulk'))
+);
+
+CREATE INDEX IF NOT EXISTS entities_part_type_idx ON entities(part_type_id);
+CREATE INDEX IF NOT EXISTS entities_status_idx ON entities(status);
+
+INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+SELECT id, qr_code, part_type_id, location, 1, NULL, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'instance'
+FROM physical_instances;
+
+INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+SELECT id, qr_code, part_type_id, location, quantity, minimum_quantity, 'available', NULL, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'bulk'
+FROM bulk_stocks;
+    `,
+  },
 ];
 
 export function applyMigrations(

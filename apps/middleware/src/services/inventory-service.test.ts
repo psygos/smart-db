@@ -2271,6 +2271,41 @@ describe("InventoryService", () => {
       ).toThrowError(/UNIQUE|constraint/i);
     });
 
+    it("backfills entities for every physical instance and bulk stock with matching ids", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7190");
+      service.registerQrBatch({ actor: "admin", prefix: "BR", startNumber: 7191, count: 1 });
+      const bulk = service.assignQr({
+        qrCode: "BR-7191",
+        actor: "labeler",
+        entityKind: "bulk",
+        location: "Shelf C",
+        notes: null,
+        partType: { kind: "existing", existingPartTypeId: instance.partType.id },
+        initialQuantity: 10,
+        minimumQuantity: null,
+      });
+
+      // Fresh rows inserted through the service bypass the migration SQL, so we
+      // backfill manually here to exercise the exact migration path.
+      db.prepare(
+        `INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+         SELECT id, qr_code, part_type_id, location, 1, NULL, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'instance'
+         FROM physical_instances`,
+      ).run();
+      db.prepare(
+        `INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+         SELECT id, qr_code, part_type_id, location, quantity, minimum_quantity, 'available', NULL, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'bulk'
+         FROM bulk_stocks`,
+      ).run();
+
+      const entities = service.listEntitiesForPartType(instance.partType.id);
+      expect(entities).toHaveLength(2);
+      const byKind = new Map(entities.map((e) => [e.sourceKind, e]));
+      expect(byKind.get("instance")!).toMatchObject({ id: instance.id, qrCode: "BR-7190", quantity: 1 });
+      expect(byKind.get("bulk")!).toMatchObject({ id: bulk.id, qrCode: "BR-7191", sourceKind: "bulk" });
+    });
+
     it("reverses only one of two sibling instances, leaving the other intact and printing the QR", async () => {
       const { service } = makeService();
       const first = assignBorrowInstance(service, "BR-7180");
