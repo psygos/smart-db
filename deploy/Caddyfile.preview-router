@@ -17,6 +17,7 @@ https://192.168.7.3:9444 {
 		reverse_proxy smartdb-pr-{http.regexp.pr.1}-gateway-1:443 {
 			transport http {
 				tls_insecure_skip_verify
+				tls_server_name 192.168.7.3
 			}
 		}
 	}
