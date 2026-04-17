@@ -158,9 +158,7 @@ export class RewriteAppController {
     window.addEventListener("online", this.handleOnline);
     window.addEventListener("offline", this.handleOffline);
 
-    document.documentElement.classList.toggle("dark", this.state.theme === "dark");
-    const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (metaTheme) metaTheme.content = this.state.theme === "dark" ? "#111113" : "#fafafa";
+    this.applyThemeToDOM(this.state.theme);
     this.render();
     void this.restoreSession(this.authAbortController.signal, consumeAuthError());
   }
@@ -2035,13 +2033,21 @@ export class RewriteAppController {
     return "inspect";
   }
 
+  private applyThemeToDOM(theme: "light" | "dark", animated = false): void {
+    if (animated) {
+      document.documentElement.classList.add("theme-transition");
+      window.setTimeout(() => document.documentElement.classList.remove("theme-transition"), 250);
+    }
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.content = theme === "dark" ? "#111113" : "#fafafa";
+  }
+
   private setTheme(theme: "light" | "dark"): void {
     try {
       localStorage.setItem("smartdb:theme", theme);
     } catch {}
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    const metaTheme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (metaTheme) metaTheme.content = theme === "dark" ? "#111113" : "#fafafa";
+    this.applyThemeToDOM(theme, true);
     this.patch({ theme });
   }
 
@@ -2050,11 +2056,7 @@ export class RewriteAppController {
       const stored = localStorage.getItem("smartdb:theme");
       if (stored === "dark" || stored === "light") return stored;
     } catch {}
-    if (
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches
-    ) {
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
       return "dark";
     }
     return "light";
