@@ -702,6 +702,13 @@ export class CameraScannerService {
     }
 
     this.videoElement = video;
+
+    // Mirror the video preview when using a user-facing (laptop / selfie) camera.
+    // The scan loop reads raw pixels from the stream, so mirroring is CSS-only.
+    const track = this.stream.getVideoTracks()[0];
+    const facing = track?.getSettings?.().facingMode;
+    video.style.transform = (!facing || facing === "user") ? "scaleX(-1)" : "";
+
     this.setSnapshot({
       phase: "scanning",
       supported: true,
@@ -917,6 +924,7 @@ export class CameraScannerService {
 
   private detachVideo(video: HTMLVideoElement): void {
     try {
+      video.style.transform = "";
       if (video.srcObject) {
         video.srcObject = null;
       }
