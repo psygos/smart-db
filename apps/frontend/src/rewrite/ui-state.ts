@@ -10,6 +10,7 @@ import type {
   RegisterQrBatchRequest,
   ScanResponse,
 } from "@smart-db/contracts";
+export type ScanEditAction = "reassign" | "editShared" | "reverseIngest";
 import type { InventorySummaryRow, PartTypeItemsResponse } from "../api";
 import type { CameraScannerSnapshot } from "./services/camera-scanner-service";
 import type {
@@ -173,6 +174,35 @@ export interface CorrectionUiState {
   readonly sharedExpectedUpdatedAt: string;
 }
 
+export type ScanEditForm =
+  | {
+      readonly action: "reassign";
+      readonly search: SearchState;
+      readonly replacementPartTypeId: string;
+      readonly reason: string;
+    }
+  | {
+      readonly action: "editShared";
+      readonly sharedCanonicalName: string;
+      readonly sharedCategory: string;
+      readonly sharedExpectedUpdatedAt: string;
+      readonly reason: string;
+    }
+  | {
+      readonly action: "reverseIngest";
+      readonly reason: string;
+    };
+
+export type ScanEditState =
+  | { readonly status: "closed" }
+  | {
+      readonly status: "open";
+      readonly form: ScanEditForm;
+      readonly history: readonly CorrectionEvent[];
+      readonly historyError: string | null;
+      readonly dirty: boolean;
+    };
+
 export interface RewriteUiState {
   readonly authState: AuthViewState;
   readonly dashboard: DashboardSummary | null;
@@ -186,6 +216,7 @@ export interface RewriteUiState {
   readonly inventorySummary: readonly InventorySummaryRow[];
   readonly inventoryUi: InventoryUiState;
   readonly correctionUi: CorrectionUiState;
+  readonly scanEdit: ScanEditState;
   readonly provisionalPartTypes: readonly PartType[];
   readonly labelSearch: SearchState;
   readonly mergeSearch: SearchState;
@@ -302,6 +333,40 @@ export const defaultInventoryUiState: InventoryUiState = {
   expandedItems: new Map(),
   expandedErrors: new Map(),
 };
+
+export const defaultScanEditState: ScanEditState = {
+  status: "closed",
+};
+
+export function makeReassignForm(): Extract<ScanEditForm, { action: "reassign" }> {
+  return {
+    action: "reassign",
+    search: defaultSearchState,
+    replacementPartTypeId: "",
+    reason: "",
+  };
+}
+
+export function makeEditSharedForm(
+  canonicalName: string,
+  categoryPath: readonly string[],
+  expectedUpdatedAt: string,
+): Extract<ScanEditForm, { action: "editShared" }> {
+  return {
+    action: "editShared",
+    sharedCanonicalName: canonicalName,
+    sharedCategory: categoryPath.join(" / "),
+    sharedExpectedUpdatedAt: expectedUpdatedAt,
+    reason: "",
+  };
+}
+
+export function makeReverseIngestForm(): Extract<ScanEditForm, { action: "reverseIngest" }> {
+  return {
+    action: "reverseIngest",
+    reason: "",
+  };
+}
 
 export const defaultCorrectionUiState: CorrectionUiState = {
   scanCode: "",

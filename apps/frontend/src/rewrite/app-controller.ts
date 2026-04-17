@@ -25,6 +25,7 @@ import {
   errorMessage,
   formatCategoryPath,
   getAssignFormIssues,
+  type SearchState,
 } from "./presentation-helpers";
 import { authMachine } from "./machines/auth-machine";
 import type { RewriteFailure } from "./errors";
@@ -52,10 +53,12 @@ import {
   defaultBulkQueueState,
   defaultCameraState,
   defaultCorrectionUiState,
+  defaultScanEditState,
   defaultScanMode,
   defaultEventForm,
   defaultInventoryUiState,
   defaultSearchState,
+  makeReassignForm,
   type AuthViewState,
   type BulkAssignedQueueRow,
   type BulkDeleteEligibility,
@@ -66,6 +69,9 @@ import {
   type OneByOneScanBehavior,
   type PendingAction,
   type RewriteUiState,
+  type ScanEditAction,
+  type ScanEditForm,
+  type ScanEditState,
   type ScanModeState,
   type TabId,
   type ToastRecord,
@@ -87,6 +93,8 @@ type RewritePatch = {
   -readonly [K in keyof RewriteUiState]?: RewriteUiState[K];
 };
 
+type SearchSurface = "label" | "merge" | "correction" | "bulkLabel" | "edit";
+
 export class RewriteAppController {
   private state: RewriteUiState = {
     authState: {
@@ -105,6 +113,7 @@ export class RewriteAppController {
     inventorySummary: [],
     inventoryUi: defaultInventoryUiState,
     correctionUi: defaultCorrectionUiState,
+    scanEdit: defaultScanEditState,
     provisionalPartTypes: [],
     labelSearch: defaultSearchState,
     mergeSearch: defaultSearchState,
@@ -138,17 +147,19 @@ export class RewriteAppController {
     },
   });
   private readonly authAbortController = new AbortController();
-  private readonly searchControllers: Record<"label" | "merge" | "correction" | "bulkLabel", AbortController | null> = {
+  private readonly searchControllers: Record<SearchSurface, AbortController | null> = {
     label: null,
     merge: null,
     correction: null,
     bulkLabel: null,
+    edit: null,
   };
-  private readonly searchRequestIds: Record<"label" | "merge" | "correction" | "bulkLabel", number> = {
+  private readonly searchRequestIds: Record<SearchSurface, number> = {
     label: 0,
     merge: 0,
     correction: 0,
     bulkLabel: 0,
+    edit: 0,
   };
   private renderSuppressed = false;
   private readonly cameraService = new CameraScannerService({
@@ -220,6 +231,7 @@ export class RewriteAppController {
     this.searchControllers.merge?.abort();
     this.searchControllers.correction?.abort();
     this.searchControllers.bulkLabel?.abort();
+    this.searchControllers.edit?.abort();
     this.scanAbortController?.abort();
     this.authActor.stop();
     this.scanActor.stop();
@@ -449,6 +461,26 @@ export class RewriteAppController {
       case "correction-clear":
         this.patch({ correctionUi: defaultCorrectionUiState });
         break;
+      case "scan-edit-open":
+        this.openScanEdit();
+        break;
+      case "scan-edit-close":
+        this.closeScanEdit();
+        break;
+      case "set-scan-edit-action":
+        if (
+          actionEl.dataset.scanEditAction === "reassign" ||
+          actionEl.dataset.scanEditAction === "editShared" ||
+          actionEl.dataset.scanEditAction === "reverseIngest"
+        ) {
+          this.setScanEditAction(actionEl.dataset.scanEditAction);
+        }
+        break;
+      case "select-scan-edit-part":
+        if (actionEl.dataset.partId) {
+          this.selectScanEditReplacementPart(actionEl.dataset.partId);
+        }
+        break;
       case "bulk-queue-decrement":
         if (actionEl.dataset.code) {
           this.bulkQueueActor.send({ type: "QUEUE.ROW_DECREMENT_REQUESTED", code: actionEl.dataset.code });
@@ -564,6 +596,15 @@ export class RewriteAppController {
         break;
       case "correction-reverse-ingest":
         void this.handleCorrectionReverseIngest();
+        break;
+      case "scan-edit-reassign":
+        void this.handleScanEditReassign();
+        break;
+      case "scan-edit-shared":
+        void this.handleScanEditEditShared();
+        break;
+      case "scan-edit-reverse":
+        void this.handleScanEditReverseIngest();
         break;
       default:
         break;
@@ -720,7 +761,48 @@ export class RewriteAppController {
           this.updateEventForm(name, rawValue);
         } else if (name.startsWith("correction.")) {
           this.updateCorrectionForm(name, rawValue);
+        } else if (name.startsWith("scanEdit.")) {
+          this.updateScanEditForm(name, rawValue);
         }
+    }
+  }
+
+  private updateScanEditForm(name: string, rawValue: string | boolean): void {
+    const edit = this.state.scanEdit;
+    if (edit.status !== "open") {
+      return;
+    }
+    const value = String(rawValue);
+
+    if (name === "scanEdit.reason") {
+      this.patchScanEditForm({ reason: value } as Partial<ScanEditForm>);
+      return;
+    }
+
+    if (edit.form.action === "reassign" && name === "scanEditSearch.query") {
+      this.patch({
+        scanEdit: {
+          ...edit,
+          form: {
+            ...edit.form,
+            search: { ...edit.form.search, query: value },
+          },
+          dirty: true,
+        },
+      });
+      void this.performSearch("edit", value);
+      return;
+    }
+
+    if (edit.form.action === "editShared") {
+      if (name === "scanEdit.sharedCanonicalName") {
+        this.patchScanEditForm({ sharedCanonicalName: value } as Partial<ScanEditForm>);
+        return;
+      }
+      if (name === "scanEdit.sharedCategory") {
+        this.patchScanEditForm({ sharedCategory: value } as Partial<ScanEditForm>);
+        return;
+      }
     }
   }
 
@@ -980,6 +1062,7 @@ export class RewriteAppController {
     this.searchControllers.merge?.abort();
     this.searchControllers.correction?.abort();
     this.searchControllers.bulkLabel?.abort();
+    this.searchControllers.edit?.abort();
     this.scanAbortController?.abort();
     this.bulkQueueActor.send({ type: "QUEUE.CLEAR_REQUESTED" });
     this.patch({
@@ -994,6 +1077,7 @@ export class RewriteAppController {
       inventorySummary: [],
       inventoryUi: defaultInventoryUiState,
       correctionUi: defaultCorrectionUiState,
+      scanEdit: defaultScanEditState,
       provisionalPartTypes: [],
       labelSearch: defaultSearchState,
       mergeSearch: defaultSearchState,
@@ -1234,95 +1318,25 @@ export class RewriteAppController {
     }
   }
 
-  private async performSearch(surface: "label" | "merge" | "correction" | "bulkLabel", query: string): Promise<void> {
+  private async performSearch(surface: SearchSurface, query: string): Promise<void> {
     this.searchControllers[surface]?.abort();
     this.searchRequestIds[surface] += 1;
     const requestId = this.searchRequestIds[surface];
     const controller = new AbortController();
     this.searchControllers[surface] = controller;
 
-    const current =
-      surface === "label"
-        ? this.state.labelSearch
-        : surface === "merge"
-          ? this.state.mergeSearch
-          : surface === "correction"
-            ? this.state.correctionUi.search
-            : this.state.bulkQueue.labelSearch;
-    this.patch({
-      ...(surface === "correction"
-        ? {
-            correctionUi: {
-              ...this.state.correctionUi,
-              search: {
-                ...current,
-                query,
-                status: "loading",
-                error: null,
-              },
-            },
-          }
-        : surface === "bulkLabel"
-          ? {
-              bulkQueue: {
-                ...this.state.bulkQueue,
-                labelSearch: {
-                  ...current,
-                  query,
-                  status: "loading",
-                  error: null,
-                },
-              },
-            }
-        : {
-            [surface === "label" ? "labelSearch" : "mergeSearch"]: {
-              ...current,
-              query,
-              status: "loading",
-              error: null,
-            },
-          }),
-    } as Partial<RewriteUiState>);
+    const current = this.readSearchState(surface);
+    if (current === null) {
+      return;
+    }
+    this.writeSearchState(surface, { ...current, query, status: "loading", error: null });
 
     try {
       const results = await api.searchPartTypes(query, controller.signal);
       if (requestId !== this.searchRequestIds[surface]) {
         return;
       }
-      this.patch({
-        ...(surface === "correction"
-          ? {
-              correctionUi: {
-                ...this.state.correctionUi,
-                search: {
-                  query,
-                  results,
-                  status: "idle",
-                  error: null,
-                },
-              },
-            }
-          : surface === "bulkLabel"
-            ? {
-                bulkQueue: {
-                  ...this.state.bulkQueue,
-                  labelSearch: {
-                    query,
-                    results,
-                    status: "idle",
-                    error: null,
-                  },
-                },
-              }
-          : {
-              [surface === "label" ? "labelSearch" : "mergeSearch"]: {
-                query,
-                results,
-                status: "idle",
-                error: null,
-              },
-            }),
-      } as Partial<RewriteUiState>);
+      this.writeSearchState(surface, { query, results, status: "idle", error: null });
     } catch (caught) {
       if (controller.signal.aborted) {
         return;
@@ -1330,41 +1344,65 @@ export class RewriteAppController {
       if (this.handleApiFailure(caught)) {
         return;
       }
-      this.patch({
-        ...(surface === "correction"
-          ? {
-              correctionUi: {
-                ...this.state.correctionUi,
-                search: {
-                  ...current,
-                  query,
-                  status: "error",
-                  error: errorMessage(caught),
-                },
-              },
-            }
-          : surface === "bulkLabel"
-            ? {
-                bulkQueue: {
-                  ...this.state.bulkQueue,
-                  labelSearch: {
-                    ...current,
-                    query,
-                    status: "error",
-                    error: errorMessage(caught),
-                  },
-                },
-              }
-          : {
-              [surface === "label" ? "labelSearch" : "mergeSearch"]: {
-                ...current,
-                query,
-                status: "error",
-                error: errorMessage(caught),
-              },
-            }),
-      } as Partial<RewriteUiState>);
+      this.writeSearchState(surface, {
+        ...current,
+        query,
+        status: "error",
+        error: errorMessage(caught),
+      });
       this.addToast(errorMessage(caught), "error");
+    }
+  }
+
+  private readSearchState(surface: SearchSurface): SearchState | null {
+    switch (surface) {
+      case "label":
+        return this.state.labelSearch;
+      case "merge":
+        return this.state.mergeSearch;
+      case "correction":
+        return this.state.correctionUi.search;
+      case "bulkLabel":
+        return this.state.bulkQueue.labelSearch;
+      case "edit":
+        if (this.state.scanEdit.status !== "open" || this.state.scanEdit.form.action !== "reassign") {
+          return null;
+        }
+        return this.state.scanEdit.form.search;
+    }
+  }
+
+  private writeSearchState(surface: SearchSurface, next: SearchState): void {
+    switch (surface) {
+      case "label":
+        this.patch({ labelSearch: next });
+        return;
+      case "merge":
+        this.patch({ mergeSearch: next });
+        return;
+      case "correction":
+        this.patch({
+          correctionUi: { ...this.state.correctionUi, search: next },
+        });
+        return;
+      case "bulkLabel":
+        this.patch({
+          bulkQueue: { ...this.state.bulkQueue, labelSearch: next },
+        });
+        return;
+      case "edit": {
+        const edit = this.state.scanEdit;
+        if (edit.status !== "open" || edit.form.action !== "reassign") {
+          return;
+        }
+        this.patch({
+          scanEdit: {
+            ...edit,
+            form: { ...edit.form, search: next },
+          },
+        });
+        return;
+      }
     }
   }
 
@@ -2089,6 +2127,293 @@ export class RewriteAppController {
 
       await api.reverseIngestAssignment(parsed.value);
       this.patch({ correctionUi: defaultCorrectionUiState });
+      this.addToast("Ingest reversed. The item is no longer assigned.", "success");
+      await this.loadAuthenticatedData();
+    } catch (caught) {
+      if (!this.handleApiFailure(caught)) {
+        this.addToast(errorMessage(caught), "error");
+      }
+    } finally {
+      this.patch({ pendingAction: null });
+    }
+  }
+
+  private interactTarget(): Extract<ScanResponse, { mode: "interact" }> | null {
+    const scanResult = this.state.scanResult;
+    if (!scanResult || scanResult.mode !== "interact") {
+      return null;
+    }
+    return scanResult;
+  }
+
+  private openScanEdit(): void {
+    const target = this.interactTarget();
+    if (!target) {
+      return;
+    }
+    this.patch({
+      scanEdit: {
+        status: "open",
+        form: {
+          action: "reassign",
+          search: {
+            query: "",
+            results: [...this.state.catalogSuggestions],
+            status: "idle",
+            error: null,
+          },
+          replacementPartTypeId: "",
+          reason: "",
+        },
+        history: [],
+        historyError: null,
+        dirty: false,
+      },
+    });
+    void this.loadScanEditHistory(target.entity.targetType, target.entity.id);
+  }
+
+  private closeScanEdit(): void {
+    this.searchControllers.edit?.abort();
+    this.patch({ scanEdit: defaultScanEditState });
+  }
+
+  private setScanEditAction(action: ScanEditAction): void {
+    const edit = this.state.scanEdit;
+    const target = this.interactTarget();
+    if (edit.status !== "open" || !target) {
+      return;
+    }
+
+    let form: ScanEditForm;
+    if (action === "reassign") {
+      form = {
+        action: "reassign",
+        search: {
+          query: "",
+          results: [...this.state.catalogSuggestions],
+          status: "idle",
+          error: null,
+        },
+        replacementPartTypeId: "",
+        reason: "",
+      };
+    } else if (action === "editShared") {
+      form = {
+        action: "editShared",
+        sharedCanonicalName: target.entity.partType.canonicalName,
+        sharedCategory: formatCategoryPath(target.entity.partType.categoryPath),
+        sharedExpectedUpdatedAt: target.entity.partType.updatedAt,
+        reason: "",
+      };
+    } else {
+      form = {
+        action: "reverseIngest",
+        reason: "",
+      };
+    }
+
+    this.patch({
+      scanEdit: {
+        status: "open",
+        form,
+        history: edit.history,
+        historyError: edit.historyError,
+        dirty: false,
+      },
+    });
+  }
+
+  private selectScanEditReplacementPart(partId: string): void {
+    const edit = this.state.scanEdit;
+    if (edit.status !== "open" || edit.form.action !== "reassign") {
+      return;
+    }
+    this.patch({
+      scanEdit: {
+        ...edit,
+        form: { ...edit.form, replacementPartTypeId: partId },
+        dirty: true,
+      },
+    });
+  }
+
+  private patchScanEditForm(update: Partial<ScanEditForm>): void {
+    const edit = this.state.scanEdit;
+    if (edit.status !== "open") {
+      return;
+    }
+    const merged = { ...edit.form, ...update } as ScanEditForm;
+    this.patch({
+      scanEdit: {
+        ...edit,
+        form: merged,
+        dirty: true,
+      },
+    });
+  }
+
+  private async loadScanEditHistory(targetType: "instance" | "bulk", targetId: string): Promise<void> {
+    try {
+      const history = await api.getCorrectionHistory({ targetType, targetId });
+      const edit = this.state.scanEdit;
+      if (edit.status !== "open") {
+        return;
+      }
+      this.patch({
+        scanEdit: { ...edit, history, historyError: null },
+      });
+    } catch (caught) {
+      if (this.handleApiFailure(caught)) {
+        return;
+      }
+      const edit = this.state.scanEdit;
+      if (edit.status !== "open") {
+        return;
+      }
+      this.patch({
+        scanEdit: { ...edit, history: [], historyError: errorMessage(caught) },
+      });
+    }
+  }
+
+  private async handleScanEditReassign(): Promise<void> {
+    const target = this.interactTarget();
+    const edit = this.state.scanEdit;
+    if (!target || edit.status !== "open" || edit.form.action !== "reassign") {
+      this.addToast("Scan an ingested item first.", "error");
+      return;
+    }
+
+    const parsed = parseReassignPartTypeForm({
+      targetType: target.entity.targetType,
+      targetId: target.entity.id,
+      fromPartTypeId: target.entity.partType.id,
+      toPartTypeId: edit.form.replacementPartTypeId,
+      reason: edit.form.reason,
+    });
+    if (!parsed.ok) {
+      this.addToast(this.failureMessage(parsed.error), "error");
+      return;
+    }
+
+    this.patch({ pendingAction: "correct" as PendingAction });
+    try {
+      await api.reassignEntityPartType(parsed.value);
+      const refreshed = await api.scan(target.qrCode.code, { autoIncrement: false });
+      this.patch({
+        scanResult: refreshed,
+        scanEdit: defaultScanEditState,
+      });
+      this.addToast("Item corrected to the replacement part type.", "success");
+      await this.loadAuthenticatedData();
+    } catch (caught) {
+      if (!this.handleApiFailure(caught)) {
+        this.addToast(errorMessage(caught), "error");
+      }
+    } finally {
+      this.patch({ pendingAction: null });
+    }
+  }
+
+  private async handleScanEditEditShared(): Promise<void> {
+    const target = this.interactTarget();
+    const edit = this.state.scanEdit;
+    if (!target || edit.status !== "open" || edit.form.action !== "editShared") {
+      this.addToast("Scan an ingested item first.", "error");
+      return;
+    }
+
+    const parsed = parseEditPartTypeDefinitionForm({
+      partTypeId: target.entity.partType.id,
+      expectedUpdatedAt: edit.form.sharedExpectedUpdatedAt,
+      canonicalName: edit.form.sharedCanonicalName,
+      category: edit.form.sharedCategory,
+      reason: edit.form.reason,
+    });
+    if (!parsed.ok) {
+      this.addToast(this.failureMessage(parsed.error), "error");
+      return;
+    }
+
+    const conflicts = findSharedTypeConflictCandidates(
+      this.state.inventorySummary,
+      target.entity.partType.id,
+      edit.form.sharedCanonicalName,
+      edit.form.sharedCategory,
+    );
+    if (conflicts.length > 0) {
+      this.addToast(
+        `A part type named '${conflicts[0]!.canonicalName}' already exists in ${conflicts[0]!.categoryPath.join(" / ")}. Use 'Fix this item only' to reassign this scan instead of renaming the shared type.`,
+        "error",
+      );
+      return;
+    }
+
+    const usage = this.state.inventorySummary.find((row) => row.id === target.entity.partType.id);
+    const linkedCount = (usage?.bins ?? 0) + (usage?.instanceCount ?? 0);
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        linkedCount > 0
+          ? `Rename the shared type '${target.entity.partType.canonicalName}' for ${linkedCount} linked inventory rows? This is not item-only.`
+          : `Rename the shared type '${target.entity.partType.canonicalName}'? This changes the catalog definition itself, not just the scanned item.`,
+      )
+    ) {
+      return;
+    }
+
+    this.patch({ pendingAction: "correct" as PendingAction });
+    try {
+      await api.editPartTypeDefinition(parsed.value);
+      const refreshed = await api.scan(target.qrCode.code, { autoIncrement: false });
+      this.patch({
+        scanResult: refreshed,
+        scanEdit: defaultScanEditState,
+      });
+      this.addToast("Shared part type updated.", "success");
+      await this.loadAuthenticatedData();
+    } catch (caught) {
+      if (!this.handleApiFailure(caught)) {
+        this.addToast(errorMessage(caught), "error");
+      }
+    } finally {
+      this.patch({ pendingAction: null });
+    }
+  }
+
+  private async handleScanEditReverseIngest(): Promise<void> {
+    const target = this.interactTarget();
+    const edit = this.state.scanEdit;
+    if (!target || edit.status !== "open" || edit.form.action !== "reverseIngest") {
+      this.addToast("Scan an ingested item first.", "error");
+      return;
+    }
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Reverse this ingest? The QR/Data Matrix will return to printed state, while the correction audit remains.")
+    ) {
+      return;
+    }
+
+    const parsed = parseReverseIngestForm({
+      qrCode: target.qrCode.code,
+      assignedKind: target.entity.targetType,
+      assignedId: target.entity.id,
+      reason: edit.form.reason,
+    });
+    if (!parsed.ok) {
+      this.addToast(this.failureMessage(parsed.error), "error");
+      return;
+    }
+
+    this.patch({ pendingAction: "correct" as PendingAction });
+    try {
+      await api.reverseIngestAssignment(parsed.value);
+      this.patch({
+        scanResult: null,
+        scanEdit: defaultScanEditState,
+      });
       this.addToast("Ingest reversed. The item is no longer assigned.", "success");
       await this.loadAuthenticatedData();
     } catch (caught) {

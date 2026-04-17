@@ -879,7 +879,156 @@ function renderInteractCard(
           </article>
         `).join("")}
       </div>
+      ${state.scanEdit.status === "closed"
+        ? `<button type="button" class="disclosure" data-action="scan-edit-open" ${disabled(state.pendingAction !== null)}>Edit this part</button>`
+        : renderScanEditPanel(state)}
     </div>
+  `;
+}
+
+function renderScanEditPanel(state: RewriteUiState): string {
+  if (state.scanEdit.status !== "open" || !state.scanResult || state.scanResult.mode !== "interact") {
+    return "";
+  }
+  const edit = state.scanEdit;
+  const target = state.scanResult;
+  const targetEntity = target.entity;
+
+  return `
+    <section class="scan-edit-panel" aria-label="Edit this part">
+      <div class="scan-edit-header">
+        <strong>Edit</strong>
+        <button type="button" class="disclosure" data-action="scan-edit-close" ${disabled(state.pendingAction !== null)}>Close</button>
+      </div>
+      <p class="muted-copy">
+        Category: ${escapeHtml(formatCategoryPath(targetEntity.partType.categoryPath))}
+      </p>
+      <div class="wide mode-toggle" role="radiogroup" aria-label="Edit action">
+        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reassign")}" class="${edit.form.action === "reassign" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reassign">Fix this item only</button>
+        <button type="button" role="radio" aria-checked="${String(edit.form.action === "editShared")}" class="${edit.form.action === "editShared" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="editShared">Rename shared type</button>
+        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reverseIngest")}" class="${edit.form.action === "reverseIngest" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reverseIngest">Reverse ingest</button>
+      </div>
+
+      ${edit.form.action === "reassign" ? renderScanEditReassignForm(state, edit.form, targetEntity) : ""}
+      ${edit.form.action === "editShared" ? renderScanEditSharedForm(state, edit.form, targetEntity) : ""}
+      ${edit.form.action === "reverseIngest" ? renderScanEditReverseForm(state, edit.form) : ""}
+
+      ${edit.history.length > 0 || edit.historyError ? `
+        <div class="event-list" style="margin-top:1rem">
+          ${edit.historyError ? `<p class="banner error">${escapeHtml(edit.historyError)}</p>` : ""}
+          ${edit.history.map((event) => `
+            <article>
+              <strong>${escapeHtml(correctionLabel(event.correctionKind))}</strong>
+              <span>${escapeHtml(event.actor)} · ${escapeHtml(formatTimestamp(event.createdAt))}</span>
+              <small>${escapeHtml(event.reason)}</small>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderScanEditReassignForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "reassign" },
+  targetEntity: Extract<RewriteUiState["scanResult"], { mode: "interact" }>["entity"],
+): string {
+  const compatibleReplacementTypes = (form.search.results.length > 0 ? form.search.results : state.catalogSuggestions)
+    .filter((partType) => partType.id !== targetEntity.partType.id)
+    .filter((partType) => {
+      if (targetEntity.targetType === "instance") {
+        return partType.countable;
+      }
+      return !partType.countable || partType.unit.isInteger;
+    });
+
+  return `
+    <form class="form-grid" data-form="scan-edit-reassign">
+      <label class="wide">
+        Find replacement part type
+        <input name="scanEditSearch.query" value="${attr(form.search.query)}" placeholder="Search existing type" />
+      </label>
+      ${form.search.error ? `<p class="banner error wide">${escapeHtml(form.search.error)}</p>` : ""}
+      <div class="wide picker" role="radiogroup" aria-label="Replacement part type">
+        ${compatibleReplacementTypes.map((partType) => `
+          <button type="button" role="radio" aria-checked="${String(form.replacementPartTypeId === partType.id)}" class="${form.replacementPartTypeId === partType.id ? "selected" : ""}" data-action="select-scan-edit-part" data-part-id="${attr(partType.id)}">
+            <strong>${escapeHtml(partType.canonicalName)}</strong>
+            <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+          </button>
+        `).join("")}
+      </div>
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Reassign this scan"}</button>
+    </form>
+  `;
+}
+
+function renderScanEditSharedForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "editShared" },
+  targetEntity: Extract<RewriteUiState["scanResult"], { mode: "interact" }>["entity"],
+): string {
+  const usage = state.inventorySummary.find((row) => row.id === targetEntity.partType.id) ?? null;
+  const sharedEditConflicts = findSharedTypeConflictCandidates(
+    state.inventorySummary,
+    targetEntity.partType.id,
+    form.sharedCanonicalName,
+    form.sharedCategory,
+  );
+
+  return `
+    <form class="form-grid" data-form="scan-edit-shared">
+      <p class="banner error wide">
+        This renames the shared catalog type itself, not just the scanned item.
+        ${usage ? escapeHtml(` It is currently linked to ${usage.instanceCount} tracked items and ${usage.bins} bulk bins.`) : ""}
+      </p>
+      <label class="wide">
+        Shared canonical name
+        <input name="scanEdit.sharedCanonicalName" value="${attr(form.sharedCanonicalName)}" />
+      </label>
+      <label class="wide">
+        Shared category path
+        <input name="scanEdit.sharedCategory" value="${attr(form.sharedCategory)}" />
+      </label>
+      ${sharedEditConflicts.length > 0 ? `
+        <div class="wide">
+          <p class="banner error">A matching part type already exists. Use 'Fix this item only' to reassign this scan instead of renaming the shared type.</p>
+          <div class="picker" role="listbox" aria-label="Existing matching part types">
+            ${sharedEditConflicts.map((match) => `
+              <button type="button" role="option" data-action="select-scan-edit-part" data-part-id="${attr(match.id)}">
+                <strong>${escapeHtml(match.canonicalName)}</strong>
+                <span>${escapeHtml(formatCategoryPath(match.categoryPath))}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
+    </form>
+  `;
+}
+
+function renderScanEditReverseForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "reverseIngest" },
+): string {
+  return `
+    <form class="form-grid" data-form="scan-edit-reverse">
+      <p class="banner error">Reverse ingest only when this was the original intake mistake. Historical lifecycle events remain in the audit trail.</p>
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Reversing..." : "Reverse ingest"}</button>
+    </form>
   `;
 }
 
