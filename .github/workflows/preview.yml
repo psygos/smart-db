@@ -59,20 +59,21 @@ jobs:
       - name: Write preview config
         run: |
           mkdir -p /opt/smart-db/config/preview-${{ env.PR_N }}
-          cat > /opt/smart-db/config/preview-${{ env.PR_N }}/middleware.env <<EOF
-          PORT=4000
-          FRONTEND_ORIGIN=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}
-          PUBLIC_BASE_URL=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}
-          SMART_DB_DATA_PATH=/workspace/data/smart.db
-          PARTDB_BASE_URL=
-          PARTDB_API_TOKEN=
-          SESSION_COOKIE_SECRET=${{ secrets.SESSION_COOKIE_SECRET }}
-          ZITADEL_ISSUER=${{ secrets.ZITADEL_ISSUER }}
-          ZITADEL_CLIENT_ID=${{ secrets.ZITADEL_CLIENT_ID }}
-          ZITADEL_CLIENT_SECRET=${{ secrets.ZITADEL_CLIENT_SECRET }}
-          ZITADEL_ROLE_CLAIM=${{ secrets.ZITADEL_ROLE_CLAIM }}
-          ZITADEL_POST_LOGOUT_REDIRECT_URI=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}
-          EOF
+          SESSION_COOKIE_SECRET=$(openssl rand -base64 48)
+          printf '%s\n' \
+            "PORT=4000" \
+            "FRONTEND_ORIGIN=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}" \
+            "PUBLIC_BASE_URL=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}" \
+            "SMART_DB_DATA_PATH=/workspace/data/smart.db" \
+            "PARTDB_BASE_URL=" \
+            "PARTDB_API_TOKEN=" \
+            "SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET}" \
+            "ZITADEL_ISSUER=${{ secrets.ZITADEL_ISSUER }}" \
+            "ZITADEL_CLIENT_ID=${{ secrets.ZITADEL_CLIENT_ID }}" \
+            "ZITADEL_CLIENT_SECRET=${{ secrets.ZITADEL_CLIENT_SECRET }}" \
+            "ZITADEL_ROLE_CLAIM=${{ secrets.ZITADEL_ROLE_CLAIM }}" \
+            "ZITADEL_POST_LOGOUT_REDIRECT_URI=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}" \
+            > /opt/smart-db/config/preview-${{ env.PR_N }}/middleware.env
 
       - name: Ensure state directory exists
         run: mkdir -p /opt/smart-db/state/preview-${{ env.PR_N }}/data
