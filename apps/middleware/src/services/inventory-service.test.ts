@@ -1133,7 +1133,8 @@ describe("InventoryService", () => {
           countable: true,
           bins: 1,
           instanceCount: 1,
-          onHand: 12,
+          onHand: 13,
+          entityCount: 2,
         }),
       ]),
     );

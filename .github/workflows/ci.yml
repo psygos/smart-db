@@ -58,8 +58,19 @@ jobs:
       - name: Build and restart containers
         run: |
           cd /opt/smart-db/deploy
+          for env_file in config/middleware.env config/partdb.env; do
+            if [ ! -f "$env_file" ]; then
+              echo "Missing $env_file — aborting before container rebuild."
+              exit 1
+            fi
+          done
           docker compose build --no-cache middleware gateway
-          docker compose up -d
+          docker compose up -d --force-recreate --no-deps middleware gateway || {
+            echo "Initial compose up failed. Dumping compose config + retrying once..."
+            docker compose config >/dev/null || exit 1
+            sleep 2
+            docker compose up -d --force-recreate --no-deps middleware gateway
+          }
 
       - name: Wait for health check
         run: |

@@ -542,6 +542,7 @@ describe("RewriteAppController", () => {
         bins: 1,
         instanceCount: 2,
         onHand: 10,
+        entityCount: 3,
         partDbSyncStatus: "never",
       },
     ]);
@@ -891,7 +892,8 @@ describe("RewriteAppController", () => {
         countable: true,
         bins: 0,
         instanceCount: 1,
-        onHand: 0,
+        onHand: 1,
+        entityCount: 1,
         partDbSyncStatus: "never",
       },
       {
@@ -903,6 +905,7 @@ describe("RewriteAppController", () => {
         bins: 0,
         instanceCount: 0,
         onHand: 0,
+        entityCount: 0,
         partDbSyncStatus: "never",
       },
     ]);

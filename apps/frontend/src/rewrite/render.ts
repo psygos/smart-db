@@ -1301,11 +1301,7 @@ function renderInventoryTab(state: RewriteUiState): string {
                       ${subPath ? `<span>${escapeHtml(subPath)}</span>` : ""}
                     </div>
                     <div class="inventory-row-quantity">
-                      ${row.countable
-                        ? row.onHand > 0
-                          ? `<span class="qty-value">${row.instanceCount}</span><span class="qty-unit">tracked · ${escapeHtml(formatQuantity(row.onHand))} ${escapeHtml(row.unit.symbol)} pooled</span>`
-                          : `<span class="qty-value">${row.instanceCount}</span><span class="qty-unit">tracked</span>`
-                        : `<span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span><span class="qty-unit">${escapeHtml(row.unit.symbol)}</span>`}
+                      <span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span><span class="qty-unit">${escapeHtml(row.unit.symbol)}${row.entityCount > 0 ? ` · ${row.entityCount} QR${row.entityCount === 1 ? "" : "s"}` : ""}</span>
                     </div>
                   </button>
                   ${isExpanded ? `

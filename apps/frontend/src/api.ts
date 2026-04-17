@@ -155,6 +155,7 @@ export const inventorySummaryRowSchema = z.object({
   bins: z.number(),
   instanceCount: z.number(),
   onHand: z.number(),
+  entityCount: z.number(),
   partDbSyncStatus: z.string(),
 });
 export type InventorySummaryRow = z.output<typeof inventorySummaryRowSchema>;

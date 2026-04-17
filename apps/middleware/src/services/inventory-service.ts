@@ -350,6 +350,7 @@ export class InventoryService {
     bins: number;
     instanceCount: number;
     onHand: number;
+    entityCount: number;
     partDbSyncStatus: string;
   }> {
     const rows = this.db
@@ -366,8 +367,9 @@ export class InventoryService {
           pt.countable,
           pt.partdb_sync_status,
           (SELECT COUNT(*) FROM bulk_stocks WHERE part_type_id = pt.id) AS bins,
-          COALESCE((SELECT SUM(quantity) FROM bulk_stocks WHERE part_type_id = pt.id), 0) AS on_hand,
-          (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS instance_count
+          (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS instance_count,
+          (SELECT COUNT(*) FROM bulk_stocks WHERE part_type_id = pt.id) + (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS entity_count,
+          COALESCE((SELECT SUM(quantity) FROM bulk_stocks WHERE part_type_id = pt.id), 0) + (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS on_hand
         FROM part_types pt
         ORDER BY pt.canonical_name
         `,
@@ -385,6 +387,7 @@ export class InventoryService {
         bins: number;
         on_hand: number;
         instance_count: number;
+        entity_count: number;
       }>;
 
     return rows.map((row) => {
@@ -408,6 +411,7 @@ export class InventoryService {
         bins: Number(row.bins),
         instanceCount: Number(row.instance_count),
         onHand: Number(row.on_hand),
+        entityCount: Number(row.entity_count),
         partDbSyncStatus: row.partdb_sync_status,
       };
     });
