@@ -25,7 +25,7 @@ One workflow: `.github/workflows/ci.yml`
 The gateway Dockerfile builds the frontend internally — a broken Vite build is only caught inside the container build, after the green CI check.
 
 **P3 — Coverage not enforced.**  
-`pnpm test` is called, not `pnpm coverage`. 100% coverage requirement goes unenforced.
+`pnpm test` is called, not `pnpm coverage`. 100% coverage requirement goes unenforced. When `pnpm coverage` was introduced in CI it revealed ~70% actual coverage — `scripts/`, `app-controller.ts`, `render.ts`, `zitadel-client.ts`, and several partdb files are significantly undertested. Coverage enforcement is deferred until that debt is addressed.
 
 **P4 — No CI on `dev` branch.**  
 Workflow only triggers on `main`. All work on `dev` is unchecked until a PR is opened.
