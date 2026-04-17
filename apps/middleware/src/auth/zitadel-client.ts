@@ -6,7 +6,6 @@ interface ZitadelClientConfig {
   issuer: string | null;
   clientId: string | null;
   clientSecret?: string | null;
-  postLogoutRedirectUri?: string | null;
   roleClaim?: string | null;
 }
 
@@ -111,9 +110,6 @@ export class ZitadelClient {
 
     const url = new URL(discovery.end_session_endpoint);
     url.searchParams.set("id_token_hint", idTokenHint);
-    if (this.config.postLogoutRedirectUri) {
-      url.searchParams.set("post_logout_redirect_uri", this.config.postLogoutRedirectUri);
-    }
     return url.toString();
   }
 

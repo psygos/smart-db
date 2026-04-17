@@ -32,7 +32,6 @@ export interface AppConfig {
     issuer: string | null;
     clientId: string | null;
     clientSecret: string | null;
-    postLogoutRedirectUri: string;
     roleClaim: string | null;
     sessionCookieSecret: string | null;
   };
@@ -64,7 +63,6 @@ export function parseConfig(environment: Partial<Record<keyof ConfigEnvironment,
       issuer: parsedEnvironment.ZITADEL_ISSUER,
       clientId: parsedEnvironment.ZITADEL_CLIENT_ID,
       clientSecret: parsedEnvironment.ZITADEL_CLIENT_SECRET,
-      postLogoutRedirectUri: new URL(parsedEnvironment.PUBLIC_BASE_URL).origin,
       roleClaim: parsedEnvironment.ZITADEL_ROLE_CLAIM,
       sessionCookieSecret: parsedEnvironment.SESSION_COOKIE_SECRET,
     },

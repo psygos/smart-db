@@ -23,7 +23,6 @@ describe("parseConfig", () => {
         issuer: null,
         clientId: null,
         clientSecret: null,
-        postLogoutRedirectUri: "http://localhost:4000",
         roleClaim: null,
         sessionCookieSecret: null,
       },
