@@ -918,7 +918,6 @@ export const configEnvironmentSchema = z
     ZITADEL_ISSUER: normalizedOptionalString,
     ZITADEL_CLIENT_ID: normalizedOptionalString,
     ZITADEL_CLIENT_SECRET: normalizedOptionalString,
-    ZITADEL_POST_LOGOUT_REDIRECT_URI: normalizedOptionalString,
     ZITADEL_ROLE_CLAIM: normalizedOptionalString,
   })
   .strict();

@@ -88,7 +88,6 @@ jobs:
             "ZITADEL_CLIENT_ID=${{ secrets.ZITADEL_CLIENT_ID }}" \
             "ZITADEL_CLIENT_SECRET=${{ secrets.ZITADEL_CLIENT_SECRET }}" \
             "ZITADEL_ROLE_CLAIM=${{ secrets.ZITADEL_ROLE_CLAIM }}" \
-            "ZITADEL_POST_LOGOUT_REDIRECT_URI=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}" \
             > /opt/smart-db/config/preview-${{ env.PR_N }}/middleware.env
 
       - name: Ensure state directory exists

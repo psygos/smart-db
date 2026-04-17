@@ -32,7 +32,7 @@ export interface AppConfig {
     issuer: string | null;
     clientId: string | null;
     clientSecret: string | null;
-    postLogoutRedirectUri: string | null;
+    postLogoutRedirectUri: string;
     roleClaim: string | null;
     sessionCookieSecret: string | null;
   };
@@ -64,7 +64,7 @@ export function parseConfig(environment: Partial<Record<keyof ConfigEnvironment,
       issuer: parsedEnvironment.ZITADEL_ISSUER,
       clientId: parsedEnvironment.ZITADEL_CLIENT_ID,
       clientSecret: parsedEnvironment.ZITADEL_CLIENT_SECRET,
-      postLogoutRedirectUri: parsedEnvironment.ZITADEL_POST_LOGOUT_REDIRECT_URI,
+      postLogoutRedirectUri: new URL(parsedEnvironment.PUBLIC_BASE_URL).origin,
       roleClaim: parsedEnvironment.ZITADEL_ROLE_CLAIM,
       sessionCookieSecret: parsedEnvironment.SESSION_COOKIE_SECRET,
     },
@@ -84,6 +84,5 @@ export const config = parseConfig({
   ZITADEL_ISSUER: process.env.ZITADEL_ISSUER,
   ZITADEL_CLIENT_ID: process.env.ZITADEL_CLIENT_ID,
   ZITADEL_CLIENT_SECRET: process.env.ZITADEL_CLIENT_SECRET,
-  ZITADEL_POST_LOGOUT_REDIRECT_URI: process.env.ZITADEL_POST_LOGOUT_REDIRECT_URI,
   ZITADEL_ROLE_CLAIM: process.env.ZITADEL_ROLE_CLAIM,
 });
