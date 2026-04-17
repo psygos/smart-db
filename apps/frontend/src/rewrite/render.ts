@@ -87,6 +87,12 @@ export function renderApp(state: RewriteUiState): string {
         </div>
         <button
           type="button"
+          data-action="toggle-theme"
+          class="theme-toggle"
+          aria-label="${state.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}"
+        >${state.theme === "dark" ? "◑ light" : "◐ dark"}</button>
+        <button
+          type="button"
           data-action="logout"
           ${disabled(state.pendingAction === "logout")}
         >
