@@ -309,8 +309,8 @@ function renderScanTab(state: RewriteUiState): string {
             data-action="set-bulk-action"
             data-bulk-action="delete"
           >
-            <span class="scan-mode-icon">×</span>
-            Bulk delete
+            <span class="scan-mode-icon">↶</span>
+            Bulk reverse
           </button>
         </div>
       `}
@@ -571,13 +571,13 @@ function renderBulkMoveForm(state: RewriteUiState): string {
 function renderBulkDeleteForm(state: RewriteUiState): string {
   return `
     <form class="form-grid" data-form="bulk-delete" style="margin-top:1rem">
-      <p class="banner error wide">Bulk delete reverses fresh ingests only and preserves the correction audit trail.</p>
+      <p class="banner error wide">Reverses fresh ingests only. The correction audit row survives, so this is never data loss.</p>
       <label class="wide">
         Reason
         <textarea name="bulkDelete.reason">${escapeHtml(state.bulkQueue.deleteForm.reason)}</textarea>
       </label>
       <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
-        ${state.pendingAction === "bulk" ? "Deleting..." : `Delete ${state.bulkQueue.summary.uniqueLabelCount} ingests`}
+        ${state.pendingAction === "bulk" ? "Reversing..." : `Reverse ${state.bulkQueue.summary.uniqueLabelCount} ingests`}
       </button>
     </form>
   `;
@@ -854,8 +854,38 @@ function renderInteractCard(
         `).join("")}
       </div>
       ${state.scanEdit.status === "closed"
-        ? `<button type="button" class="disclosure" data-action="scan-edit-open" ${disabled(state.pendingAction !== null)}>Edit this part</button>`
+        ? renderScanEditEntry(state)
         : renderScanEditPanel(state)}
+    </div>
+  `;
+}
+
+function renderScanEditEntry(state: RewriteUiState): string {
+  const scan = state.scanResult;
+  if (!scan || scan.mode !== "interact") {
+    return "";
+  }
+  const canReverse = "canReverseIngest" in scan ? scan.canReverseIngest : false;
+  const canEditShared = "canEditSharedType" in scan ? scan.canEditSharedType : false;
+  const pending = state.pendingAction !== null;
+
+  const reverseButton = canReverse
+    ? `<button type="button" data-action="scan-edit-open-reverse" ${disabled(pending)}>Reverse ingest</button>`
+    : `<p class="muted-copy" style="margin:0.25rem 0">Reverse ingest is only possible for fresh, untouched assignments.</p>`;
+  const sharedButton = canEditShared
+    ? `<button type="button" data-action="scan-edit-open-shared" ${disabled(pending)}>Rename shared part type</button>`
+    : "";
+
+  return `
+    <div class="scan-edit-entry" style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.35rem">
+      <button type="button" class="disclosure primary" data-action="scan-edit-open" ${disabled(pending)}>Relabel</button>
+      <details class="more-corrections">
+        <summary style="cursor:pointer;font-size:0.85rem">More corrections</summary>
+        <div class="more-corrections-body" style="display:flex;flex-direction:column;gap:0.35rem;margin-top:0.35rem">
+          ${reverseButton}
+          ${sharedButton}
+        </div>
+      </details>
     </div>
   `;
 }
@@ -1067,9 +1097,9 @@ function renderScanEditPanel(state: RewriteUiState): string {
         Category: ${escapeHtml(formatCategoryPath(targetEntity.partType.categoryPath))}
       </p>
       <div class="wide mode-toggle" role="radiogroup" aria-label="Edit action">
-        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reassign")}" class="${edit.form.action === "reassign" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reassign">Fix this item only</button>
-        <button type="button" role="radio" aria-checked="${String(edit.form.action === "editShared")}" class="${edit.form.action === "editShared" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="editShared">Rename shared type</button>
-        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reverseIngest")}" class="${edit.form.action === "reverseIngest" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reverseIngest">Reverse ingest</button>
+        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reassign")}" class="${edit.form.action === "reassign" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reassign">Relabel</button>
+        ${"canEditSharedType" in target && target.canEditSharedType ? `<button type="button" role="radio" aria-checked="${String(edit.form.action === "editShared")}" class="${edit.form.action === "editShared" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="editShared">Rename shared type</button>` : ""}
+        ${"canReverseIngest" in target && target.canReverseIngest ? `<button type="button" role="radio" aria-checked="${String(edit.form.action === "reverseIngest")}" class="${edit.form.action === "reverseIngest" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reverseIngest">Reverse ingest</button>` : ""}
       </div>
 
       ${edit.form.action === "reassign" ? renderScanEditReassignForm(state, edit.form, targetEntity) : ""}
@@ -1463,7 +1493,7 @@ function bulkActionHeading(action: "label" | "move" | "delete"): string {
     case "move":
       return "Bulk move queue";
     case "delete":
-      return "Bulk delete queue";
+      return "Bulk reverse queue";
   }
 }
 

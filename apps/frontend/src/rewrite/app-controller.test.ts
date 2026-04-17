@@ -634,6 +634,10 @@ describe("RewriteAppController", () => {
       },
       suggestions: [partType],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
     apiMock.bulkAssignQrs.mockResolvedValueOnce({
       entities: [
@@ -757,6 +761,10 @@ describe("RewriteAppController", () => {
       ],
       availableActions: ["moved", "restocked", "consumed", "stocktaken", "adjusted"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
 
     const controller = startRewriteApp(document.getElementById("root")!);
@@ -821,6 +829,10 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
     apiMock.getCorrectionHistory.mockResolvedValueOnce([
       {
@@ -918,6 +930,10 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
     apiMock.getCorrectionHistory.mockResolvedValueOnce([]);
 
@@ -993,6 +1009,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       })
       .mockResolvedValueOnce({
         mode: "interact",
@@ -1020,6 +1040,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       });
 
     const controller = startRewriteApp(document.getElementById("root")!);
@@ -1106,6 +1130,10 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
 
     const controller = startRewriteApp(document.getElementById("root")!);
@@ -1132,6 +1160,65 @@ describe("RewriteAppController", () => {
 
     expect(apiMock.reassignEntityPartType).not.toHaveBeenCalled();
     expect(document.querySelector('form[data-form="scan-edit-reassign"]')).not.toBeNull();
+    controller.dispose();
+  });
+
+  it("hides the Reverse ingest action when canReverseIngest is false", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    apiMock.scan.mockResolvedValueOnce({
+      mode: "interact",
+      qrCode: {
+        code: "QR-9600",
+        batchId: "batch-1",
+        status: "assigned",
+        assignedKind: "instance",
+        assignedId: "instance-9600",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      entity: {
+        id: "instance-9600",
+        targetType: "instance",
+        qrCode: "QR-9600",
+        partType,
+        location: "Shelf A",
+        state: "checked_out",
+        assignee: "alice",
+        partDbSyncStatus: "never",
+        quantity: null,
+        minimumQuantity: null,
+      },
+      recentEvents: [],
+      availableActions: ["moved", "returned", "checked_out", "consumed", "damaged", "lost", "disposed"],
+      partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: false,
+      canEditSharedType: true,
+    });
+    apiMock.getPartTypeItems.mockResolvedValue({ bulkStocks: [], instances: [] });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('input[name="scanCode"]')!;
+    scanInput.value = "QR-9600";
+    scanInput.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLFormElement>('form[data-form="scan"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(document.querySelector('[data-action="scan-edit-open"]')).not.toBeNull();
+    expect(document.querySelector('[data-action="scan-edit-open-shared"]')).not.toBeNull();
+    expect(document.querySelector('[data-action="scan-edit-open-reverse"]')).toBeNull();
+    expect(document.body.textContent).toContain("Reverse ingest is only possible for fresh, untouched assignments.");
     controller.dispose();
   });
 
@@ -1175,6 +1262,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       });
       apiMock.getPartTypeItems.mockResolvedValue({ bulkStocks: [], instances: [] });
 
@@ -1252,6 +1343,10 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "restocked", "consumed", "stocktaken", "adjusted"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
     apiMock.getPartTypeItems.mockResolvedValueOnce({
       bulkStocks: [
@@ -1317,6 +1412,8 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "returned", "checked_out", "consumed", "damaged", "lost", "disposed"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
       currentBorrow: {
         id: "borrow-1",
         instanceId: "instance-9400",
@@ -1383,6 +1480,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "restocked", "consumed", "stocktaken", "adjusted"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       })
       .mockResolvedValueOnce({
         mode: "interact",
@@ -1410,6 +1511,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "restocked", "consumed", "stocktaken", "adjusted"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       });
     apiMock.getPartTypeItems.mockResolvedValue({ bulkStocks: [], instances: [] });
     apiMock.recordEvent.mockResolvedValueOnce({
@@ -1489,6 +1594,10 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "restocked", "stocktaken", "adjusted"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
     apiMock.getPartTypeItems.mockResolvedValue({ bulkStocks: [], instances: [] });
 
@@ -1545,6 +1654,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       })
       .mockResolvedValueOnce({
         mode: "interact",
@@ -1572,6 +1685,10 @@ describe("RewriteAppController", () => {
         recentEvents: [],
         availableActions: ["moved", "returned", "checked_out", "consumed", "damaged", "lost", "disposed"],
         partDb: { configured: false, connected: false, message: "not found" },
+        canReverseIngest: true,
+        canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
       });
     apiMock.getPartTypeItems.mockResolvedValue({ bulkStocks: [], instances: [] });
     apiMock.recordEvent.mockResolvedValueOnce({
@@ -1648,6 +1765,10 @@ describe("RewriteAppController", () => {
       recentEvents: [],
       availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
       partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
 
     const controller = startRewriteApp(document.getElementById("root")!);

@@ -476,7 +476,13 @@ export class RewriteAppController {
         this.handleQuickInstanceReturn();
         break;
       case "scan-edit-open":
-        this.openScanEdit();
+        this.openScanEdit("reassign");
+        break;
+      case "scan-edit-open-reverse":
+        this.openScanEdit("reverseIngest");
+        break;
+      case "scan-edit-open-shared":
+        this.openScanEdit("editShared");
         break;
       case "scan-edit-close":
         this.closeScanEdit();
@@ -1901,32 +1907,59 @@ export class RewriteAppController {
     return scanResult;
   }
 
-  private openScanEdit(): void {
+  private openScanEdit(action: ScanEditAction = "reassign"): void {
     const target = this.interactTarget();
     if (!target) {
       return;
     }
-    this.scanActor.send({ type: "EDIT.OPEN", editKind: "reassign" });
+    if (action === "reverseIngest" && "canReverseIngest" in target && !target.canReverseIngest) {
+      return;
+    }
+    if (action === "editShared" && "canEditSharedType" in target && !target.canEditSharedType) {
+      return;
+    }
+
+    const form = this.buildScanEditForm(action, target);
+    this.scanActor.send({ type: "EDIT.OPEN", editKind: action });
     this.patch({
       scanEdit: {
         status: "open",
-        form: {
-          action: "reassign",
-          search: {
-            query: "",
-            results: [...this.state.catalogSuggestions],
-            status: "idle",
-            error: null,
-          },
-          replacementPartTypeId: "",
-          reason: "",
-        },
+        form,
         history: [],
         historyError: null,
         dirty: false,
       },
     });
     void this.loadScanEditHistory(target.entity.targetType, target.entity.id);
+  }
+
+  private buildScanEditForm(
+    action: ScanEditAction,
+    target: Extract<ScanResponse, { mode: "interact" }>,
+  ): ScanEditForm {
+    if (action === "reassign") {
+      return {
+        action: "reassign",
+        search: {
+          query: "",
+          results: [...this.state.catalogSuggestions],
+          status: "idle",
+          error: null,
+        },
+        replacementPartTypeId: "",
+        reason: "",
+      };
+    }
+    if (action === "editShared") {
+      return {
+        action: "editShared",
+        sharedCanonicalName: target.entity.partType.canonicalName,
+        sharedCategory: formatCategoryPath(target.entity.partType.categoryPath),
+        sharedExpectedUpdatedAt: target.entity.partType.updatedAt,
+        reason: "",
+      };
+    }
+    return { action: "reverseIngest", reason: "" };
   }
 
   private closeScanEdit(): void {
