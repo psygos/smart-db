@@ -1,0 +1,28 @@
+name: Setup preview router (one-time)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: [self-hosted, smartdb-staging-lxc]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create smartdb-previews network
+        run: docker network create smartdb-previews 2>/dev/null || echo "Network already exists"
+
+      - name: Sync router config to stable location
+        run: |
+          mkdir -p /opt/smart-db/router
+          cp deploy/Caddyfile.preview-router /opt/smart-db/router/Caddyfile.preview-router
+          cp deploy/compose.preview-router.yaml /opt/smart-db/router/compose.preview-router.yaml
+
+      - name: Start preview router
+        working-directory: /opt/smart-db/router
+        run: docker compose -f compose.preview-router.yaml up -d
+
+      - name: Verify
+        run: |
+          docker network ls | grep smartdb-previews
+          docker compose -f /opt/smart-db/router/compose.preview-router.yaml ps
