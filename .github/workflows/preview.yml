@@ -11,6 +11,7 @@ permissions:
 env:
   NODE_VERSION: "24"
   CADDY_HOST: "192.168.7.3"
+  ROUTER_PORT: "9444"
 
 jobs:
   check:
@@ -29,21 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute preview port
-        id: port
-        run: |
-          PORT=$((10000 + ${{ env.PR_N }}))
-          if [[ "$PORT" == "443" || "$PORT" == "8443" || "$PORT" == "9443" ]]; then
-            echo "Port $PORT conflicts with a reserved port" >&2
-            exit 1
-          fi
-          echo "value=$PORT" >> "$GITHUB_OUTPUT"
-
       - name: Tear down any existing preview (wipe data for fresh state)
         run: |
           COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
             docker compose \
-              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.preview.yaml \
+              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.pr-preview.yaml \
               down --volumes --remove-orphans 2>/dev/null || true
           rm -rf \
             /opt/smart-db/state/preview-${{ env.PR_N }} \
@@ -62,8 +53,8 @@ jobs:
           SESSION_COOKIE_SECRET=$(openssl rand -base64 48)
           printf '%s\n' \
             "PORT=4000" \
-            "FRONTEND_ORIGIN=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}" \
-            "PUBLIC_BASE_URL=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}" \
+            "FRONTEND_ORIGIN=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}" \
+            "PUBLIC_BASE_URL=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }}" \
             "SMART_DB_DATA_PATH=/workspace/data/smart.db" \
             "PARTDB_BASE_URL=" \
             "PARTDB_API_TOKEN=" \
@@ -72,7 +63,7 @@ jobs:
             "ZITADEL_CLIENT_ID=${{ secrets.ZITADEL_CLIENT_ID }}" \
             "ZITADEL_CLIENT_SECRET=${{ secrets.ZITADEL_CLIENT_SECRET }}" \
             "ZITADEL_ROLE_CLAIM=${{ secrets.ZITADEL_ROLE_CLAIM }}" \
-            "ZITADEL_POST_LOGOUT_REDIRECT_URI=https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}" \
+            "ZITADEL_POST_LOGOUT_REDIRECT_URI=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}" \
             > /opt/smart-db/config/preview-${{ env.PR_N }}/middleware.env
 
       - name: Ensure state directory exists
@@ -90,26 +81,26 @@ jobs:
         working-directory: /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy
         run: |
           COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
-          HTTPS_PORT=${{ steps.port.outputs.value }} \
-          CADDY_HOST=${{ env.CADDY_HOST }} \
+          VITE_BASE_PATH=/pr/${{ env.PR_N }}/ \
+          VITE_API_BASE_URL=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }} \
           SMART_DB_STATE=/opt/smart-db/state/preview-${{ env.PR_N }} \
           SMART_DB_CONFIG=/opt/smart-db/config/preview-${{ env.PR_N }} \
-            docker compose -f compose.preview.yaml build --no-cache middleware gateway
+            docker compose -f compose.pr-preview.yaml build --no-cache middleware gateway
 
       - name: Start containers
         working-directory: /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy
         run: |
           COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
-          HTTPS_PORT=${{ steps.port.outputs.value }} \
-          CADDY_HOST=${{ env.CADDY_HOST }} \
+          VITE_BASE_PATH=/pr/${{ env.PR_N }}/ \
+          VITE_API_BASE_URL=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }} \
           SMART_DB_STATE=/opt/smart-db/state/preview-${{ env.PR_N }} \
           SMART_DB_CONFIG=/opt/smart-db/config/preview-${{ env.PR_N }} \
-            docker compose -f compose.preview.yaml up -d
+            docker compose -f compose.pr-preview.yaml up -d
 
       - name: Health check
         run: |
           for i in $(seq 1 30); do
-            if curl -skf "https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}/health" > /dev/null 2>&1; then
+            if curl -skf "https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }}/health" > /dev/null 2>&1; then
               echo "Healthy after ${i}s"
               exit 0
             fi
@@ -118,7 +109,7 @@ jobs:
           echo "Health check failed after 30s"
           COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
             docker compose \
-              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.preview.yaml \
+              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.pr-preview.yaml \
               logs middleware --tail 30
           exit 1
 
@@ -132,21 +123,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          PREVIEW_URL="https://${{ env.CADDY_HOST }}:${{ steps.port.outputs.value }}"
+          PREVIEW_URL="https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }}"
           COMMIT="${{ github.event.pull_request.head.sha }}"
-          BODY="### Preview deployed
-          **URL:** ${PREVIEW_URL}
-          **Commit:** \`${COMMIT:0:7}\`
+          BODY=$(printf '### Preview deployed\n**URL:** %s\n**Commit:** `%s`\n\n> Data resets on every push. Torn down when this PR closes.' \
+            "$PREVIEW_URL" "${COMMIT:0:7}")
 
-          > Data resets on every push. Torn down when this PR closes."
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$BODY")
 
-          gh pr comment ${{ env.PR_N }} \
-            --repo "${{ github.repository }}" \
-            --edit-last \
-            --body "$BODY" 2>/dev/null || \
-          gh pr comment ${{ env.PR_N }} \
-            --repo "${{ github.repository }}" \
-            --body "$BODY"
+          EXISTING=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.PR_N }}/comments?per_page=100" \
+            | python3 -c "import json,sys;cs=[c for c in json.load(sys.stdin) if '### Preview' in c.get('body','')];print(cs[-1]['id'] if cs else '')" \
+            2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            curl -sf -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/comments/$EXISTING" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null
+          else
+            curl -sf -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.PR_N }}/comments" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null
+          fi
 
   teardown:
     name: Tear down preview
@@ -161,7 +166,7 @@ jobs:
         run: |
           COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
             docker compose \
-              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.preview.yaml \
+              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.pr-preview.yaml \
               down --volumes --remove-orphans 2>/dev/null || true
 
       - name: Remove build and state directories
@@ -175,8 +180,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr comment ${{ env.PR_N }} \
-            --repo "${{ github.repository }}" \
-            --edit-last \
-            --body "### Preview torn down
-          PR #${{ env.PR_N }} closed — preview environment removed." 2>/dev/null || true
+          BODY=$(printf '### Preview torn down\nPR #%s closed — preview environment removed.' "${{ env.PR_N }}")
+
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$BODY")
+
+          EXISTING=$(curl -sf \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.PR_N }}/comments?per_page=100" \
+            | python3 -c "import json,sys;cs=[c for c in json.load(sys.stdin) if '### Preview' in c.get('body','')];print(cs[-1]['id'] if cs else '')" \
+            2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            curl -sf -X PATCH \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/comments/$EXISTING" \
+              -d "{\"body\":$BODY_JSON}" > /dev/null || true
+          fi

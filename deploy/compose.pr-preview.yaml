@@ -1,0 +1,50 @@
+# PR preview stack — no host-port binding; accessed via preview-router on :9444.
+# Required env vars:
+#   COMPOSE_PROJECT_NAME  e.g. smartdb-pr-42
+#   VITE_BASE_PATH        e.g. /pr/42/
+#   VITE_API_BASE_URL     e.g. https://192.168.7.3:9444/pr/42
+#   SMART_DB_STATE        absolute path to per-environment state dir
+#   SMART_DB_CONFIG       absolute path to dir containing middleware.env
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
+      args:
+        VITE_BASE_PATH: ${VITE_BASE_PATH}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        CADDYFILE: deploy/Caddyfile.preview
+    environment:
+      CADDY_HOST: "192.168.7.3"
+      CADDY_PORT: "443"
+    depends_on:
+      middleware:
+        condition: service_healthy
+    networks:
+      - smartdb
+      - smartdb-previews
+    volumes:
+      - ${SMART_DB_STATE}/caddy/certs/server.crt:/certs/server.crt:ro
+      - ${SMART_DB_STATE}/caddy/certs/server.key:/certs/server.key:ro
+    restart: unless-stopped
+
+  middleware:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.middleware
+    image: ${COMPOSE_PROJECT_NAME}-middleware:current
+    env_file:
+      - ${SMART_DB_CONFIG}/middleware.env
+    networks:
+      - smartdb
+    restart: unless-stopped
+    volumes:
+      - ${SMART_DB_STATE}/data:/workspace/data
+
+networks:
+  smartdb:
+    driver: bridge
+  smartdb-previews:
+    external: true
+    name: smartdb-previews
