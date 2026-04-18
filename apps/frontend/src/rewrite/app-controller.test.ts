@@ -471,6 +471,92 @@ describe("RewriteAppController", () => {
     controller.dispose();
   });
 
+  it("stops the camera when the user leaves the scan tab with an active stream", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    cameraMocks.getSnapshot.mockReturnValue({ ...defaultCameraState, activeStream: true });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const cameraButton = document.querySelector<HTMLButtonElement>('[data-action="camera-start"]');
+    expect(cameraButton).not.toBeNull();
+    cameraButton!.click();
+    await flush();
+    cameraMocks.stop.mockClear();
+    cameraMocks.attach.mockClear();
+
+    const stockTab = document.querySelector<HTMLButtonElement>('[data-action="change-tab"][data-tab="inventory"]');
+    expect(stockTab).not.toBeNull();
+    stockTab!.click();
+    await flush();
+
+    expect(cameraMocks.stop).toHaveBeenCalledTimes(1);
+    expect(cameraMocks.attach).toHaveBeenCalledWith(null);
+    controller.dispose();
+  });
+
+  it("does not call camera stop when switching tabs with no active stream", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+    cameraMocks.stop.mockClear();
+
+    const stockTab = document.querySelector<HTMLButtonElement>('[data-action="change-tab"][data-tab="inventory"]');
+    expect(stockTab).not.toBeNull();
+    stockTab!.click();
+    await flush();
+
+    expect(cameraMocks.stop).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("attaches the freshly-rendered video element after startCamera settles", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    cameraMocks.getSnapshot.mockReturnValue({ ...defaultCameraState, activeStream: true });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const cameraButton = document.querySelector<HTMLButtonElement>('[data-action="camera-start"]');
+    expect(cameraButton).not.toBeNull();
+    cameraButton!.click();
+    await flush();
+
+    const attached = cameraMocks.attach.mock.calls.find(
+      (args) => args[0] instanceof HTMLVideoElement && (args[0] as HTMLVideoElement).id === "rewrite-camera-video",
+    );
+    expect(attached).toBeDefined();
+    controller.dispose();
+  });
+
   it("stops the camera service during logout cleanup", async () => {
     const { startRewriteApp } = await import("./app-controller");
     apiMock.getSession.mockResolvedValueOnce({

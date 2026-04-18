@@ -304,7 +304,16 @@ export class RewriteAppController {
         break;
       case "change-tab":
         if (actionEl.dataset.tab) {
-          this.patch({ activeTab: actionEl.dataset.tab as TabId });
+          const nextTab = actionEl.dataset.tab as TabId;
+          // Leaving scan with an active camera would leak the MediaStream and
+          // leave the scan loop ticking against a soon-to-be-detached video
+          // element (renderScanTab() stops emitting #rewrite-camera-video
+          // outside the scan tab). Tear it down before the re-render.
+          if (nextTab !== "scan" && this.cameraService.getSnapshot().activeStream) {
+            this.cameraService.stop();
+            void this.cameraService.attachVideoElement(null);
+          }
+          this.patch({ activeTab: nextTab });
         }
         break;
       case "scan-next":
@@ -2059,8 +2068,12 @@ export class RewriteAppController {
     // Render once with final camera state. This creates the video element.
     this.render();
 
-    // Attach the fresh video element and bind the stream.
-    // Use a microtask to ensure the DOM has settled.
+    // Yield a microtask so the new innerHTML is observable before we query
+    // for #rewrite-camera-video. Without this, the querySelector can race
+    // the DOM mutation on some render stacks and return null, leaving the
+    // stream running with no sink attached.
+    await Promise.resolve();
+
     const video = this.root.querySelector<HTMLVideoElement>("#rewrite-camera-video");
     if (video && this.cameraService.getSnapshot().activeStream) {
       await this.cameraService.attachVideoElement(video);
