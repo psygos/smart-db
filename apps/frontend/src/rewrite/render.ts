@@ -111,10 +111,11 @@ export function renderApp(state: RewriteUiState): string {
         ${state.activeTab === "scan" ? renderScanTab(state) : ""}
         ${state.activeTab === "inventory" ? renderInventoryTab(state) : ""}
         ${state.activeTab === "activity" ? renderActivityTab(state) : ""}
+        ${state.activeTab === "dashboard" ? renderDashboardTab(state) : ""}
         ${state.activeTab === "admin" && isAdmin ? renderAdminTab(state) : ""}
       </main>
 
-      ${renderTabBar(state.activeTab, isAdmin ? ["scan", "inventory", "activity", "admin"] : ["scan", "inventory", "activity"])}
+      ${renderTabBar(state.activeTab, isAdmin ? ["scan", "inventory", "activity", "dashboard", "admin"] : ["scan", "inventory", "activity", "dashboard"])}
     </div>
   `;
 }
@@ -160,6 +161,7 @@ function renderTabBar(activeTab: TabId, tabs: readonly TabId[]): string {
     scan: "Scan",
     inventory: "Assets",
     activity: "Activity",
+    dashboard: "Dashboard",
     admin: "Admin",
   };
 
@@ -701,13 +703,6 @@ function renderInventoryTab(state: RewriteUiState): string {
 
   return `
     <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
-      <section class="metrics">
-        ${renderMetric("Part types", state.dashboard?.partTypeCount ?? 0)}
-        ${renderMetric("Instances", state.dashboard?.instanceCount ?? 0)}
-        ${renderMetric("Bulk bins", state.dashboard?.bulkStockCount ?? 0)}
-        ${renderMetric("Provisional", state.dashboard?.provisionalCount ?? 0)}
-        ${renderMetric("Unassigned QRs", state.dashboard?.unassignedQrCount ?? 0)}
-      </section>
       <div class="stock-controls">
         <input type="search" aria-label="Filter inventory" name="inventory.query" value="${attr(state.inventoryUi.query)}" placeholder="Search..." />
         <label class="inventory-toggle">
@@ -769,6 +764,20 @@ function renderInventoryTab(state: RewriteUiState): string {
           </ul>
         </section>
       `).join("")}
+    </section>
+  `;
+}
+
+function renderDashboardTab(state: RewriteUiState): string {
+  return `
+    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="panel">
+      <section class="metrics">
+        ${renderMetric("Part types", state.dashboard?.partTypeCount ?? 0)}
+        ${renderMetric("Instances", state.dashboard?.instanceCount ?? 0)}
+        ${renderMetric("Bulk bins", state.dashboard?.bulkStockCount ?? 0)}
+        ${renderMetric("Provisional", state.dashboard?.provisionalCount ?? 0)}
+        ${renderMetric("Unassigned QRs", state.dashboard?.unassignedQrCount ?? 0)}
+      </section>
     </section>
   `;
 }

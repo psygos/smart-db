@@ -47,7 +47,7 @@ export type AuthViewState =
       readonly error: string | null;
     };
 
-export type TabId = "scan" | "inventory" | "activity" | "admin";
+export type TabId = "scan" | "inventory" | "activity" | "dashboard" | "admin";
 
 export interface ToastRecord {
   readonly id: string;
