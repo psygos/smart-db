@@ -42,6 +42,7 @@ import {
   defaultCorrectionUiState,
   defaultEventForm,
   defaultInventoryUiState,
+  defaultPathPickerState,
   defaultSearchState,
   type AuthViewState,
   type PendingAction,
@@ -107,6 +108,8 @@ export class RewriteAppController {
     isOnline: typeof navigator === "undefined" ? true : navigator.onLine,
     sessionExpiringSoon: false,
     refreshError: null,
+    categoryPicker: defaultPathPickerState,
+    locationPicker: defaultPathPickerState,
   };
 
   private readonly authActor = createActor(authMachine, { input: {} });
@@ -315,26 +318,95 @@ export class RewriteAppController {
           this.setBulkCountability(actionEl.dataset.countable === "true");
         }
         break;
-      case "pick-known-location":
-        if (actionEl.dataset.location) {
-          this.patch({
-            assignForm: {
-              ...this.state.assignForm,
-              location: actionEl.dataset.location,
-            },
-          });
+      case "toggle-path-picker": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({ [key]: { ...this.state[key], open: !this.state[key].open } } as Partial<RewriteUiState>);
         }
         break;
-      case "pick-known-category":
-        if (actionEl.dataset.category) {
-          this.patch({
-            assignForm: {
-              ...this.state.assignForm,
-              category: actionEl.dataset.category,
-            },
-          });
+      }
+      case "close-path-picker": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({ [key]: { ...this.state[key], open: false, createOpen: false } } as Partial<RewriteUiState>);
         }
         break;
+      }
+      case "toggle-path-expand": {
+        const kind = actionEl.dataset.kind;
+        const path = actionEl.dataset.path;
+        if ((kind === "category" || kind === "location") && typeof path === "string") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          const cur = this.state[key];
+          const already = cur.expanded.includes(path);
+          const expanded = already ? cur.expanded.filter((p) => p !== path) : [...cur.expanded, path];
+          this.patch({ [key]: { ...cur, expanded } } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "pick-path-node": {
+        const kind = actionEl.dataset.kind;
+        const path = actionEl.dataset.path;
+        if ((kind === "category" || kind === "location") && typeof path === "string") {
+          const pickerKey = kind === "category" ? "categoryPicker" : "locationPicker";
+          const formKey = kind === "category" ? "category" : "location";
+          this.patch({
+            assignForm: { ...this.state.assignForm, [formKey]: path },
+            [pickerKey]: { ...this.state[pickerKey], open: false, query: "", createOpen: false },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "open-path-create": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          const cur = this.state[key];
+          const currentValue = kind === "category" ? this.state.assignForm.category : this.state.assignForm.location;
+          this.patch({
+            [key]: { ...cur, createOpen: true, createParent: currentValue, createName: "" },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "close-path-create": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({
+            [key]: { ...this.state[key], createOpen: false, createName: "" },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "set-path-create-parent": {
+        const kind = actionEl.dataset.kind;
+        const path = actionEl.dataset.path;
+        if ((kind === "category" || kind === "location") && typeof path === "string") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({ [key]: { ...this.state[key], createParent: path } } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "commit-path-create": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const pickerKey = kind === "category" ? "categoryPicker" : "locationPicker";
+          const formKey = kind === "category" ? "category" : "location";
+          const cur = this.state[pickerKey];
+          const leaf = cur.createName.trim();
+          if (!leaf) break;
+          const parent = cur.createParent.trim();
+          const full = parent === "" ? leaf : `${parent} / ${leaf}`;
+          this.patch({
+            assignForm: { ...this.state.assignForm, [formKey]: full },
+            [pickerKey]: { ...cur, open: false, createOpen: false, createParent: "", createName: "", query: "" },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
       case "select-event-action":
         if (actionEl.dataset.event) {
           this.patch({
@@ -553,6 +625,18 @@ export class RewriteAppController {
             showEmpty: Boolean(rawValue),
           },
         });
+        return;
+      case "pathPicker.category.query":
+        this.patch({ categoryPicker: { ...this.state.categoryPicker, query: String(rawValue) } });
+        return;
+      case "pathPicker.location.query":
+        this.patch({ locationPicker: { ...this.state.locationPicker, query: String(rawValue) } });
+        return;
+      case "pathPicker.category.createName":
+        this.patch({ categoryPicker: { ...this.state.categoryPicker, createName: String(rawValue) } });
+        return;
+      case "pathPicker.location.createName":
+        this.patch({ locationPicker: { ...this.state.locationPicker, createName: String(rawValue) } });
         return;
       case "merge.sourceId":
         this.patch({ mergeSourceId: String(rawValue) });
@@ -785,6 +869,8 @@ export class RewriteAppController {
       pendingAction: null,
       downloadingBatchId: null,
       refreshError: null,
+      categoryPicker: defaultPathPickerState,
+      locationPicker: defaultPathPickerState,
     });
   }
 

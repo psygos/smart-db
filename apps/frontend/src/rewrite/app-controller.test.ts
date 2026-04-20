@@ -282,9 +282,13 @@ describe("RewriteAppController", () => {
     await flush();
 
     expect(document.body.textContent).toContain("lab-admin");
+    expect(document.querySelector('[data-tab="admin"]')).not.toBeNull();
+
+    (document.querySelector('[data-tab="dashboard"]') as HTMLButtonElement).click();
+    await flush();
+
     expect(document.body.textContent).toContain("Part types");
     expect(document.body.textContent).toContain("2");
-    expect(document.querySelector('[data-tab="admin"]')).not.toBeNull();
     controller.dispose();
   });
 
