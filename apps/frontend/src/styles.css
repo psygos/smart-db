@@ -35,6 +35,19 @@
   --r-sm: 4px;
   --r-pill: 9999px;
 
+  --ring: rgba(37, 99, 235, 0.45);
+  --ring-offset: var(--bg);
+  --shadow-xs: 0 1px 2px rgba(17, 24, 39, 0.05);
+  --shadow-sm: 0 1px 3px rgba(17, 24, 39, 0.08), 0 1px 2px rgba(17, 24, 39, 0.04);
+  --shadow-md: 0 4px 8px rgba(17, 24, 39, 0.08), 0 2px 4px rgba(17, 24, 39, 0.04);
+  --shadow-lg: 0 12px 24px rgba(17, 24, 39, 0.10), 0 4px 8px rgba(17, 24, 39, 0.05);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 120ms;
+  --t: 160ms;
+  --t-slow: 220ms;
+
   color-scheme: light;
   font-family: var(--font);
   font-size: 15px;
@@ -794,6 +807,13 @@ html.dark {
   --red: #f87171;    --red-bg: rgba(248, 113, 113, 0.1);
   --amber: #fbbf24;  --amber-bg: rgba(251, 191, 36, 0.1);
 
+  --ring: rgba(96, 165, 250, 0.55);
+  --ring-offset: var(--bg);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.50), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 14px 28px rgba(0, 0, 0, 0.60), 0 6px 12px rgba(0, 0, 0, 0.35);
+
   color-scheme: dark;
 }
 
@@ -1112,5 +1132,206 @@ button.secondary:hover:not(:disabled) {
   background: var(--border);
   border-color: var(--ink-3);
   color: var(--ink-strong);
+}
+
+/* ── polished primitives ─ ─ ─ ─ ─ ─ ─ */
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring-offset), 0 0 0 4px var(--ring);
+  border-radius: inherit;
+}
+
+/* buttons: smooth transitions, subtle lift, crisp active state */
+button,
+.button-link {
+  transition:
+    background-color var(--t) var(--ease-in-out),
+    border-color var(--t) var(--ease-in-out),
+    color var(--t) var(--ease-in-out),
+    box-shadow var(--t) var(--ease-in-out),
+    transform var(--t-fast) var(--ease-in-out);
+  box-shadow: var(--shadow-xs);
+}
+button:hover:not(:disabled),
+.button-link:hover {
+  box-shadow: var(--shadow-sm);
+}
+button:active:not(:disabled) {
+  transform: scale(0.98);
+  box-shadow: var(--shadow-xs);
+}
+button:disabled {
+  box-shadow: none;
+  transform: none;
+}
+
+/* tertiary / ghost button treatments keep no shadow */
+.disclosure,
+.tab-bar button,
+.toast-close,
+.tree-chevron,
+.tree-label,
+.path-tree .crumb,
+.path-tree .path-child,
+.mode-toggle button,
+.entity-switch-option,
+.header-bar > button,
+.theme-toggle {
+  box-shadow: none;
+}
+.disclosure:hover,
+.tab-bar button:hover,
+.toast-close:hover,
+.tree-chevron:hover,
+.tree-label:hover,
+.path-tree .crumb:hover,
+.path-tree .path-child:hover,
+.mode-toggle button:hover,
+.entity-switch-option:hover,
+.header-bar > button:hover,
+.theme-toggle:hover {
+  box-shadow: none;
+}
+
+/* inputs: smoother focus ring matching the primary one */
+input,
+select,
+textarea {
+  transition:
+    border-color var(--t) var(--ease-in-out),
+    box-shadow var(--t) var(--ease-in-out),
+    background-color var(--t) var(--ease-in-out);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--ring-offset), 0 0 0 4px var(--ring);
+}
+
+/* picker cards: lift on hover, smooth border transitions */
+.picker button {
+  transition:
+    background-color var(--t) var(--ease-in-out),
+    border-color var(--t) var(--ease-in-out),
+    color var(--t) var(--ease-in-out),
+    transform var(--t-fast) var(--ease-in-out),
+    box-shadow var(--t) var(--ease-in-out);
+}
+.picker button:hover:not(:disabled) {
+  box-shadow: var(--shadow-xs);
+}
+.picker button.selected {
+  box-shadow: 0 0 0 1px var(--blue) inset;
+}
+
+/* result-card / status-card: subtle hover lift */
+.result-card,
+.status-card,
+.latest-batch-card {
+  transition: box-shadow var(--t) var(--ease-in-out), transform var(--t) var(--ease-in-out);
+}
+.result-card { box-shadow: var(--shadow-xs); }
+.result-card:hover { box-shadow: var(--shadow-sm); }
+
+/* tab underline slides in */
+.tab-bar button { transition: color var(--t) var(--ease-in-out); }
+.tab-bar button::after {
+  transition: transform var(--t-slow) var(--ease-out), opacity var(--t) var(--ease-in-out);
+  transform: scaleX(0);
+  transform-origin: center;
+  opacity: 0;
+}
+.tab-bar button.active::after {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+/* entity-switch thumb glides between options */
+.entity-switch-option {
+  transition:
+    background-color var(--t) var(--ease-in-out),
+    color var(--t) var(--ease-in-out),
+    box-shadow var(--t) var(--ease-in-out);
+}
+.entity-switch-option.active { box-shadow: var(--shadow-xs); }
+
+/* mode-toggle thumb */
+.mode-toggle button {
+  transition:
+    background-color var(--t) var(--ease-in-out),
+    color var(--t) var(--ease-in-out),
+    box-shadow var(--t) var(--ease-in-out);
+}
+
+/* path picker panel: slide-down + fade on mount */
+.path-picker-panel {
+  animation: popover-in var(--t-slow) var(--ease-out);
+  box-shadow: var(--shadow-md);
+  transform-origin: top;
+}
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.tree-row {
+  animation: tree-row-in var(--t) var(--ease-out) backwards;
+}
+.tree-row:nth-child(1) { animation-delay: 0ms; }
+.tree-row:nth-child(2) { animation-delay: 20ms; }
+.tree-row:nth-child(3) { animation-delay: 40ms; }
+.tree-row:nth-child(4) { animation-delay: 60ms; }
+.tree-row:nth-child(5) { animation-delay: 80ms; }
+.tree-row:nth-child(n+6) { animation-delay: 100ms; }
+@keyframes tree-row-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* create-panel expand */
+.path-create-panel {
+  animation: accordion-down var(--t-slow) var(--ease-out);
+  transform-origin: top;
+  overflow: hidden;
+}
+@keyframes accordion-down {
+  from { opacity: 0; transform: scaleY(0.96); max-height: 0; }
+  to   { opacity: 1; transform: scaleY(1);    max-height: 1000px; }
+}
+
+/* inventory row expand */
+.inventory-row-detail { animation: accordion-down var(--t-slow) var(--ease-out); transform-origin: top; }
+
+/* toast: refined spring slide + scale */
+.toast {
+  animation: toast-in var(--t-slow) var(--ease-out);
+  box-shadow: var(--shadow-lg);
+}
+@keyframes toast-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.96); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* banner slide-in */
+.banner { animation: banner-in var(--t-slow) var(--ease-out); }
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* respect reduced motion for the newly added animations too */
+@media (prefers-reduced-motion: reduce) {
+  .path-picker-panel,
+  .path-create-panel,
+  .inventory-row-detail,
+  .tree-row,
+  .toast,
+  .banner {
+    animation: none !important;
+  }
+  button:active:not(:disabled) { transform: none !important; }
 }
 
