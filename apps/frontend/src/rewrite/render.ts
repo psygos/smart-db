@@ -449,26 +449,21 @@ function renderNewPartTypeForm(
       <input name="assign.canonicalName" value="${attr(state.assignForm.canonicalName)}" placeholder="Arduino Uno R3" />
       ${assignIssues.canonicalName ? `<span class="field-error">${escapeHtml(assignIssues.canonicalName)}</span>` : ""}
     </label>
+    <div class="wide">
+      ${renderPathTree({
+        value: state.assignForm.category,
+        known: state.knownCategories,
+        ariaLabel: "Category tree",
+        pickAction: "pick-known-category",
+        pickDataKey: "category",
+      })}
+    </div>
     <label class="wide">
       Category path
       <input name="assign.category" value="${attr(state.assignForm.category)}" placeholder="Electronics / Resistors / SMD 0603" />
-      <small style="margin-top:0.3rem;text-transform:none;letter-spacing:0;font-family:var(--font-sans)">Use <code>/</code> for sub-categories. Each level is created in Part-DB.</small>
+      <small style="margin-top:0.3rem;text-transform:none;letter-spacing:0;font-family:var(--font-sans)">Pick a parent above, then type the new child's name at the end. Each level is created in Part-DB.</small>
       ${assignIssues.category ? `<span class="field-error">${escapeHtml(assignIssues.category)}</span>` : ""}
     </label>
-    ${state.knownCategories.length > 0 ? `
-      <div class="wide picker" role="listbox" aria-label="Known categories">
-        ${filterKnownValues(state.knownCategories, state.assignForm.category).map((cat) => {
-          const segments = cat.split(" / ");
-          const leaf = segments[segments.length - 1] ?? cat;
-          return `
-            <button type="button" role="option" aria-selected="${String(state.assignForm.category === cat)}" class="${state.assignForm.category === cat ? "selected" : ""}" data-action="pick-known-category" data-category="${attr(cat)}">
-              <strong>${escapeHtml(leaf)}</strong>
-              <span>${escapeHtml(cat)}</span>
-            </button>
-          `;
-        }).join("")}
-      </div>
-    ` : ""}
     <div class="wide mode-toggle" role="radiogroup" aria-label="Tracking mode">
       <button type="button" role="radio" aria-checked="${String(state.assignForm.entityKind === "instance")}" class="${state.assignForm.entityKind === "instance" ? "selected" : ""}" data-action="set-entity-kind" data-entity-kind="instance">Tracked unit</button>
       <button type="button" role="radio" aria-checked="${String(state.assignForm.entityKind === "bulk")}" class="${state.assignForm.entityKind === "bulk" ? "selected" : ""}" data-action="set-entity-kind" data-entity-kind="bulk">Bulk pool</button>
@@ -503,21 +498,21 @@ function renderSharedAssignFields(
     measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ??
     measurementUnitCatalog[0];
   return `
+    <div class="wide">
+      ${renderPathTree({
+        value: state.assignForm.location,
+        known: state.knownLocations,
+        ariaLabel: "Location tree",
+        pickAction: "pick-known-location",
+        pickDataKey: "location",
+      })}
+    </div>
     <label class="wide">
       Location
-      <input name="assign.location" value="${attr(state.assignForm.location)}" placeholder="e.g. Shelf A · Bin 7" autocomplete="off" />
+      <input name="assign.location" value="${attr(state.assignForm.location)}" placeholder="Lab A / Shelf 3 / Bin 12" autocomplete="off" />
+      <small style="margin-top:0.3rem;text-transform:none;letter-spacing:0;font-family:var(--font-sans)">Pick a parent above or type a new path. Use <code>/</code> to nest sub-locations.</small>
       ${assignIssues.location ? `<span class="field-error">${escapeHtml(assignIssues.location)}</span>` : ""}
     </label>
-    ${state.knownLocations.length > 0 ? `
-      <div class="wide picker" role="listbox" aria-label="Known locations">
-        ${filterKnownValues(state.knownLocations, state.assignForm.location).map((location) => `
-          <button type="button" role="option" aria-selected="${String(state.assignForm.location === location)}" class="${state.assignForm.location === location ? "selected" : ""}" data-action="pick-known-location" data-location="${attr(location)}">
-            <strong>${escapeHtml(location)}</strong>
-            <span>existing location</span>
-          </button>
-        `).join("")}
-      </div>
-    ` : ""}
     ${state.assignForm.entityKind === "instance" ? `
       <label>
         Initial status
@@ -552,8 +547,12 @@ function renderInteractCard(
   return `
     <div class="result-card">
       <h3>${escapeHtml(state.scanResult.entity.partType.canonicalName)}</h3>
-      <p class="muted-copy">
-        ${escapeHtml(state.scanResult.entity.qrCode)} · ${escapeHtml(state.scanResult.entity.targetType)} in ${escapeHtml(state.scanResult.entity.location)}
+      <p class="meta-line">
+        <code>${escapeHtml(state.scanResult.entity.qrCode)}</code>
+        <span class="sep">·</span>
+        <span>${escapeHtml(state.scanResult.entity.targetType)}</span>
+        <span class="sep">in</span>
+        <span class="meta-loc">${escapeHtml(state.scanResult.entity.location)}</span>
       </p>
       ${state.scanResult.entity.targetType === "bulk" && state.scanResult.entity.quantity !== null ? `
         <div class="quantity-display">
@@ -563,11 +562,17 @@ function renderInteractCard(
         </div>
       ` : `<p>Current state: <strong>${escapeHtml(state.scanResult.entity.state)}</strong></p>`}
       <p class="muted-copy" style="font-size:0.78rem">Part-DB sync: ${escapeHtml(state.scanResult.entity.partDbSyncStatus)}</p>
-      <div class="action-buttons">
-        ${state.scanResult.availableActions.map((action) => `
-          <button type="button" aria-pressed="${String(state.eventForm.event === action)}" class="${state.eventForm.event === action ? "selected" : ""}" data-action="select-event-action" data-event="${attr(action)}">${escapeHtml(actionLabel(action))}</button>
-        `).join("")}
-      </div>
+      ${(() => {
+        const actions = state.scanResult.availableActions;
+        const primary = actions.filter((a) => a === "checked_out");
+        const secondary = actions.filter((a) => a !== "checked_out");
+        const renderBtn = (action: typeof actions[number]) =>
+          `<button type="button" aria-pressed="${String(state.eventForm.event === action)}" class="${state.eventForm.event === action ? "selected" : ""}" data-action="select-event-action" data-event="${attr(action)}">${escapeHtml(actionLabel(action))}</button>`;
+        return `
+          ${primary.length > 0 ? `<div class="action-buttons action-buttons-primary">${primary.map(renderBtn).join("")}</div>` : ""}
+          ${secondary.length > 0 ? `<div class="action-buttons action-buttons-secondary">${secondary.map(renderBtn).join("")}</div>` : ""}
+        `;
+      })()}
       <form class="form-grid" data-form="event">
         ${(state.eventForm.event === "moved" || state.eventForm.event === "checked_out") ? `
           <label>
@@ -886,6 +891,79 @@ function filterKnownValues(values: readonly string[], query: string): string[] {
   const tokens = tokenizeQuery(query);
   if (tokens.length === 0) return values.slice(0, 12);
   return values.filter((value) => matchesAllTokens(value, tokens)).slice(0, 12);
+}
+
+function parsePathSegments(value: string): string[] {
+  return value.split("/").map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
+function joinPathSegments(segments: readonly string[]): string {
+  return segments.join(" / ");
+}
+
+function renderPathTree(opts: {
+  readonly value: string;
+  readonly known: readonly string[];
+  readonly ariaLabel: string;
+  readonly pickAction: "pick-known-category" | "pick-known-location";
+  readonly pickDataKey: "category" | "location";
+}): string {
+  const currentSegs = parsePathSegments(opts.value);
+  const currentPath = joinPathSegments(currentSegs);
+
+  const crumbButton = (label: string, path: string, isCurrent: boolean): string =>
+    `<button type="button" class="crumb ${isCurrent ? "current" : ""}"
+       data-action="${opts.pickAction}" data-${opts.pickDataKey}="${attr(path)}">${escapeHtml(label)}</button>`;
+
+  const crumbs = [
+    crumbButton("Root", "", currentSegs.length === 0),
+    ...currentSegs.map((seg, i) => {
+      const prefix = joinPathSegments(currentSegs.slice(0, i + 1));
+      return crumbButton(seg, prefix, i === currentSegs.length - 1);
+    }),
+  ].join(`<span class="crumb-sep" aria-hidden="true">›</span>`);
+
+  const children = new Set<string>();
+  for (const known of opts.known) {
+    const segs = parsePathSegments(known);
+    if (segs.length <= currentSegs.length) continue;
+    let prefixMatches = true;
+    for (let i = 0; i < currentSegs.length; i++) {
+      const a = currentSegs[i];
+      const b = segs[i];
+      if (a === undefined || b === undefined || foldSearchText(a) !== foldSearchText(b)) {
+        prefixMatches = false;
+        break;
+      }
+    }
+    if (!prefixMatches) continue;
+    const next = segs[currentSegs.length];
+    if (next) children.add(next);
+  }
+  const sortedChildren = Array.from(children).sort((a, b) => a.localeCompare(b));
+
+  const childButtons = sortedChildren.map((child) => {
+    const nextPath = joinPathSegments([...currentSegs, child]);
+    return `
+      <button type="button" class="path-child"
+        data-action="${opts.pickAction}" data-${opts.pickDataKey}="${attr(nextPath)}">
+        <strong>${escapeHtml(child)}</strong>
+      </button>
+    `;
+  }).join("");
+
+  const parentLabel = currentPath === "" ? "Root" : currentPath;
+
+  return `
+    <div class="path-tree" aria-label="${attr(opts.ariaLabel)}">
+      <div class="crumbs" role="navigation" aria-label="Current path">${crumbs}</div>
+      ${sortedChildren.length > 0 ? `
+        <div class="path-children" role="listbox" aria-label="Existing children">${childButtons}</div>
+      ` : `
+        <p class="path-empty muted-copy">No existing items under <strong>${escapeHtml(parentLabel)}</strong> — type a name below to create one.</p>
+      `}
+    </div>
+  `;
 }
 
 function buildActivityDetail(event: {
