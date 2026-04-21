@@ -81,8 +81,8 @@ export class RewriteAppController {
     partDbSyncFailures: [],
     latestBatch: null,
     catalogSuggestions: [],
-    knownLocations: [],
-    knownCategories: [],
+    knownLocations: this.loadProvisionalPaths("location"),
+    knownCategories: this.loadProvisionalPaths("category"),
     inventorySummary: [],
     inventoryUi: defaultInventoryUiState,
     correctionUi: defaultCorrectionUiState,
@@ -401,6 +401,7 @@ export class RewriteAppController {
           if (!leaf) break;
           const parent = cur.createParent.trim();
           const full = parent === "" ? leaf : `${parent} / ${leaf}`;
+          this.saveProvisionalPath(kind, full);
           const existingKnown = this.state[knownKey];
           const nextKnown = existingKnown.includes(full)
             ? existingKnown
@@ -981,18 +982,16 @@ export class RewriteAppController {
     }
     if (locationsResult.status === "fulfilled") {
       const fromServer = locationsResult.value;
-      const formLocation = this.state.assignForm.location.trim();
-      patch.knownLocations = formLocation && !fromServer.includes(formLocation)
-        ? [...fromServer, formLocation].sort()
-        : fromServer;
+      this.pruneProvisionalPaths("location", fromServer);
+      const provisional = this.loadProvisionalPaths("location");
+      patch.knownLocations = Array.from(new Set([...fromServer, ...provisional])).sort();
     }
     if (inventoryResult.status === "fulfilled") {
       patch.inventorySummary = inventoryResult.value;
       const categoriesFromServer = inventoryResult.value.map((row) => row.categoryPath.join(" / "));
-      const formCategory = this.state.assignForm.category.trim();
-      patch.knownCategories = Array.from(
-        new Set(formCategory ? [...categoriesFromServer, formCategory] : categoriesFromServer),
-      ).sort();
+      this.pruneProvisionalPaths("category", categoriesFromServer);
+      const provisional = this.loadProvisionalPaths("category");
+      patch.knownCategories = Array.from(new Set([...categoriesFromServer, ...provisional])).sort();
     }
     if (partDbResult.status === "fulfilled") {
       patch.partDbStatus = partDbResult.value;
@@ -2165,6 +2164,40 @@ export class RewriteAppController {
   private restoreScanMode(): "increment" | "inspect" {
     // Always start in view-only mode. User opts into auto-count per session.
     return "inspect";
+  }
+
+  private loadProvisionalPaths(kind: "category" | "location"): string[] {
+    try {
+      const raw = localStorage.getItem(`smartdb:provisional:${kind}`);
+      if (!raw) return [];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((v): v is string => typeof v === "string");
+    } catch {
+      return [];
+    }
+  }
+
+  private saveProvisionalPath(kind: "category" | "location", path: string): void {
+    try {
+      const existing = this.loadProvisionalPaths(kind);
+      if (!existing.includes(path)) {
+        localStorage.setItem(`smartdb:provisional:${kind}`, JSON.stringify([...existing, path]));
+      }
+    } catch {}
+  }
+
+  private pruneProvisionalPaths(kind: "category" | "location", serverPaths: readonly string[]): void {
+    try {
+      const provisional = this.loadProvisionalPaths(kind);
+      const remaining = provisional.filter((p) => !serverPaths.includes(p));
+      if (remaining.length === provisional.length) return;
+      if (remaining.length === 0) {
+        localStorage.removeItem(`smartdb:provisional:${kind}`);
+      } else {
+        localStorage.setItem(`smartdb:provisional:${kind}`, JSON.stringify(remaining));
+      }
+    } catch {}
   }
 
   private applyThemeToDOM(theme: "light" | "dark", animated = false): void {
