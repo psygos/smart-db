@@ -395,14 +395,20 @@ export class RewriteAppController {
         if (kind === "category" || kind === "location") {
           const pickerKey = kind === "category" ? "categoryPicker" : "locationPicker";
           const formKey = kind === "category" ? "category" : "location";
+          const knownKey = kind === "category" ? "knownCategories" : "knownLocations";
           const cur = this.state[pickerKey];
           const leaf = cur.createName.trim();
           if (!leaf) break;
           const parent = cur.createParent.trim();
           const full = parent === "" ? leaf : `${parent} / ${leaf}`;
+          const existingKnown = this.state[knownKey];
+          const nextKnown = existingKnown.includes(full)
+            ? existingKnown
+            : [...existingKnown, full].sort();
           this.patch({
             assignForm: { ...this.state.assignForm, [formKey]: full },
             [pickerKey]: { ...cur, open: false, createOpen: false, createParent: "", createName: "", query: "" },
+            [knownKey]: nextKnown,
           } as Partial<RewriteUiState>);
         }
         break;
