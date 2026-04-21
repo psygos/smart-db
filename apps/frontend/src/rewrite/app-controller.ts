@@ -980,11 +980,19 @@ export class RewriteAppController {
       patch.dashboard = dashboardResult.value;
     }
     if (locationsResult.status === "fulfilled") {
-      patch.knownLocations = locationsResult.value;
+      const fromServer = locationsResult.value;
+      const formLocation = this.state.assignForm.location.trim();
+      patch.knownLocations = formLocation && !fromServer.includes(formLocation)
+        ? [...fromServer, formLocation].sort()
+        : fromServer;
     }
     if (inventoryResult.status === "fulfilled") {
       patch.inventorySummary = inventoryResult.value;
-      patch.knownCategories = Array.from(new Set(inventoryResult.value.map((row) => row.categoryPath.join(" / ")))).sort();
+      const categoriesFromServer = inventoryResult.value.map((row) => row.categoryPath.join(" / "));
+      const formCategory = this.state.assignForm.category.trim();
+      patch.knownCategories = Array.from(
+        new Set(formCategory ? [...categoriesFromServer, formCategory] : categoriesFromServer),
+      ).sort();
     }
     if (partDbResult.status === "fulfilled") {
       patch.partDbStatus = partDbResult.value;
