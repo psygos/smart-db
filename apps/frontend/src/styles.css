@@ -130,6 +130,12 @@ a:hover { text-decoration: underline; }
 .panel + .panel { margin-top: 0; border-top: none; }
 
 .panel-title { margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+.panel-title-main {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.125rem;
+}
 .panel-title h2 { margin-bottom: 0.125rem; }
 .panel-title p { font-size: 0.8125rem; color: var(--ink-3); margin: 0; }
 
@@ -1713,6 +1719,13 @@ a { transition: color var(--t) var(--ease-in-out); }
   font-size: 1rem;
 }
 
+.dashboard-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
 .dashboard-card-lines {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1814,18 +1827,20 @@ a { transition: color var(--t) var(--ease-in-out); }
   max-width: 42ch;
 }
 
-.result-card-art {
-  margin-bottom: 0.8rem;
+.result-card-headline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
 }
 
-.result-card-art .ui-icon-slot {
+.result-card-headline .ui-icon-slot {
   width: 3rem;
   height: 3rem;
   min-width: 3rem;
   border-radius: 1rem;
 }
 
-.result-card-art .ui-icon {
+.result-card-headline .ui-icon {
   width: 1.35rem;
   height: 1.35rem;
 }

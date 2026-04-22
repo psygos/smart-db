@@ -134,10 +134,13 @@ export function renderApp(state: RewriteUiState): string {
   `;
 }
 
-function renderPanelTitle(title: string, copy: string): string {
+function renderPanelTitle(title: string, copy: string, iconId?: string): string {
   return `
     <div class="panel-title">
-      <h2>${escapeHtml(title)}</h2>
+      <div class="panel-title-main">
+        ${iconId ? renderIconSlot(iconId, title) : ""}
+        <h2>${escapeHtml(title)}</h2>
+      </div>
       <p>${escapeHtml(copy)}</p>
     </div>
   `;
@@ -255,20 +258,23 @@ function renderToasts(toasts: readonly ToastRecord[]): string {
 }
 
 function renderScanEmptyState(state: RewriteUiState): string {
+  const iconId = state.scanMode.kind === "bulk" ? "batch" : "qr";
   return `
     <div class="result-card result-card-empty">
-      <div class="result-card-art">
-        ${renderIconSlot(state.scanMode.kind === "bulk" ? "batch" : "qr", state.scanMode.kind === "bulk" ? "Bulk queue" : "QR code")}
+      <div class="result-card-headline">
+        ${renderIconSlot(iconId, state.scanMode.kind === "bulk" ? "Bulk queue" : "QR code")}
+        <div>
+          <p class="eyebrow">Ready</p>
+          <h3>${escapeHtml(state.scanMode.kind === "bulk" ? "Build a bulk queue" : "Open a label or QR code")}</h3>
+          <p>
+            ${escapeHtml(
+              state.scanMode.kind === "bulk"
+                ? "Scan printed or assigned labels to build a stable batch action queue."
+                : "Start with a printed Smart DB sticker, or type a code to look it up manually.",
+            )}
+          </p>
+        </div>
       </div>
-      <p class="eyebrow">Ready</p>
-      <h3>${escapeHtml(state.scanMode.kind === "bulk" ? "Build a bulk queue" : "Open a label or QR code")}</h3>
-      <p>
-        ${escapeHtml(
-          state.scanMode.kind === "bulk"
-            ? "Scan printed or assigned labels to build a stable batch action queue."
-            : "Start with a printed Smart DB sticker, or type a code to look it up manually.",
-        )}
-      </p>
     </div>
   `;
 }
@@ -1730,8 +1736,13 @@ function renderDashboardTab(state: RewriteUiState): string {
       </section>
       <section class="dashboard-rail">
         <article class="dashboard-card">
-          <p class="eyebrow">Part-DB</p>
-          <h3>Sync posture</h3>
+          <div class="dashboard-card-head">
+            ${renderIconSlot("sync", "Sync")}
+            <div>
+              <p class="eyebrow">Part-DB</p>
+              <h3>Sync posture</h3>
+            </div>
+          </div>
           <div class="dashboard-card-lines">
             <span>Queued</span><strong>${sync?.pending ?? 0}</strong>
             <span>In flight</span><strong>${sync?.inFlight ?? 0}</strong>
@@ -1739,8 +1750,13 @@ function renderDashboardTab(state: RewriteUiState): string {
           </div>
         </article>
         <article class="dashboard-card">
-          <p class="eyebrow">Recent</p>
-          <h3>Operator rhythm</h3>
+          <div class="dashboard-card-head">
+            ${renderIconSlot("activity", "Activity")}
+            <div>
+              <p class="eyebrow">Recent</p>
+              <h3>Operator rhythm</h3>
+            </div>
+          </div>
           <p class="muted-copy">
             ${state.dashboard?.recentEvents.length
               ? `${state.dashboard.recentEvents.length} recent event${state.dashboard.recentEvents.length === 1 ? "" : "s"} recorded.`
@@ -1842,7 +1858,7 @@ function renderAdminTab(state: RewriteUiState): string {
       ${renderWorkspaceHeader("Admin Tools", "Queue health, label batches, and catalog corrections.", "Admin")}
       <div class="admin-grid">
       <section class="panel">
-        ${renderPanelTitle("Part-DB sync", "SmartDB remains writable while sync catches up in the background.")}
+        ${renderPanelTitle("Part-DB sync", "SmartDB remains writable while sync catches up in the background.", "sync")}
         <div class="sync-status-grid">
           <div class="sync-status-card"><strong>Queued</strong><span>${state.partDbSyncStatus?.pending ?? 0}</span></div>
           <div class="sync-status-card"><strong>In flight</strong><span>${state.partDbSyncStatus?.inFlight ?? 0}</span></div>
@@ -1869,7 +1885,7 @@ function renderAdminTab(state: RewriteUiState): string {
       </section>
 
       <section class="panel">
-        ${renderPanelTitle("Print QR batches", state.authState.status === "authenticated" ? `Pre-register sticker ranges. This batch will be attributed to ${state.authState.session.username}.` : "Pre-register sticker ranges.")}
+        ${renderPanelTitle("Print QR batches", state.authState.status === "authenticated" ? `Pre-register sticker ranges. This batch will be attributed to ${state.authState.session.username}.` : "Pre-register sticker ranges.", "batch")}
         <p class="muted-copy batch-preview">Next range preview: ${escapeHtml(state.batchForm.prefix)}-${state.batchForm.startNumber} to ${escapeHtml(state.batchForm.prefix)}-${state.batchForm.startNumber + state.batchForm.count - 1} (${state.batchForm.count} labels)</p>
         ${state.latestBatch ? `
           <div class="latest-batch-card">
@@ -1890,7 +1906,7 @@ function renderAdminTab(state: RewriteUiState): string {
       </section>
 
       <section class="panel">
-        ${renderPanelTitle("Canonicalize provisional types", "A provisional type is one a scanner created on the fly because the catalog didn't have it yet. This tool is where you merge near-duplicates into the canonical row or approve a provisional as canonical.")}
+        ${renderPanelTitle("Canonicalize provisional types", "A provisional type is one a scanner created on the fly because the catalog didn't have it yet. This tool is where you merge near-duplicates into the canonical row or approve a provisional as canonical.", "merge")}
         <div class="stack">
           <label>
             Provisional source
