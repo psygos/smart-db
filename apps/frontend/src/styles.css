@@ -1814,12 +1814,32 @@ a { transition: color var(--t) var(--ease-in-out); }
   max-width: 42ch;
 }
 
+.result-card-art {
+  margin-bottom: 0.8rem;
+}
+
+.result-card-art .ui-icon-slot {
+  width: 3rem;
+  height: 3rem;
+  min-width: 3rem;
+  border-radius: 1rem;
+}
+
+.result-card-art .ui-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
 .camera-btn {
   min-height: 220px;
   justify-content: center;
   border-radius: 16px;
   background: var(--surface);
   border: 1px dashed var(--border-2);
+}
+
+.camera-btn .camera-ascii {
+  color: var(--blue);
 }
 
 .viewfinder {

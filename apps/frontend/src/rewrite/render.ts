@@ -257,6 +257,9 @@ function renderToasts(toasts: readonly ToastRecord[]): string {
 function renderScanEmptyState(state: RewriteUiState): string {
   return `
     <div class="result-card result-card-empty">
+      <div class="result-card-art">
+        ${renderIconSlot(state.scanMode.kind === "bulk" ? "batch" : "qr", state.scanMode.kind === "bulk" ? "Bulk queue" : "QR code")}
+      </div>
       <p class="eyebrow">Ready</p>
       <h3>${escapeHtml(state.scanMode.kind === "bulk" ? "Build a bulk queue" : "Open a label or QR code")}</h3>
       <p>
@@ -1429,8 +1432,11 @@ function renderScanEditSharedForm(
           <div class="picker" role="listbox" aria-label="Existing matching part types">
             ${sharedEditConflicts.map((match) => `
               <button type="button" role="option" data-action="select-scan-edit-part" data-part-id="${attr(match.id)}">
-                <strong>${escapeHtml(match.canonicalName)}</strong>
-                <span>${escapeHtml(formatCategoryPath(match.categoryPath))}</span>
+                ${renderIconSlot(iconIdForPart(match.canonicalName, match.categoryPath), match.canonicalName)}
+                <span class="picker-copy">
+                  <strong>${escapeHtml(match.canonicalName)}</strong>
+                  <span>${escapeHtml(formatCategoryPath(match.categoryPath))}</span>
+                </span>
               </button>
             `).join("")}
           </div>
