@@ -1126,6 +1126,7 @@ html.theme-transition *::after {
 }
 .tree-chevron:hover:not(:disabled) { background: var(--dim); color: var(--ink); }
 .tree-chevron.placeholder { cursor: default; }
+.tree-indent { display: block; border-right: 1.5px solid var(--border-2); margin-right: 0.125rem; align-self: stretch; }
 .tree-label {
   flex: 1;
   min-height: 32px;

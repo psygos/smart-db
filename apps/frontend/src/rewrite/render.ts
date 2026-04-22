@@ -251,16 +251,6 @@ function renderScanTab(state: RewriteUiState): string {
         ${state.scanResult?.mode === "label" ? renderLabelCard(state, labelOptions, assignIssues) : ""}
         ${state.scanResult?.mode === "interact" ? renderInteractCard(state, eventIssues, bulkQuantityStep, bulkUnitSymbol) : ""}
 
-        ${state.scanResult && !state.cameraLookupCode ? `
-          <button
-            type="button"
-            class="scan-next-bottom"
-            data-action="scan-next"
-            ${disabled(state.pendingAction !== null)}
-          >
-            Scan next item
-          </button>
-        ` : ""}
       </div>
     </section>
   `;
@@ -1138,9 +1128,9 @@ function renderTreeNodes(
       expanded.has(child.path) ||
       (autoExpand !== null && autoExpand.has(child.path));
     const isSelected = foldSearchText(child.path) === currentFolded && currentFolded !== "";
-    const indent = `padding-left: ${0.5 + depth * 1.25}rem`;
     out.push(`
-      <div class="tree-row ${isSelected ? "selected" : ""}" style="${indent}">
+      <div class="tree-row ${isSelected ? "selected" : ""}">
+        ${depth > 0 ? `<span class="tree-indent" style="width:${depth * 1.5}rem;min-width:${depth * 1.5}rem" aria-hidden="true"></span>` : ""}
         ${hasChildren
           ? `<button type="button" class="tree-chevron" data-action="toggle-path-expand" data-kind="${kind}" data-path="${attr(child.path)}" aria-expanded="${String(isExpanded)}" aria-label="${isExpanded ? "Collapse" : "Expand"} ${attr(child.segment)}">${isExpanded ? "▾" : "▸"}</button>`
           : `<span class="tree-chevron placeholder" aria-hidden="true"></span>`}
