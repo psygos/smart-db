@@ -200,7 +200,6 @@ function makeConfig() {
       issuer: "https://auth.example.com",
       clientId: "smartdb-client",
       clientSecret: null,
-      postLogoutRedirectUri: "http://localhost:5173",
       roleClaim: "smartdb_roles",
       sessionCookieSecret: "test-session-secret",
     },

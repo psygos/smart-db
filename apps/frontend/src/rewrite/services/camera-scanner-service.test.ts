@@ -12,6 +12,7 @@ function createStream() {
   const track = {
     stop,
     getCapabilities: () => ({ focusMode: ["continuous", "manual"] }),
+    getSettings: () => ({ facingMode: "environment" }),
     applyConstraints: vi.fn().mockResolvedValue(undefined),
   };
   return {
@@ -43,6 +44,7 @@ function createVideo(playImpl = vi.fn().mockResolvedValue(undefined)) {
     removeEventListener: vi.fn((type: string, listener: EventListener) => {
       listeners.get(type)?.delete(listener);
     }),
+    style: { transform: "" },
   } as unknown as HTMLVideoElement & { HAVE_ENOUGH_DATA: number };
 }
 

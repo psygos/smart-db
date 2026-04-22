@@ -86,13 +86,12 @@ describe("ZitadelClient", () => {
     const client = new ZitadelClient({
       issuer: "https://auth.example.com",
       clientId: "client-123",
-      postLogoutRedirectUri: "https://smartdb.example.com",
     });
 
     const url = new URL((await client.logoutUrl("id-token"))!);
     expect(url.origin + url.pathname).toBe("https://auth.example.com/oidc/v1/end_session");
     expect(url.searchParams.get("id_token_hint")).toBe("id-token");
-    expect(url.searchParams.get("post_logout_redirect_uri")).toBe("https://smartdb.example.com");
+    expect(url.searchParams.get("post_logout_redirect_uri")).toBeNull();
   });
 
   it("throws when required config is missing", async () => {

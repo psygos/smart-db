@@ -61,7 +61,6 @@ describe("schemas", () => {
       ZITADEL_ISSUER: null,
       ZITADEL_CLIENT_ID: null,
       ZITADEL_CLIENT_SECRET: null,
-      ZITADEL_POST_LOGOUT_REDIRECT_URI: null,
       ZITADEL_ROLE_CLAIM: null,
     });
   });

@@ -1,0 +1,197 @@
+name: PR Preview
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened, closed]
+
+env:
+  NODE_VERSION: "24"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CADDY_HOST: "192.168.7.3"
+  ROUTER_PORT: "9444"
+
+jobs:
+  lint:
+    name: Lint PR title
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          PATTERN='^(feat|impr|fix|docs|style|refactor|perf|test|build|ci|revert|chore)(\([^)]+\))?: .+ \(@[a-zA-Z0-9][a-zA-Z0-9_-]*(, @[a-zA-Z0-9][a-zA-Z0-9_-]*)*\)$'
+          if echo "$PR_TITLE" | grep -qE "$PATTERN"; then
+            echo "✓ $PR_TITLE"
+          else
+            echo "✗ PR title does not match the commit convention."
+            echo ""
+            echo "  Format:  type(scope)?: description (@author)"
+            echo "  Types:   feat | impr | fix | docs | style | refactor | perf | test | build | ci | revert | chore"
+            echo "  Example: feat: add dark mode toggle (@saikhurana98)"
+            echo ""
+            echo "  Got: $PR_TITLE"
+            exit 1
+          fi
+
+  check:
+    if: github.event.action != 'closed'
+    needs: lint
+    uses: ./.github/workflows/_check.yml
+
+  deploy:
+    name: Deploy preview
+    if: github.event.action != 'closed'
+    needs: check
+    runs-on: [self-hosted, smartdb-staging-lxc]
+
+    env:
+      PR_N: ${{ github.event.pull_request.number }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tear down any existing preview (wipe data for fresh state)
+        run: |
+          COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
+            docker compose \
+              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.pr-preview.yaml \
+              down --volumes --remove-orphans 2>/dev/null || true
+          rm -rf \
+            /opt/smart-db/state/preview-${{ env.PR_N }} \
+            /opt/smart-db/config/preview-${{ env.PR_N }}
+
+      - name: Sync workspace to preview build dir
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            "$GITHUB_WORKSPACE/" /opt/smart-db/builds/preview-${{ env.PR_N }}/
+
+      - name: Write preview config
+        run: |
+          mkdir -p /opt/smart-db/config/preview-${{ env.PR_N }}
+          # GitHub withholds repo secrets from fork PR workflows.
+          # Source Zitadel credentials from the staging config already on the runner.
+          source /opt/smart-db/config/staging/middleware.env
+          SESSION_COOKIE_SECRET=$(openssl rand -base64 48)
+          printf '%s\n' \
+            "PORT=4000" \
+            "FRONTEND_ORIGIN=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}" \
+            "PUBLIC_BASE_URL=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }}" \
+            "SMART_DB_DATA_PATH=/workspace/data/smart.db" \
+            "PARTDB_BASE_URL=" \
+            "PARTDB_API_TOKEN=" \
+            "SESSION_COOKIE_SECRET=${SESSION_COOKIE_SECRET}" \
+            "ZITADEL_ISSUER=${ZITADEL_ISSUER}" \
+            "ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID}" \
+            "ZITADEL_CLIENT_SECRET=${ZITADEL_CLIENT_SECRET}" \
+            "ZITADEL_ROLE_CLAIM=${ZITADEL_ROLE_CLAIM}" \
+            > /opt/smart-db/config/preview-${{ env.PR_N }}/middleware.env
+
+      - name: Ensure state directory exists
+        run: mkdir -p /opt/smart-db/state/preview-${{ env.PR_N }}/data
+
+      - name: Copy staging TLS certs into preview state
+        run: |
+          mkdir -p /opt/smart-db/state/preview-${{ env.PR_N }}/caddy/certs
+          cp /opt/smart-db/state/staging/caddy/certs/server.crt \
+             /opt/smart-db/state/preview-${{ env.PR_N }}/caddy/certs/
+          cp /opt/smart-db/state/staging/caddy/certs/server.key \
+             /opt/smart-db/state/preview-${{ env.PR_N }}/caddy/certs/
+
+      - name: Build containers
+        working-directory: /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy
+        run: |
+          COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
+          VITE_BASE_PATH=/pr/${{ env.PR_N }}/ \
+          VITE_API_BASE_URL=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }} \
+          SMART_DB_STATE=/opt/smart-db/state/preview-${{ env.PR_N }} \
+          SMART_DB_CONFIG=/opt/smart-db/config/preview-${{ env.PR_N }} \
+            docker compose -f compose.pr-preview.yaml build --no-cache middleware gateway
+
+      - name: Start containers
+        working-directory: /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy
+        run: |
+          COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
+          VITE_BASE_PATH=/pr/${{ env.PR_N }}/ \
+          VITE_API_BASE_URL=https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }} \
+          SMART_DB_STATE=/opt/smart-db/state/preview-${{ env.PR_N }} \
+          SMART_DB_CONFIG=/opt/smart-db/config/preview-${{ env.PR_N }} \
+            docker compose -f compose.pr-preview.yaml up -d
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -skf "https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }}/health" > /dev/null 2>&1; then
+              echo "Healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Health check failed after 30s"
+          COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
+            docker compose \
+              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.pr-preview.yaml \
+              logs middleware --tail 30
+          exit 1
+
+      - name: Seed catalog
+        run: |
+          docker exec \
+            $(docker compose -p smartdb-pr-${{ env.PR_N }} ps -q middleware) \
+            sh -c 'cd /workspace && pnpm --filter @smart-db/middleware exec tsx src/scripts/seed-catalog.ts'
+
+      - name: Save preview metadata
+        if: always()
+        run: |
+          mkdir -p /tmp/pr-meta
+          printf 'PR_N=%s\nPREVIEW_URL=%s\nCOMMIT=%s\nEVENT=deploy\n' \
+            "${{ env.PR_N }}" \
+            "https://${{ env.CADDY_HOST }}:${{ env.ROUTER_PORT }}/pr/${{ env.PR_N }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            > /tmp/pr-meta/meta.env
+
+      - name: Upload preview metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-preview-meta
+          path: /tmp/pr-meta/meta.env
+          retention-days: 1
+
+  teardown:
+    name: Tear down preview
+    if: github.event.action == 'closed'
+    runs-on: [self-hosted, smartdb-staging-lxc]
+
+    env:
+      PR_N: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Stop and remove containers
+        run: |
+          COMPOSE_PROJECT_NAME=smartdb-pr-${{ env.PR_N }} \
+            docker compose \
+              -f /opt/smart-db/builds/preview-${{ env.PR_N }}/deploy/compose.pr-preview.yaml \
+              down --volumes --remove-orphans 2>/dev/null || true
+
+      - name: Remove build and state directories
+        run: |
+          rm -rf \
+            /opt/smart-db/builds/preview-${{ env.PR_N }} \
+            /opt/smart-db/state/preview-${{ env.PR_N }} \
+            /opt/smart-db/config/preview-${{ env.PR_N }}
+
+      - name: Save teardown metadata
+        run: |
+          mkdir -p /tmp/pr-meta
+          printf 'PR_N=%s\nEVENT=teardown\n' "${{ env.PR_N }}" > /tmp/pr-meta/meta.env
+
+      - name: Upload teardown metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-preview-meta
+          path: /tmp/pr-meta/meta.env
+          retention-days: 1

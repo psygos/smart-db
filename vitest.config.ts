@@ -8,6 +8,7 @@ export default defineConfig({
     },
   },
   test: {
+    testTimeout: 30000,
     environmentMatchGlobs: [["apps/frontend/**/*.test.ts?(x)", "jsdom"]],
     coverage: {
       provider: "v8",

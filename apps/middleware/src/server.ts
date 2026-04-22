@@ -75,7 +75,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
       new SessionStore(db),
       {
         frontendOrigin: activeConfig.frontendOrigin,
-        redirectUri: new URL("/api/auth/callback", activeConfig.publicBaseUrl).toString(),
+        redirectUri: new URL("api/auth/callback", activeConfig.publicBaseUrl.replace(/\/?$/, "/")).toString(),
         sessionCookieSecret: activeConfig.auth.sessionCookieSecret,
       },
     );

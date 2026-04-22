@@ -66,9 +66,29 @@ export async function registerInventoryRoutes(
     inventoryService.getKnownLocations(),
   );
 
+  app.post("/api/locations", authenticated, async (request) => {
+    const body = request.body as { path?: unknown };
+    const path = typeof body?.path === "string" ? body.path.trim() : "";
+    if (!path) {
+      throw new Error("path is required");
+    }
+    inventoryService.createKnownLocation(path);
+    return { path };
+  });
+
   app.get("/api/categories", authenticated, async () =>
     inventoryService.getKnownCategories(),
   );
+
+  app.post("/api/categories", authenticated, async (request) => {
+    const body = request.body as { path?: unknown };
+    const path = typeof body?.path === "string" ? body.path.trim() : "";
+    if (!path) {
+      throw new Error("path is required");
+    }
+    inventoryService.createKnownCategory(path);
+    return { path };
+  });
 
   app.get("/api/part-types/:id/items", authenticated, async (request) => {
     const params = request.params as { id: string };

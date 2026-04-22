@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+
+subject=$(head -1 "$1" | tr -d '\r\n')
+
+# Skip merge commits, reverts, and git fixups
+case "$subject" in
+  Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+
+PATTERN='^(feat|impr|fix|docs|style|refactor|perf|test|build|ci|revert|chore)(\([^)]+\))?: .+ \(@[a-zA-Z0-9][a-zA-Z0-9_-]*(, @[a-zA-Z0-9][a-zA-Z0-9_-]*)*\)$'
+
+if echo "$subject" | grep -qE "$PATTERN"; then
+  exit 0
+fi
+
+echo ""
+echo "✗ Commit message does not match the convention."
+echo ""
+echo "  Format:  type(scope)?: description (@author)"
+echo "  Types:   feat | impr | fix | docs | style | refactor | perf | test | build | ci | revert | chore"
+echo ""
+echo "  Examples:"
+echo "    feat: add barcode scanner support (@saikhurana98)"
+echo "    fix(auth): resolve callback URI (@saikhurana98)"
+echo "    impr(ui): polish dark mode toggle (@user1, @user2)"
+echo ""
+echo "  Got: $subject"
+echo ""
+exit 1

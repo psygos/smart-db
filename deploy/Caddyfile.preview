@@ -1,0 +1,35 @@
+{
+	default_sni {$CADDY_HOST}
+	email off
+}
+
+https://{$CADDY_HOST}:{$CADDY_PORT} {
+	tls /certs/server.crt /certs/server.key
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), geolocation=(), microphone=()"
+		Cross-Origin-Opener-Policy "same-origin-allow-popups"
+		Cross-Origin-Resource-Policy "same-origin"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; frame-ancestors 'self'"
+	}
+
+	@api path /api/* /health
+	handle @api {
+		header Cache-Control "no-store"
+		reverse_proxy middleware:4000
+	}
+
+	handle {
+		root * /srv
+		header Cache-Control "no-store"
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+}

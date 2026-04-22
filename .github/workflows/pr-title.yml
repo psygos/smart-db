@@ -1,0 +1,34 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check:
+    name: Check PR title
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|impr|fix|docs|style|refactor|perf|test|build|ci|revert|chore)(\([^)]+\))?: .+ \(@[a-zA-Z0-9][a-zA-Z0-9_-]*(, @[a-zA-Z0-9][a-zA-Z0-9_-]*)*\)$'
+          if echo "$PR_TITLE" | grep -qP "$pattern"; then
+            echo "✓ $PR_TITLE"
+          else
+            echo "✗ PR title does not match the commit convention."
+            echo ""
+            echo "Format:  type(scope)?: description (@author)"
+            echo "Types:   feat | impr | fix | docs | style | refactor | perf | test | build | ci | revert | chore"
+            echo ""
+            echo "Examples:"
+            echo "  feat: add dark mode toggle (@saikhurana98)"
+            echo "  fix(auth): resolve callback URI (@saikhurana98)"
+            echo "  impr(ui): polish dark mode shadows (@user1, @user2)"
+            echo ""
+            echo "Got: $PR_TITLE"
+            exit 1
+          fi

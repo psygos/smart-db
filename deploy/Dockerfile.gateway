@@ -16,9 +16,13 @@ RUN pnpm install --frozen-lockfile --ignore-scripts=false
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL="$VITE_API_BASE_URL"
 
+ARG VITE_BASE_PATH=""
+ENV VITE_BASE_PATH="$VITE_BASE_PATH"
+
 RUN pnpm --filter @smart-db/frontend build
 
 FROM caddy:2.10-alpine
 
-COPY deploy/Caddyfile /etc/caddy/Caddyfile
+ARG CADDYFILE=deploy/Caddyfile
+COPY ${CADDYFILE} /etc/caddy/Caddyfile
 COPY --from=build /workspace/apps/frontend/dist /srv

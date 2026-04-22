@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/psygos/smart-db/actions/workflows/ci.yml"><img src="https://github.com/psygos/smart-db/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/Makerspace-Ashoka/smart-db/actions/workflows/ci.yml"><img src="https://github.com/Makerspace-Ashoka/smart-db/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
 </p>
 
 <p align="center">

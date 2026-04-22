@@ -5,6 +5,7 @@ services:
       dockerfile: deploy/Dockerfile.gateway
       args:
         VITE_API_BASE_URL: ""
+    image: ${COMPOSE_PROJECT_NAME:-smartdb-prod}-gateway:current
     depends_on:
       middleware:
         condition: service_healthy
@@ -27,6 +28,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.middleware
+    image: ${COMPOSE_PROJECT_NAME:-smartdb-prod}-middleware:current
     env_file:
       - ./config/middleware.env
     environment:

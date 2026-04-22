@@ -8,6 +8,7 @@ import {
 import {
   actionLabel,
   describePartDbSyncFailure,
+  eventIconInfo,
   formatCategoryPath,
   formatQuantity,
   formatTimestamp,
@@ -83,9 +84,16 @@ export function renderApp(state: RewriteUiState): string {
         <strong class="header-brand">Smart DB</strong>
         <div class="header-status">
           <span class="header-user">${escapeHtml(state.authState.session.username)}</span>
-          <div class="pill ${partDbHealth.tone}">${escapeHtml(partDbHealth.label)}</div>
+          ${partDbHealth ? `<div class="pill ${partDbHealth.tone}">${escapeHtml(partDbHealth.label)}</div>` : ""}
           ${partDbSync ? `<div class="pill ${partDbSync.tone}">${escapeHtml(partDbSync.label)}</div>` : ""}
         </div>
+        <button
+          type="button"
+          data-action="toggle-theme"
+          class="theme-toggle"
+          aria-label="${state.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}"
+          aria-pressed="${state.theme === "dark" ? "true" : "false"}"
+        >${state.theme === "dark" ? "◑ light" : "◐ dark"}</button>
         <button
           type="button"
           data-action="logout"
@@ -101,22 +109,15 @@ export function renderApp(state: RewriteUiState): string {
       ${state.sessionExpiringSoon ? `<p class="banner error">Session expires soon.</p>` : ""}
       ${state.refreshError ? `<p class="banner error">${escapeHtml(state.refreshError)}</p>` : ""}
 
-      <section class="metrics">
-        ${renderMetric("Part types", state.dashboard?.partTypeCount ?? 0)}
-        ${renderMetric("Instances", state.dashboard?.instanceCount ?? 0)}
-        ${renderMetric("Bulk bins", state.dashboard?.bulkStockCount ?? 0)}
-        ${renderMetric("Provisional", state.dashboard?.provisionalCount ?? 0)}
-        ${renderMetric("Unassigned QRs", state.dashboard?.unassignedQrCount ?? 0)}
-      </section>
-
       <main class="layout">
         ${state.activeTab === "scan" ? renderScanTab(state) : ""}
         ${state.activeTab === "inventory" ? renderInventoryTab(state) : ""}
         ${state.activeTab === "activity" ? renderActivityTab(state) : ""}
+        ${state.activeTab === "dashboard" ? renderDashboardTab(state) : ""}
         ${state.activeTab === "admin" && isAdmin ? renderAdminTab(state) : ""}
       </main>
 
-      ${renderTabBar(state.activeTab, isAdmin ? ["scan", "inventory", "activity", "admin"] : ["scan", "inventory", "activity"])}
+      ${renderTabBar(state.activeTab, isAdmin ? ["dashboard", "scan", "inventory", "activity", "admin"] : ["dashboard", "scan", "inventory", "activity"])}
     </div>
   `;
 }
@@ -160,8 +161,9 @@ function renderToasts(toasts: readonly ToastRecord[]): string {
 function renderTabBar(activeTab: TabId, tabs: readonly TabId[]): string {
   const labels: Record<TabId, string> = {
     scan: "Scan",
-    inventory: "Stock",
+    inventory: "Assets",
     activity: "Activity",
+    dashboard: "Dashboard",
     admin: "Admin",
   };
 
@@ -440,6 +442,31 @@ function renderBulkQueueCard(
   `;
 }
 
+function renderEntityKindSwitch(state: RewriteUiState, locked: boolean): string {
+  const isBulk = state.assignForm.entityKind === "bulk";
+  return `
+    <div class="entity-switch ${locked ? "locked" : ""}" role="radiogroup" aria-label="Inventory entry type">
+      <button
+        type="button"
+        role="radio"
+        aria-checked="${String(!isBulk)}"
+        class="entity-switch-option ${!isBulk ? "active" : ""}"
+        data-action="set-entity-kind"
+        data-entity-kind="instance"
+        ${locked ? "disabled" : ""}
+      >Add Item</button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked="${String(isBulk)}"
+        class="entity-switch-option ${isBulk ? "active" : ""}"
+        data-action="set-entity-kind"
+        data-entity-kind="bulk"
+      >Bulk Item</button>
+    </div>
+  `;
+}
+
 function renderBulkLabelForm(
   state: RewriteUiState,
   labelOptions: readonly PartType[],
@@ -589,8 +616,15 @@ function renderLabelCard(
   labelOptions: readonly PartType[],
   assignIssues: ReturnType<typeof getAssignFormIssues>,
 ): string {
+  const existingSelected =
+    state.assignForm.partTypeMode === "existing"
+      ? (labelOptions.find((pt) => pt.id === state.assignForm.existingPartTypeId) ??
+         state.catalogSuggestions.find((pt) => pt.id === state.assignForm.existingPartTypeId))
+      : null;
+  const entityLocked = existingSelected !== null && existingSelected !== undefined && !existingSelected.countable;
   return `
-    <div class="result-card">
+    <div class="result-card has-corner-switch">
+      ${renderEntityKindSwitch(state, entityLocked)}
       <h3>Assign ${escapeHtml(state.scanResult?.mode === "label" ? state.scanResult.qrCode.code : "")}</h3>
       ${state.lastAssignment ? `
         <div class="assign-same-bar">
@@ -600,11 +634,7 @@ function renderLabelCard(
         </div>
       ` : ""}
       <form class="form-grid" data-form="assign">
-        <div class="wide mode-toggle" role="radiogroup" aria-label="Part type mode">
-          <button type="button" role="radio" class="${state.assignForm.partTypeMode === "existing" ? "selected" : ""}" aria-checked="${String(state.assignForm.partTypeMode === "existing")}" data-action="set-assign-mode" data-assign-mode="existing">Use existing type</button>
-          <button type="button" role="radio" class="${state.assignForm.partTypeMode === "new" ? "selected" : ""}" aria-checked="${String(state.assignForm.partTypeMode === "new")}" data-action="set-assign-mode" data-assign-mode="new">Create new type</button>
-        </div>
-        ${state.assignForm.partTypeMode === "existing" ? renderExistingPartTypePicker(state, labelOptions, assignIssues) : renderNewPartTypeForm(state, assignIssues)}
+        ${renderPartTypeField(state, labelOptions, assignIssues)}
         ${renderSharedAssignFields(state, assignIssues)}
         <button type="submit" ${disabled(state.pendingAction !== null || Object.keys(assignIssues).length > 0)}>
           ${state.pendingAction === "assign" ? "Assigning..." : "Assign QR"}
@@ -614,122 +644,188 @@ function renderLabelCard(
   `;
 }
 
-function renderExistingPartTypePicker(
+function rankPartTypeMatches(
+  candidates: readonly PartType[],
+  query: string,
+): PartType[] {
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) {
+    return [...candidates].sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
+  }
+  const scored: Array<{ partType: PartType; score: number }> = [];
+  for (const partType of candidates) {
+    const name = foldSearchText(partType.canonicalName);
+    const aliases = partType.aliases.map(foldSearchText);
+    const categoryText = foldSearchText(partType.categoryPath.join(" "));
+    let score = 0;
+    let matchedAll = true;
+    for (const token of tokens) {
+      if (name.includes(token)) {
+        score += name.startsWith(token) ? 100 : 60;
+      } else if (aliases.some((alias) => alias.includes(token))) {
+        score += 30;
+      } else if (categoryText.includes(token)) {
+        score += 15;
+      } else {
+        matchedAll = false;
+        break;
+      }
+    }
+    if (matchedAll) scored.push({ partType, score });
+  }
+  return scored
+    .sort((a, b) => b.score - a.score || a.partType.canonicalName.localeCompare(b.partType.canonicalName))
+    .map((entry) => entry.partType);
+}
+
+function collectPartTypeCandidates(
+  state: RewriteUiState,
+  labelOptions: readonly PartType[],
+): PartType[] {
+  const seen = new Map<string, PartType>();
+  const sources: ReadonlyArray<readonly PartType[]> = [
+    labelOptions,
+    state.labelSearch.results,
+    state.catalogSuggestions,
+    state.scanResult?.mode === "label" ? state.scanResult.suggestions : [],
+  ];
+  for (const list of sources) {
+    for (const partType of list) {
+      if (!seen.has(partType.id)) seen.set(partType.id, partType);
+    }
+  }
+  return [...seen.values()];
+}
+
+function renderPartTypeField(
   state: RewriteUiState,
   labelOptions: readonly PartType[],
   assignIssues: ReturnType<typeof getAssignFormIssues>,
 ): string {
-  const selected =
-    labelOptions.find((partType) => partType.id === state.assignForm.existingPartTypeId) ??
-    state.catalogSuggestions.find((partType) => partType.id === state.assignForm.existingPartTypeId);
+  const ranked = rankPartTypeMatches(labelOptions, state.labelSearch.query);
+  const shown = ranked.slice(0, 48);
+
+  const resolveSelected = collectPartTypeCandidates(state, labelOptions);
+  const selected = resolveSelected.find((pt) => pt.id === state.assignForm.existingPartTypeId) ?? null;
+  const isCreating = state.assignForm.partTypeMode === "new";
+  const createToggleLabel = isCreating ? "− Cancel new part type" : "+ New part type";
+  const createToggleAction = isCreating ? "existing" : "new";
+  const trimmedQuery = state.labelSearch.query.trim();
 
   return `
     <label class="wide">
-      Search existing part types
-      <input name="labelSearch.query" value="${attr(state.labelSearch.query)}" placeholder="Arduino, JST, PLA, cotton..." />
+      Part type
+      <input
+        name="labelSearch.query"
+        value="${attr(state.labelSearch.query)}"
+        placeholder="Search by name, alias, or category…"
+        autocomplete="off"
+      />
     </label>
     ${state.labelSearch.error ? `<p class="banner error wide">${escapeHtml(state.labelSearch.error)}</p>` : ""}
-    ${assignIssues.existingPartTypeId ? `<p class="field-error wide">${escapeHtml(assignIssues.existingPartTypeId)}</p>` : ""}
-    <div class="wide picker" role="radiogroup" aria-label="Existing part types">
-      ${labelOptions.length > 0 ? labelOptions.map((partType) => `
-        <button
-          key="${attr(partType.id)}"
-          type="button"
-          role="radio"
-          aria-checked="${String(state.assignForm.existingPartTypeId === partType.id)}"
-          class="${state.assignForm.existingPartTypeId === partType.id ? "selected" : ""}"
-          data-action="select-existing-part"
-          data-part-id="${attr(partType.id)}"
-        >
-          <strong>${escapeHtml(partType.canonicalName)}</strong>
-          <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
-        </button>
-      `).join("") : `<p class="muted-copy">No matching part types yet.</p>`}
-    </div>
-    ${selected?.countable ? `
-      <div class="wide mode-toggle" role="radiogroup" aria-label="Inventory entry">
-        <button type="button" role="radio" aria-checked="${String(state.assignForm.entityKind === "instance")}" class="${state.assignForm.entityKind === "instance" ? "selected" : ""}" data-action="set-entity-kind" data-entity-kind="instance">Tracked unit</button>
-        <button type="button" role="radio" aria-checked="${String(state.assignForm.entityKind === "bulk")}" class="${state.assignForm.entityKind === "bulk" ? "selected" : ""}" data-action="set-entity-kind" data-entity-kind="bulk">Bulk pool</button>
+    ${!isCreating && assignIssues.existingPartTypeId ? `<p class="field-error wide">${escapeHtml(assignIssues.existingPartTypeId)}</p>` : ""}
+
+    ${!isCreating ? `
+      <div class="wide picker" role="radiogroup" aria-label="Existing part types">
+        ${shown.length > 0 ? shown.map((partType) => `
+          <button
+            type="button"
+            role="radio"
+            aria-checked="${String(state.assignForm.existingPartTypeId === partType.id)}"
+            class="${state.assignForm.existingPartTypeId === partType.id ? "selected" : ""}"
+            data-action="select-existing-part"
+            data-part-id="${attr(partType.id)}"
+          >
+            <strong>${escapeHtml(partType.canonicalName)}</strong>
+            <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+          </button>
+        `).join("") : `<p class="muted-copy">${trimmedQuery ? `No matches for "${escapeHtml(trimmedQuery)}".` : "No part types yet."} Use the button below to add one.</p>`}
       </div>
-    ` : selected ? `
-      <p class="muted-copy">Measured part types always use a bulk pool.</p>
+      ${ranked.length > shown.length ? `<p class="muted-copy wide" style="font-size:0.75rem">Showing ${shown.length} of ${ranked.length} matches — refine your search to narrow down.</p>` : ""}
+      ${selected && !selected.countable ? `
+        <p class="muted-copy wide">Measured part types are always bulk items.</p>
+      ` : ""}
+      ${selected ? `
+        <button type="button" class="disclosure wide" data-action="create-variant" data-part-id="${attr(selected.id)}">
+          Create a variant of "${escapeHtml(selected.canonicalName)}"
+        </button>
+      ` : ""}
+      ${selected && state.assignForm.entityKind === "bulk" ? `
+        <label class="wide">
+          Starting quantity (${escapeHtml(selected.unit.symbol)})
+          <input
+            type="number"
+            min="${selected.unit.isInteger ? "1" : "0.000001"}"
+            inputmode="decimal"
+            name="assign.initialQuantity"
+            value="${attr(state.assignForm.initialQuantity)}"
+            step="${quantityInputStep(selected.unit.isInteger)}"
+            placeholder="${selected.unit.isInteger ? "1" : "0.1"}"
+          />
+          ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
+        </label>
+        <label class="wide">
+          Low-stock threshold (${escapeHtml(selected.unit.symbol)})
+          <input
+            type="number"
+            min="0"
+            inputmode="decimal"
+            name="assign.minimumQuantity"
+            value="${attr(state.assignForm.minimumQuantity)}"
+            step="${quantityInputStep(selected.unit.isInteger)}"
+            placeholder="Optional"
+          />
+          ${assignIssues.minimumQuantity ? `<span class="field-error">${escapeHtml(assignIssues.minimumQuantity)}</span>` : ""}
+        </label>
+      ` : ""}
     ` : ""}
-    ${selected ? `
-      <button type="button" class="disclosure wide" data-action="create-variant" data-part-id="${attr(selected.id)}">
-        Create a variant of "${escapeHtml(selected.canonicalName)}"
-      </button>
-    ` : ""}
-    ${selected && state.assignForm.entityKind === "bulk" ? `
-      <label class="wide">
-        Starting quantity (${escapeHtml(selected.unit.symbol)})
-        <input
-          type="number"
-          min="${selected.unit.isInteger ? "1" : "0.000001"}"
-          inputmode="decimal"
-          name="assign.initialQuantity"
-          value="${attr(state.assignForm.initialQuantity)}"
-          step="${quantityInputStep(selected.unit.isInteger)}"
-          placeholder="${selected.unit.isInteger ? "1" : "0.1"}"
-        />
-        ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
-      </label>
-      <label class="wide">
-        Low-stock threshold (${escapeHtml(selected.unit.symbol)})
-        <input
-          type="number"
-          min="0"
-          inputmode="decimal"
-          name="assign.minimumQuantity"
-          value="${attr(state.assignForm.minimumQuantity)}"
-          step="${quantityInputStep(selected.unit.isInteger)}"
-          placeholder="Optional"
-        />
-        ${assignIssues.minimumQuantity ? `<span class="field-error">${escapeHtml(assignIssues.minimumQuantity)}</span>` : ""}
-      </label>
-    ` : ""}
+
+    <button
+      type="button"
+      class="path-create-toggle wide"
+      data-action="set-assign-mode"
+      data-assign-mode="${createToggleAction}"
+    >${escapeHtml(createToggleLabel)}</button>
+
+    ${isCreating ? renderNewPartTypePanel(state, assignIssues) : ""}
   `;
 }
 
-function renderNewPartTypeForm(
+function renderNewPartTypePanel(
   state: RewriteUiState,
   assignIssues: ReturnType<typeof getAssignFormIssues>,
 ): string {
+  const unit = measurementUnitCatalog.find((u) => u.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0];
   return `
-    <label class="wide">
-      New canonical name
-      <input name="assign.canonicalName" value="${attr(state.assignForm.canonicalName)}" placeholder="Arduino Uno R3" />
-      ${assignIssues.canonicalName ? `<span class="field-error">${escapeHtml(assignIssues.canonicalName)}</span>` : ""}
-    </label>
-    <label class="wide">
-      Category path
-      <input name="assign.category" value="${attr(state.assignForm.category)}" placeholder="Electronics / Resistors / SMD 0603" />
-      <small style="margin-top:0.3rem;text-transform:none;letter-spacing:0;font-family:var(--font-sans)">Use <code>/</code> for sub-categories. Each level is created in Part-DB.</small>
-      ${assignIssues.category ? `<span class="field-error">${escapeHtml(assignIssues.category)}</span>` : ""}
-    </label>
-    ${renderCategoryTreePicker(state.knownCategories, state.assignForm.category, "tree-pick-assign-category")}
-    <div class="wide mode-toggle" role="radiogroup" aria-label="Tracking mode">
-      <button type="button" role="radio" aria-checked="${String(state.assignForm.entityKind === "instance")}" class="${state.assignForm.entityKind === "instance" ? "selected" : ""}" data-action="set-entity-kind" data-entity-kind="instance">Tracked unit</button>
-      <button type="button" role="radio" aria-checked="${String(state.assignForm.entityKind === "bulk")}" class="${state.assignForm.entityKind === "bulk" ? "selected" : ""}" data-action="set-entity-kind" data-entity-kind="bulk">Bulk pool</button>
+    <div class="path-create-panel wide" role="region" aria-label="New part type">
+      <p class="path-create-title">New part type</p>
+      <label class="wide">
+        Canonical name
+        <input name="assign.canonicalName" value="${attr(state.assignForm.canonicalName)}" placeholder="Arduino Uno R3" autocomplete="off" />
+        ${assignIssues.canonicalName ? `<span class="field-error">${escapeHtml(assignIssues.canonicalName)}</span>` : ""}
+      </label>
+      ${renderPathPickerField(state, "category")}
+      ${assignIssues.category ? `<span class="field-error wide">${escapeHtml(assignIssues.category)}</span>` : ""}
+      ${state.assignForm.entityKind === "bulk" ? `
+        <div class="wide mode-toggle" role="radiogroup" aria-label="Part type kind">
+          <button type="button" role="radio" aria-checked="${String(state.assignForm.countable)}" class="${state.assignForm.countable ? "selected" : ""}" data-action="set-bulk-countability" data-countable="true">Piece-counted</button>
+          <button type="button" role="radio" aria-checked="${String(!state.assignForm.countable)}" class="${!state.assignForm.countable ? "selected" : ""}" data-action="set-bulk-countability" data-countable="false">Measured</button>
+        </div>
+        <label class="wide">
+          Unit of measure
+          <select name="assign.unitSymbol">
+            ${measurementUnitCatalog.filter((u) => (state.assignForm.countable ? u.isInteger : true)).map((u) => `
+              <option value="${attr(u.symbol)}"${selected(u.symbol === state.assignForm.unitSymbol)}>${escapeHtml(u.name)} (${escapeHtml(u.symbol)})</option>
+            `).join("")}
+          </select>
+        </label>
+        <label class="wide">
+          Starting quantity
+          <input type="number" min="${unit.isInteger ? "1" : "0.000001"}" inputmode="decimal" name="assign.initialQuantity" value="${attr(state.assignForm.initialQuantity)}" step="${quantityInputStep(unit.isInteger)}" placeholder="${unit.isInteger ? "1" : "0.1"}" />
+          ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
+        </label>
+      ` : ""}
     </div>
-    ${state.assignForm.entityKind === "bulk" ? `
-      <div class="wide mode-toggle" role="radiogroup" aria-label="Part type kind">
-        <button type="button" role="radio" aria-checked="${String(state.assignForm.countable)}" class="${state.assignForm.countable ? "selected" : ""}" data-action="set-bulk-countability" data-countable="true">Piece-counted</button>
-        <button type="button" role="radio" aria-checked="${String(!state.assignForm.countable)}" class="${!state.assignForm.countable ? "selected" : ""}" data-action="set-bulk-countability" data-countable="false">Measured</button>
-      </div>
-      <label>
-        Unit of measure
-        <select name="assign.unitSymbol">
-          ${measurementUnitCatalog.filter((unit) => (state.assignForm.countable ? unit.isInteger : true)).map((unit) => `
-            <option value="${attr(unit.symbol)}"${selected(unit.symbol === state.assignForm.unitSymbol)}>${escapeHtml(unit.name)} (${escapeHtml(unit.symbol)})</option>
-          `).join("")}
-        </select>
-      </label>
-      <label>
-        Starting quantity
-        <input type="number" min="${(measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger ? "1" : "0.000001"}" inputmode="decimal" name="assign.initialQuantity" value="${attr(state.assignForm.initialQuantity)}" step="${quantityInputStep((measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger)}" placeholder="${(measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0]).isInteger ? "1" : "0.1"}" />
-        ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
-      </label>
-    ` : ""}
   `;
 }
 
@@ -741,12 +837,8 @@ function renderSharedAssignFields(
     measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ??
     measurementUnitCatalog[0];
   return `
-    <label class="wide">
-      Location
-      <input name="assign.location" value="${attr(state.assignForm.location)}" placeholder="e.g. Shelf A / Bin 7" autocomplete="off" />
-      ${assignIssues.location ? `<span class="field-error">${escapeHtml(assignIssues.location)}</span>` : ""}
-    </label>
-    ${renderLocationTreePicker(state.knownLocations, state.assignForm.location, "tree-pick-assign-location")}
+    ${renderPathPickerField(state, "location")}
+    ${assignIssues.location ? `<span class="field-error wide">${escapeHtml(assignIssues.location)}</span>` : ""}
     ${state.assignForm.entityKind === "instance" ? `
       <label>
         Initial status
@@ -781,8 +873,12 @@ function renderInteractCard(
   return `
     <div class="result-card">
       <h3>${escapeHtml(state.scanResult.entity.partType.canonicalName)}</h3>
-      <p class="muted-copy">
-        ${escapeHtml(state.scanResult.entity.qrCode)} · ${escapeHtml(state.scanResult.entity.targetType)} in ${escapeHtml(state.scanResult.entity.location)}
+      <p class="meta-line">
+        <code>${escapeHtml(state.scanResult.entity.qrCode)}</code>
+        <span class="sep">·</span>
+        <span>${escapeHtml(state.scanResult.entity.targetType)}</span>
+        <span class="sep">in</span>
+        <span class="meta-loc">${escapeHtml(state.scanResult.entity.location)}</span>
       </p>
       ${state.scanResult.entity.targetType === "bulk" && state.scanResult.entity.quantity !== null ? `
         <div class="quantity-display">
@@ -794,11 +890,17 @@ function renderInteractCard(
       ${renderCurrentBorrow(state)}
       <p class="muted-copy" style="font-size:0.78rem">Part-DB sync: ${escapeHtml(state.scanResult.entity.partDbSyncStatus)}</p>
       ${renderScanQuickChips(state)}
-      <div class="action-buttons">
-        ${state.scanResult.availableActions.map((action) => `
-          <button type="button" aria-pressed="${String(state.eventForm.event === action)}" class="${state.eventForm.event === action ? "selected" : ""}" data-action="select-event-action" data-event="${attr(action)}">${escapeHtml(actionLabel(action))}</button>
-        `).join("")}
-      </div>
+      ${(() => {
+        const actions = state.scanResult.availableActions;
+        const primary = actions.filter((a) => a === "checked_out");
+        const secondary = actions.filter((a) => a !== "checked_out");
+        const renderBtn = (action: typeof actions[number]) =>
+          `<button type="button" aria-pressed="${String(state.eventForm.event === action)}" class="${state.eventForm.event === action ? "selected" : ""}" data-action="select-event-action" data-event="${attr(action)}">${escapeHtml(actionLabel(action))}</button>`;
+        return `
+          ${primary.length > 0 ? `<div class="action-buttons action-buttons-primary">${primary.map(renderBtn).join("")}</div>` : ""}
+          ${secondary.length > 0 ? `<div class="action-buttons action-buttons-secondary">${secondary.map(renderBtn).join("")}</div>` : ""}
+        `;
+      })()}
       <form class="form-grid" data-form="event">
         ${(state.eventForm.event === "moved" || state.eventForm.event === "checked_out") ? `
           <label>
@@ -1251,20 +1353,23 @@ function renderInventoryReverseToolbar(state: RewriteUiState, partTypeId: string
 }
 
 function renderInventoryTab(state: RewriteUiState): string {
+  if (state.inventoryUi.detailPartTypeId) {
+    return renderPartTypeDetail(state, state.inventoryUi.detailPartTypeId);
+  }
+
+  const tokens = tokenizeQuery(state.inventoryUi.query);
   const rows = state.inventorySummary.filter((row) => {
     if (!state.inventoryUi.showEmpty && row.bins === 0 && row.instanceCount === 0) {
       return false;
     }
-    const query = state.inventoryUi.query.trim().toLowerCase();
-    if (!query) {
-      return true;
-    }
+    if (tokens.length === 0) return true;
     const blob = [
       row.canonicalName,
       row.categoryPath.join(" / "),
       row.unit.symbol,
-    ].join(" ").toLowerCase();
-    return blob.includes(query);
+      row.unit.name,
+    ].join(" ");
+    return matchesAllTokens(blob, tokens);
   });
 
   const groups = new Map<string, typeof rows>();
@@ -1295,8 +1400,8 @@ function renderInventoryTab(state: RewriteUiState): string {
               const expandedItems = isExpanded ? state.inventoryUi.expandedItems.get(row.id) ?? null : null;
               const expandedError = isExpanded ? state.inventoryUi.expandedErrors.get(row.id) ?? null : null;
               return `
-                <li>
-                  <button type="button" class="inventory-row ${isStocked ? "stocked" : "empty"} ${isExpanded ? "expanded" : ""}" data-action="toggle-inventory-expand" data-part-type-id="${attr(row.id)}" aria-expanded="${String(isExpanded)}">
+                <li class="inventory-row-wrap ${isStocked ? "stocked" : "empty"} ${isExpanded ? "expanded" : ""}">
+                  <button type="button" class="inventory-row" data-action="toggle-inventory-expand" data-part-type-id="${attr(row.id)}" aria-expanded="${String(isExpanded)}">
                     <div class="inventory-row-name">
                       <strong>${escapeHtml(row.canonicalName)}</strong>
                       ${subPath ? `<span>${escapeHtml(subPath)}</span>` : ""}
@@ -1304,6 +1409,9 @@ function renderInventoryTab(state: RewriteUiState): string {
                     <div class="inventory-row-quantity">
                       <span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span><span class="qty-unit">${escapeHtml(row.unit.symbol)}${row.entityCount > 0 ? ` · ${row.entityCount} QR${row.entityCount === 1 ? "" : "s"}` : ""}</span>
                     </div>
+                  </button>
+                  <button type="button" class="inventory-row-arrow" data-action="open-part-detail" data-part-type-id="${attr(row.id)}" aria-label="Open ${attr(row.canonicalName)} details">
+                    <span aria-hidden="true">›</span>
                   </button>
                   ${isExpanded ? `
                     <div class="inventory-row-detail">
@@ -1353,6 +1461,115 @@ function renderInventoryTab(state: RewriteUiState): string {
   `;
 }
 
+function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string {
+  const row = state.inventorySummary.find((r) => r.id === partTypeId) ?? null;
+  const items = state.inventoryUi.expandedItems.get(partTypeId) ?? null;
+  const error = state.inventoryUi.expandedErrors.get(partTypeId) ?? null;
+
+  if (!row) {
+    return `
+      <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
+        <div class="part-detail">
+          <button type="button" class="part-detail-back" data-action="close-part-detail">
+            <span aria-hidden="true">‹</span> Back to Assets
+          </button>
+          <p class="muted-copy">Part type not found in current summary.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  const subPath = row.categoryPath.slice(1).join(" / ");
+  const categoryTop = row.categoryPath[0] ?? "Uncategorized";
+
+  const byLocation = new Map<string, { bulks: NonNullable<typeof items>["bulkStocks"][number][]; instances: NonNullable<typeof items>["instances"][number][] }>();
+  if (items) {
+    for (const bulk of items.bulkStocks) {
+      const entry = byLocation.get(bulk.location) ?? { bulks: [], instances: [] };
+      entry.bulks.push(bulk);
+      byLocation.set(bulk.location, entry);
+    }
+    for (const inst of items.instances) {
+      const entry = byLocation.get(inst.location) ?? { bulks: [], instances: [] };
+      entry.instances.push(inst);
+      byLocation.set(inst.location, entry);
+    }
+  }
+  const locations = Array.from(byLocation.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+  return `
+    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
+      <div class="part-detail">
+        <button type="button" class="part-detail-back" data-action="close-part-detail">
+          <span aria-hidden="true">‹</span> Back to Assets
+        </button>
+
+        <header class="part-detail-header">
+          <p class="eyebrow">${escapeHtml(categoryTop)}${subPath ? ` / ${escapeHtml(subPath)}` : ""}</p>
+          <h2 class="part-detail-name">${escapeHtml(row.canonicalName)}</h2>
+          <dl class="part-detail-stats">
+            <div><dt>Unit</dt><dd>${escapeHtml(row.unit.symbol)} <span class="muted-copy">(${escapeHtml(row.unit.name)})</span></dd></div>
+            <div><dt>Tracking</dt><dd>${row.countable ? "Countable" : "Bulk"}</dd></div>
+            ${row.countable
+              ? `<div><dt>Instances</dt><dd>${row.instanceCount}</dd></div>`
+              : `<div><dt>Bins</dt><dd>${row.bins}</dd></div>`}
+            <div><dt>On hand</dt><dd>${escapeHtml(formatQuantity(row.onHand))} ${escapeHtml(row.unit.symbol)}</dd></div>
+          </dl>
+        </header>
+
+        <section class="part-detail-locations">
+          <h3>Locations</h3>
+          ${error ? `<p class="banner error">${escapeHtml(error)}</p>` : ""}
+          ${!items && !error ? `<p class="muted-copy">Loading locations…</p>` : ""}
+          ${items && locations.length === 0 ? `<p class="muted-copy">No items assigned to this part type yet.</p>` : ""}
+          ${locations.length > 0 ? `
+            <ul class="location-list">
+              ${locations.map(([location, entry]) => `
+                <li class="location-group">
+                  <div class="location-group-head">
+                    <strong>${escapeHtml(location)}</strong>
+                    <span class="muted-copy">${entry.bulks.length + entry.instances.length} item${entry.bulks.length + entry.instances.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <ul class="location-item-list">
+                    ${entry.bulks.map((bulk) => `
+                      <li class="location-item">
+                        <code>${escapeHtml(bulk.qrCode)}</code>
+                        <span class="location-item-kind">bulk</span>
+                        <strong>${escapeHtml(formatQuantity(bulk.quantity))} ${escapeHtml(row.unit.symbol)}</strong>
+                      </li>
+                    `).join("")}
+                    ${entry.instances.map((inst) => `
+                      <li class="location-item">
+                        <code>${escapeHtml(inst.qrCode)}</code>
+                        <span class="location-item-kind">${escapeHtml(inst.status)}</span>
+                        ${inst.assignee ? `<span class="muted-copy">${escapeHtml(inst.assignee)}</span>` : ""}
+                      </li>
+                    `).join("")}
+                  </ul>
+                </li>
+              `).join("")}
+            </ul>
+          ` : ""}
+        </section>
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboardTab(state: RewriteUiState): string {
+  return `
+    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="panel">
+      <section class="metrics">
+        ${renderMetric("Part types", state.dashboard?.partTypeCount ?? 0)}
+        ${renderMetric("Instances", state.dashboard?.instanceCount ?? 0)}
+        ${renderMetric("Bulk bins", state.dashboard?.bulkStockCount ?? 0)}
+        ${renderMetric("Provisional", state.dashboard?.provisionalCount ?? 0)}
+        ${renderMetric("Unassigned QRs", state.dashboard?.unassignedQrCount ?? 0)}
+      </section>
+    </section>
+  `;
+}
+
 function renderActivityTab(state: RewriteUiState): string {
   const events = state.dashboard?.recentEvents ?? [];
   return `
@@ -1364,16 +1581,22 @@ function renderActivityTab(state: RewriteUiState): string {
       ${events.length === 0 && state.scanHistory.length === 0 ? `<p class="activity-empty">No activity yet. Events appear here as you scan and update inventory.</p>` : ""}
       ${events.length > 0 ? `
         <ul class="activity-list">
-          ${events.map((event) => `
+          ${events.map((event) => {
+            const icon = eventIconInfo(event.event);
+            return `
             <li class="activity-item">
-              <div class="activity-item-header">
-                <span class="activity-action">${escapeHtml(`${actionLabel(event.event)} by ${event.actor ?? "system"}`)}</span>
-                <span class="activity-time">${escapeHtml(formatTimestamp(event.createdAt))}</span>
+              <span class="activity-icon tone-${icon.tone}" aria-hidden="true">${escapeHtml(icon.glyph)}</span>
+              <div class="activity-item-body">
+                <div class="activity-item-header">
+                  <span class="activity-action">${escapeHtml(`${actionLabel(event.event)} by ${event.actor ?? "system"}`)}</span>
+                  <span class="activity-time">${escapeHtml(formatTimestamp(event.createdAt))}</span>
+                </div>
+                ${event.partName ? `<span class="activity-item-name">${escapeHtml(event.partName)}</span>` : ""}
+                <span class="activity-detail">${escapeHtml(buildActivityDetail(event))}</span>
               </div>
-              ${event.partName ? `<span class="activity-item-name">${escapeHtml(event.partName)}</span>` : ""}
-              <span class="activity-detail">${escapeHtml(buildActivityDetail(event))}</span>
             </li>
-          `).join("")}
+          `;
+          }).join("")}
         </ul>
       ` : ""}
       ${renderCorrectionLog(state)}
@@ -1382,11 +1605,14 @@ function renderActivityTab(state: RewriteUiState): string {
         <ul class="activity-list">
           ${state.scanHistory.map((entry, index) => `
             <li class="activity-item">
-              <div class="activity-item-header">
-                <code class="activity-code">${escapeHtml(entry.code)}</code>
-                <span class="activity-time">${escapeHtml(formatTimestamp(entry.timestamp))}</span>
+              <span class="activity-icon tone-info" aria-hidden="true">◎</span>
+              <div class="activity-item-body">
+                <div class="activity-item-header">
+                  <code class="activity-code">${escapeHtml(entry.code)}</code>
+                  <span class="activity-time">${escapeHtml(formatTimestamp(entry.timestamp))}</span>
+                </div>
+                <span class="activity-detail">${escapeHtml(scanModeLabel(entry.mode))}</span>
               </div>
-              <span class="activity-detail">${escapeHtml(scanModeLabel(entry.mode))}</span>
             </li>
           `).join("")}
         </ul>
@@ -1514,12 +1740,291 @@ function renderAdminTab(state: RewriteUiState): string {
   `;
 }
 
+function foldSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function tokenizeQuery(query: string): string[] {
+  const folded = foldSearchText(query);
+  return folded.split(/[\s/|,.·]+/).filter((token) => token.length > 0);
+}
+
+function matchesAllTokens(haystack: string, tokens: readonly string[]): boolean {
+  if (tokens.length === 0) return true;
+  const folded = foldSearchText(haystack);
+  return tokens.every((token) => folded.includes(token));
+}
+
 function filterKnownValues(values: readonly string[], query: string): string[] {
-  const normalized = query.trim().toLowerCase();
-  const matches = normalized
-    ? values.filter((value) => value.toLowerCase().includes(normalized))
-    : [...values];
-  return matches.slice(0, 6);
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) return values.slice(0, 12);
+  return values.filter((value) => matchesAllTokens(value, tokens)).slice(0, 12);
+}
+
+function parsePathSegments(value: string): string[] {
+  return value.split("/").map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
+function joinPathSegments(segments: readonly string[]): string {
+  return segments.join(" / ");
+}
+
+interface PathNode {
+  readonly segment: string;
+  readonly path: string;
+  readonly children: Map<string, PathNode>;
+}
+
+function buildPathTree(paths: readonly string[]): PathNode {
+  const root: PathNode = { segment: "", path: "", children: new Map() };
+  for (const p of paths) {
+    const segs = parsePathSegments(p);
+    let cursor = root;
+    const builtSegs: string[] = [];
+    for (const seg of segs) {
+      builtSegs.push(seg);
+      const key = foldSearchText(seg);
+      let child = cursor.children.get(key);
+      if (!child) {
+        child = { segment: seg, path: joinPathSegments(builtSegs), children: new Map() };
+        cursor.children.set(key, child);
+      }
+      cursor = child;
+    }
+  }
+  return root;
+}
+
+function collectVisiblePaths(
+  root: PathNode,
+  tokens: readonly string[],
+): ReadonlySet<string> | null {
+  if (tokens.length === 0) return null;
+  const visible = new Set<string>();
+  function visit(node: PathNode, ancestorChain: string[]): boolean {
+    let any = false;
+    for (const child of node.children.values()) {
+      const selfMatches = matchesAllTokens(child.segment, tokens) || matchesAllTokens(child.path, tokens);
+      const childMatches = visit(child, [...ancestorChain, child.path]);
+      if (selfMatches || childMatches) {
+        visible.add(child.path);
+        for (const anc of ancestorChain) visible.add(anc);
+        any = true;
+      }
+    }
+    return any;
+  }
+  visit(root, []);
+  return visible;
+}
+
+function renderTreeNodes(
+  node: PathNode,
+  depth: number,
+  kind: "category" | "location",
+  expanded: ReadonlySet<string>,
+  autoExpand: ReadonlySet<string> | null,
+  visible: ReadonlySet<string> | null,
+  currentValue: string,
+): string {
+  const currentFolded = foldSearchText(currentValue);
+  const out: string[] = [];
+  const sorted = [...node.children.values()].sort((a, b) => a.segment.localeCompare(b.segment));
+  for (const child of sorted) {
+    if (visible && !visible.has(child.path)) continue;
+    const hasChildren = child.children.size > 0;
+    const isExpanded =
+      expanded.has(child.path) ||
+      (autoExpand !== null && autoExpand.has(child.path));
+    const isSelected = foldSearchText(child.path) === currentFolded && currentFolded !== "";
+    const guides = Array.from({ length: depth }, () => `<span class="tree-indent" aria-hidden="true"></span>`).join("");
+    out.push(`
+      <div class="tree-row ${isSelected ? "selected" : ""}">
+        ${guides}
+        ${hasChildren
+          ? `<button type="button" class="tree-chevron" data-action="toggle-path-expand" data-kind="${kind}" data-path="${attr(child.path)}" aria-expanded="${String(isExpanded)}" aria-label="${isExpanded ? "Collapse" : "Expand"} ${attr(child.segment)}">${isExpanded ? "▾" : "▸"}</button>`
+          : `<span class="tree-chevron placeholder" aria-hidden="true"></span>`}
+        <button type="button" class="tree-label" data-action="pick-path-node" data-kind="${kind}" data-path="${attr(child.path)}">
+          <strong>${escapeHtml(child.segment)}</strong>
+          ${hasChildren ? `<span class="tree-count">${child.children.size}</span>` : ""}
+        </button>
+      </div>
+    `);
+    if (hasChildren && isExpanded) {
+      out.push(renderTreeNodes(child, depth + 1, kind, expanded, autoExpand, visible, currentValue));
+    }
+  }
+  return out.join("");
+}
+
+function renderCreateParentPicker(
+  kind: "category" | "location",
+  parent: string,
+  known: readonly string[],
+): string {
+  const currentSegs = parsePathSegments(parent);
+  const crumbs = [
+    {
+      label: "Root",
+      path: "",
+      isCurrent: currentSegs.length === 0,
+    },
+    ...currentSegs.map((seg, i) => ({
+      label: seg,
+      path: joinPathSegments(currentSegs.slice(0, i + 1)),
+      isCurrent: i === currentSegs.length - 1,
+    })),
+  ];
+  const crumbHtml = crumbs
+    .map(
+      (c) =>
+        `<button type="button" class="crumb ${c.isCurrent ? "current" : ""}" data-action="set-path-create-parent" data-kind="${kind}" data-path="${attr(c.path)}">${escapeHtml(c.label)}</button>`,
+    )
+    .join(`<span class="crumb-sep" aria-hidden="true">›</span>`);
+
+  const children = new Set<string>();
+  for (const known_ of known) {
+    const segs = parsePathSegments(known_);
+    if (segs.length <= currentSegs.length) continue;
+    let prefixMatches = true;
+    for (let i = 0; i < currentSegs.length; i++) {
+      const a = currentSegs[i];
+      const b = segs[i];
+      if (a === undefined || b === undefined || foldSearchText(a) !== foldSearchText(b)) {
+        prefixMatches = false;
+        break;
+      }
+    }
+    if (!prefixMatches) continue;
+    const next = segs[currentSegs.length];
+    if (next) children.add(next);
+  }
+  const sortedChildren = Array.from(children).sort((a, b) => a.localeCompare(b));
+  const childButtons = sortedChildren
+    .map((child) => {
+      const nextPath = joinPathSegments([...currentSegs, child]);
+      return `
+        <button type="button" class="path-child" data-action="set-path-create-parent" data-kind="${kind}" data-path="${attr(nextPath)}">
+          <strong>${escapeHtml(child)}</strong>
+        </button>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="path-tree" aria-label="Pick a parent">
+      <div class="crumbs" role="navigation" aria-label="Selected parent">${crumbHtml}</div>
+      ${
+        sortedChildren.length > 0
+          ? `<div class="path-children" role="listbox" aria-label="Navigate into a child">${childButtons}</div>`
+          : `<p class="path-empty muted-copy">No sub-items here. This will be a new leaf under <strong>${escapeHtml(parent === "" ? "Root" : parent)}</strong>.</p>`
+      }
+    </div>
+  `;
+}
+
+function renderPathPickerField(
+  state: RewriteUiState,
+  kind: "category" | "location",
+): string {
+  const pickerState = kind === "category" ? state.categoryPicker : state.locationPicker;
+  const currentValue = kind === "category" ? state.assignForm.category : state.assignForm.location;
+  const known = kind === "category" ? state.knownCategories : state.knownLocations;
+  const label = kind === "category" ? "Category" : "Location";
+  const placeholder = kind === "category"
+    ? "Pick a category…"
+    : "Pick a location…";
+  const createButtonLabel = kind === "category" ? "+ New category" : "+ New location";
+
+  const triggerLabel = currentValue || placeholder;
+  const isEmpty = currentValue === "";
+
+  const tree = buildPathTree(known);
+  const expandedSet = new Set(pickerState.expanded);
+  const tokens = tokenizeQuery(pickerState.query);
+  const visible = collectVisiblePaths(tree, tokens);
+
+  const currentSegs = parsePathSegments(currentValue);
+  const autoExpand = new Set<string>();
+  if (currentSegs.length > 1) {
+    for (let i = 1; i < currentSegs.length; i++) {
+      autoExpand.add(joinPathSegments(currentSegs.slice(0, i)));
+    }
+  }
+  if (visible) for (const p of visible) autoExpand.add(p);
+
+  const treeBody = renderTreeNodes(tree, 0, kind, expandedSet, autoExpand, visible, currentValue);
+  const hasAnyKnown = known.length > 0;
+
+  const createPanel = pickerState.createOpen
+    ? `
+      <div class="path-create-panel" role="dialog" aria-label="Create new ${label.toLowerCase()}">
+        <p class="path-create-title">New ${escapeHtml(label.toLowerCase())} under <strong>${escapeHtml(pickerState.createParent === "" ? "Root" : pickerState.createParent)}</strong></p>
+        ${renderCreateParentPicker(kind, pickerState.createParent, known)}
+        <label class="wide">
+          New ${escapeHtml(label.toLowerCase())} name
+          <input
+            name="pathPicker.${kind}.createName"
+            value="${attr(pickerState.createName)}"
+            placeholder="${escapeHtml(kind === "category" ? "e.g. SMD 0603" : "e.g. Bin 12")}"
+            autocomplete="off"
+          />
+        </label>
+        <div class="path-create-actions">
+          <button type="button" class="secondary" data-action="close-path-create" data-kind="${kind}">Cancel</button>
+          <button type="button" data-action="commit-path-create" data-kind="${kind}" ${pickerState.createName.trim() === "" ? "disabled" : ""}>Create</button>
+        </div>
+      </div>
+    `
+    : "";
+
+  const pickerPanel = pickerState.open
+    ? `
+      <div class="path-picker-panel" role="dialog" aria-label="Browse ${label.toLowerCase()}s">
+        <div class="path-search">
+          <input
+            type="search"
+            name="pathPicker.${kind}.query"
+            value="${attr(pickerState.query)}"
+            placeholder="Search ${escapeHtml(label.toLowerCase())}s…"
+            aria-label="Search ${escapeHtml(label.toLowerCase())}s"
+            autocomplete="off"
+          />
+        </div>
+        ${
+          hasAnyKnown
+            ? treeBody.trim() !== ""
+              ? `<div class="tree-list" role="tree">${treeBody}</div>`
+              : `<p class="muted-copy tree-empty">No matches for "${escapeHtml(pickerState.query)}".</p>`
+            : `<p class="muted-copy tree-empty">No ${escapeHtml(label.toLowerCase())}s yet. Create the first one below.</p>`
+        }
+      </div>
+    `
+    : "";
+
+  return `
+    <div class="path-field wide ${pickerState.open ? "open" : ""}" data-picker-kind="${kind}">
+      <label class="path-field-label">${escapeHtml(label)}</label>
+      <button
+        type="button"
+        class="path-trigger ${isEmpty ? "empty" : ""}"
+        data-action="toggle-path-picker"
+        data-kind="${kind}"
+        aria-expanded="${String(pickerState.open)}"
+      >
+        <span class="path-trigger-value">${escapeHtml(triggerLabel)}</span>
+        <span class="chevron" aria-hidden="true">${pickerState.open ? "▴" : "▾"}</span>
+      </button>
+      ${pickerPanel}
+      <button type="button" class="path-create-toggle" data-action="open-path-create" data-kind="${kind}">
+        ${escapeHtml(createButtonLabel)}
+      </button>
+      ${createPanel}
+    </div>
+  `;
 }
 
 function buildActivityDetail(event: {

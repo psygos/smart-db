@@ -11,6 +11,18 @@ server_csr="${cert_dir}/server.csr"
 server_crt="${cert_dir}/server.crt"
 openssl_config="${cert_dir}/server-openssl.cnf"
 
+# Parse --ip flags (repeatable). Default to prod IPs if none given.
+IPS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ip) IPS+=("$2"); shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+if [ ${#IPS[@]} -eq 0 ]; then
+  IPS=("10.42.200.4" "10.42.200.136")
+fi
+
 install -d -m 700 "${cert_dir}"
 
 if [ ! -f "${ca_key}" ] || [ ! -f "${ca_crt}" ]; then
@@ -24,7 +36,13 @@ if [ ! -f "${ca_key}" ] || [ ! -f "${ca_crt}" ]; then
   chmod 644 "${ca_crt}"
 fi
 
-cat > "${openssl_config}" <<'EOF'
+# Build the [alt_names] section from the --ip arguments
+ALT_NAMES=""
+for i in "${!IPS[@]}"; do
+  ALT_NAMES+="IP.$((i+1)) = ${IPS[$i]}"$'\n'
+done
+
+cat > "${openssl_config}" <<EOF
 [req]
 default_bits = 2048
 prompt = no
@@ -40,9 +58,7 @@ subjectAltName = @alt_names
 extendedKeyUsage = serverAuth
 
 [alt_names]
-IP.1 = 10.42.200.4
-IP.2 = 10.42.200.136
-DNS.1 = dev-tiwari-smartdb
+${ALT_NAMES}
 EOF
 
 openssl req -new -nodes -newkey rsa:2048 \
@@ -64,3 +80,7 @@ openssl x509 -req \
 chmod 600 "${server_key}"
 chmod 644 "${server_crt}"
 rm -f "${server_csr}" "${openssl_config}"
+
+echo "Cert generated for: ${IPS[*]}"
+echo "  CA:     ${ca_crt}"
+echo "  Server: ${server_crt}"

@@ -50,7 +50,7 @@ export type AuthViewState =
       readonly error: string | null;
     };
 
-export type TabId = "scan" | "inventory" | "activity" | "admin";
+export type TabId = "scan" | "inventory" | "activity" | "dashboard" | "admin";
 
 export interface ToastRecord {
   readonly id: string;
@@ -76,6 +76,16 @@ export interface InventoryUiState {
   readonly expandedId: string | null;
   readonly expandedItems: ReadonlyMap<string, PartTypeItemsResponse>;
   readonly expandedErrors: ReadonlyMap<string, string>;
+  readonly detailPartTypeId: string | null;
+}
+
+export interface PathPickerUiState {
+  readonly open: boolean;
+  readonly query: string;
+  readonly expanded: readonly string[];
+  readonly createOpen: boolean;
+  readonly createParent: string;
+  readonly createName: string;
 }
 
 export type OneByOneScanBehavior = "increment" | "viewOnly";
@@ -219,6 +229,7 @@ export type ScanEditState =
     };
 
 export interface RewriteUiState {
+  readonly theme: "light" | "dark";
   readonly authState: AuthViewState;
   readonly dashboard: DashboardSummary | null;
   readonly partDbStatus: PartDbConnectionStatus | null;
@@ -258,6 +269,8 @@ export interface RewriteUiState {
   readonly isOnline: boolean;
   readonly sessionExpiringSoon: boolean;
   readonly refreshError: string | null;
+  readonly categoryPicker: PathPickerUiState;
+  readonly locationPicker: PathPickerUiState;
 }
 
 export const defaultBatchForm: RegisterQrBatchRequest = {
@@ -350,6 +363,16 @@ export const defaultInventoryUiState: InventoryUiState = {
   expandedId: null,
   expandedItems: new Map(),
   expandedErrors: new Map(),
+  detailPartTypeId: null,
+};
+
+export const defaultPathPickerState: PathPickerUiState = {
+  open: false,
+  query: "",
+  expanded: [],
+  createOpen: false,
+  createParent: "",
+  createName: "",
 };
 
 export const defaultScanEditState: ScanEditState = {
