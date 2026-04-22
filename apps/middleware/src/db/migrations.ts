@@ -224,6 +224,24 @@ CREATE INDEX IF NOT EXISTS correction_events_target_idx
   ON correction_events (target_type, target_id, created_at DESC);
     `,
   },
+  {
+    version: 9,
+    description: "standalone known_categories table",
+    sql: `
+CREATE TABLE IF NOT EXISTS known_categories (
+  path TEXT PRIMARY KEY
+);
+    `,
+  },
+  {
+    version: 10,
+    description: "standalone known_locations table",
+    sql: `
+CREATE TABLE IF NOT EXISTS known_locations (
+  path TEXT PRIMARY KEY
+);
+    `,
+  },
 ];
 
 export function applyMigrations(

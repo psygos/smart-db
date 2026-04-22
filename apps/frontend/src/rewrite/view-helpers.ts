@@ -13,7 +13,7 @@ import type { InventorySummaryRow } from "../api";
 
 export function getPartDbHealthPill(
   status: PartDbConnectionStatus | null,
-): { tone: "ok" | "warn" | "info"; label: string } {
+): { tone: "ok" | "warn" | "info"; label: string } | null {
   if (status === null) {
     return { tone: "info", label: "Checking Part-DB" };
   }
@@ -22,7 +22,7 @@ export function getPartDbHealthPill(
     return { tone: "ok", label: "Part-DB linked" };
   }
 
-  return { tone: "warn", label: "Part-DB degraded" };
+  return null;
 }
 
 export function getPartDbSyncPill(
@@ -33,7 +33,7 @@ export function getPartDbSyncPill(
   }
 
   if (!status.enabled) {
-    return { tone: "info", label: "Sync disabled" };
+    return null;
   }
 
   if (status.deadTotal > 0) {

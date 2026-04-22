@@ -42,6 +42,7 @@ import {
   defaultCorrectionUiState,
   defaultEventForm,
   defaultInventoryUiState,
+  defaultPathPickerState,
   defaultSearchState,
   type AuthViewState,
   type PendingAction,
@@ -107,6 +108,8 @@ export class RewriteAppController {
     isOnline: typeof navigator === "undefined" ? true : navigator.onLine,
     sessionExpiringSoon: false,
     refreshError: null,
+    categoryPicker: defaultPathPickerState,
+    locationPicker: defaultPathPickerState,
   };
 
   private readonly authActor = createActor(authMachine, { input: {} });
@@ -315,26 +318,106 @@ export class RewriteAppController {
           this.setBulkCountability(actionEl.dataset.countable === "true");
         }
         break;
-      case "pick-known-location":
-        if (actionEl.dataset.location) {
-          this.patch({
-            assignForm: {
-              ...this.state.assignForm,
-              location: actionEl.dataset.location,
-            },
-          });
+      case "toggle-path-picker": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({ [key]: { ...this.state[key], open: !this.state[key].open } } as Partial<RewriteUiState>);
         }
         break;
-      case "pick-known-category":
-        if (actionEl.dataset.category) {
-          this.patch({
-            assignForm: {
-              ...this.state.assignForm,
-              category: actionEl.dataset.category,
-            },
-          });
+      }
+      case "close-path-picker": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({ [key]: { ...this.state[key], open: false, createOpen: false } } as Partial<RewriteUiState>);
         }
         break;
+      }
+      case "toggle-path-expand": {
+        const kind = actionEl.dataset.kind;
+        const path = actionEl.dataset.path;
+        if ((kind === "category" || kind === "location") && typeof path === "string") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          const cur = this.state[key];
+          const already = cur.expanded.includes(path);
+          const expanded = already ? cur.expanded.filter((p) => p !== path) : [...cur.expanded, path];
+          this.patch({ [key]: { ...cur, expanded } } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "pick-path-node": {
+        const kind = actionEl.dataset.kind;
+        const path = actionEl.dataset.path;
+        if ((kind === "category" || kind === "location") && typeof path === "string") {
+          const pickerKey = kind === "category" ? "categoryPicker" : "locationPicker";
+          const formKey = kind === "category" ? "category" : "location";
+          this.patch({
+            assignForm: { ...this.state.assignForm, [formKey]: path },
+            [pickerKey]: { ...this.state[pickerKey], open: false, query: "", createOpen: false },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "open-path-create": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          const cur = this.state[key];
+          const currentValue = kind === "category" ? this.state.assignForm.category : this.state.assignForm.location;
+          this.patch({
+            [key]: { ...cur, createOpen: true, createParent: currentValue, createName: "" },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "close-path-create": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({
+            [key]: { ...this.state[key], createOpen: false, createName: "" },
+          } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "set-path-create-parent": {
+        const kind = actionEl.dataset.kind;
+        const path = actionEl.dataset.path;
+        if ((kind === "category" || kind === "location") && typeof path === "string") {
+          const key = kind === "category" ? "categoryPicker" : "locationPicker";
+          this.patch({ [key]: { ...this.state[key], createParent: path } } as Partial<RewriteUiState>);
+        }
+        break;
+      }
+      case "commit-path-create": {
+        const kind = actionEl.dataset.kind;
+        if (kind === "category" || kind === "location") {
+          const pickerKey = kind === "category" ? "categoryPicker" : "locationPicker";
+          const formKey = kind === "category" ? "category" : "location";
+          const knownKey = kind === "category" ? "knownCategories" : "knownLocations";
+          const cur = this.state[pickerKey];
+          const leaf = cur.createName.trim();
+          if (!leaf) break;
+          const parent = cur.createParent.trim();
+          const full = parent === "" ? leaf : `${parent} / ${leaf}`;
+          const existingKnown = this.state[knownKey];
+          const nextKnown = existingKnown.includes(full)
+            ? existingKnown
+            : [...existingKnown, full].sort();
+          this.patch({
+            assignForm: { ...this.state.assignForm, [formKey]: full },
+            [pickerKey]: { ...cur, open: false, createOpen: false, createParent: "", createName: "", query: "" },
+            [knownKey]: nextKnown,
+          } as Partial<RewriteUiState>);
+          if (kind === "category") {
+            void api.createCategory(full);
+          } else {
+            void api.createLocation(full);
+          }
+        }
+        break;
+      }
       case "select-event-action":
         if (actionEl.dataset.event) {
           this.patch({
@@ -349,6 +432,16 @@ export class RewriteAppController {
         if (actionEl.dataset.partTypeId) {
           void this.toggleInventoryExpand(actionEl.dataset.partTypeId);
         }
+        break;
+      case "open-part-detail":
+        if (actionEl.dataset.partTypeId) {
+          void this.openPartDetail(actionEl.dataset.partTypeId);
+        }
+        break;
+      case "close-part-detail":
+        this.patch({
+          inventoryUi: { ...this.state.inventoryUi, detailPartTypeId: null },
+        });
         break;
       case "download-labels":
         void this.handleDownloadLatestBatchLabels();
@@ -553,6 +646,18 @@ export class RewriteAppController {
             showEmpty: Boolean(rawValue),
           },
         });
+        return;
+      case "pathPicker.category.query":
+        this.patch({ categoryPicker: { ...this.state.categoryPicker, query: String(rawValue) } });
+        return;
+      case "pathPicker.location.query":
+        this.patch({ locationPicker: { ...this.state.locationPicker, query: String(rawValue) } });
+        return;
+      case "pathPicker.category.createName":
+        this.patch({ categoryPicker: { ...this.state.categoryPicker, createName: String(rawValue) } });
+        return;
+      case "pathPicker.location.createName":
+        this.patch({ locationPicker: { ...this.state.locationPicker, createName: String(rawValue) } });
         return;
       case "merge.sourceId":
         this.patch({ mergeSourceId: String(rawValue) });
@@ -785,6 +890,8 @@ export class RewriteAppController {
       pendingAction: null,
       downloadingBatchId: null,
       refreshError: null,
+      categoryPicker: defaultPathPickerState,
+      locationPicker: defaultPathPickerState,
     });
   }
 
@@ -831,6 +938,7 @@ export class RewriteAppController {
       partTypesResult,
       latestBatchResult,
       locationsResult,
+      categoriesResult,
       inventoryResult,
     ] = await Promise.allSettled([
       api.getDashboard(),
@@ -841,6 +949,7 @@ export class RewriteAppController {
       api.searchPartTypes(""),
       canAccessAdmin ? api.getLatestQrBatch() : Promise.resolve(null),
       api.getKnownLocations(),
+      api.getKnownCategories(),
       api.getInventorySummary(),
     ]);
 
@@ -853,6 +962,7 @@ export class RewriteAppController {
       partTypesResult,
       latestBatchResult,
       locationsResult,
+      categoriesResult,
       inventoryResult,
     ]) {
       if (result.status === "rejected" && this.handleApiFailure(result.reason)) {
@@ -869,6 +979,7 @@ export class RewriteAppController {
       partTypesResult,
       latestBatchResult,
       locationsResult,
+      categoriesResult,
       inventoryResult,
     ].filter((result): result is PromiseRejectedResult => result.status === "rejected");
 
@@ -880,9 +991,11 @@ export class RewriteAppController {
     if (locationsResult.status === "fulfilled") {
       patch.knownLocations = locationsResult.value;
     }
+    if (categoriesResult.status === "fulfilled") {
+      patch.knownCategories = categoriesResult.value;
+    }
     if (inventoryResult.status === "fulfilled") {
       patch.inventorySummary = inventoryResult.value;
-      patch.knownCategories = Array.from(new Set(inventoryResult.value.map((row) => row.categoryPath.join(" / ")))).sort();
     }
     if (partDbResult.status === "fulfilled") {
       patch.partDbStatus = partDbResult.value;
@@ -1620,9 +1733,6 @@ export class RewriteAppController {
       assignForm: {
         ...defaultAssignForm,
         qrCode: code,
-        entityKind: "bulk",
-        countable: false,
-        unitSymbol: "kg",
       },
       labelSearch: {
         query: "",
@@ -1880,6 +1990,33 @@ export class RewriteAppController {
     }
   }
 
+  private async openPartDetail(partTypeId: string): Promise<void> {
+    this.patch({
+      inventoryUi: { ...this.state.inventoryUi, detailPartTypeId: partTypeId },
+    });
+
+    if (this.state.inventoryUi.expandedItems.has(partTypeId)) {
+      return;
+    }
+
+    try {
+      const items = await api.getPartTypeItems(partTypeId);
+      const expandedItems = new Map(this.state.inventoryUi.expandedItems);
+      const expandedErrors = new Map(this.state.inventoryUi.expandedErrors);
+      expandedItems.set(partTypeId, items);
+      expandedErrors.delete(partTypeId);
+      this.patch({
+        inventoryUi: { ...this.state.inventoryUi, expandedItems, expandedErrors },
+      });
+    } catch (caught) {
+      const expandedErrors = new Map(this.state.inventoryUi.expandedErrors);
+      expandedErrors.set(partTypeId, errorMessage(caught));
+      this.patch({
+        inventoryUi: { ...this.state.inventoryUi, expandedErrors },
+      });
+    }
+  }
+
   private async toggleInventoryExpand(partTypeId: string): Promise<void> {
     if (this.state.inventoryUi.expandedId === partTypeId) {
       this.patch({
@@ -2032,6 +2169,7 @@ export class RewriteAppController {
     // Always start in view-only mode. User opts into auto-count per session.
     return "inspect";
   }
+
 
   private applyThemeToDOM(theme: "light" | "dark", animated = false): void {
     if (animated) {

@@ -459,6 +459,39 @@ export function actionLabel(event: StockEventKind): string {
   }
 }
 
+export type EventTone = "ok" | "info" | "warn" | "bad";
+
+export function eventIconInfo(event: StockEventKind): { glyph: string; tone: EventTone } {
+  switch (event) {
+    case "labeled":
+      return { glyph: "+", tone: "ok" };
+    case "restocked":
+      return { glyph: "+", tone: "ok" };
+    case "returned":
+      return { glyph: "↓", tone: "ok" };
+    case "moved":
+      return { glyph: "→", tone: "info" };
+    case "stocktaken":
+      return { glyph: "=", tone: "info" };
+    case "level_changed":
+      return { glyph: "~", tone: "info" };
+    case "checked_out":
+      return { glyph: "↑", tone: "warn" };
+    case "adjusted":
+      return { glyph: "±", tone: "warn" };
+    case "damaged":
+      return { glyph: "!", tone: "bad" };
+    case "lost":
+      return { glyph: "?", tone: "bad" };
+    case "consumed":
+      return { glyph: "×", tone: "bad" };
+    case "disposed":
+      return { glyph: "×", tone: "bad" };
+    default:
+      return { glyph: "•", tone: "info" };
+  }
+}
+
 export function formatTimestamp(isoTimestamp: string): string {
   const parsed = new Date(isoTimestamp);
   if (Number.isNaN(parsed.getTime())) {

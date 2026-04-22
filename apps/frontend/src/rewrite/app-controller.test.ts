@@ -18,6 +18,9 @@ const apiMock = vi.hoisted(() => ({
   getProvisionalPartTypes: vi.fn(),
   searchPartTypes: vi.fn(),
   getKnownLocations: vi.fn(),
+  getKnownCategories: vi.fn(),
+  createCategory: vi.fn(),
+  createLocation: vi.fn(),
   getInventorySummary: vi.fn(),
   registerQrBatch: vi.fn(),
   scan: vi.fn(),
@@ -171,6 +174,9 @@ describe("RewriteAppController", () => {
     apiMock.getProvisionalPartTypes.mockResolvedValue([]);
     apiMock.searchPartTypes.mockResolvedValue([partType]);
     apiMock.getKnownLocations.mockResolvedValue(["Shelf A"]);
+    apiMock.getKnownCategories.mockResolvedValue([]);
+    apiMock.createCategory.mockResolvedValue({ path: "" });
+    apiMock.createLocation.mockResolvedValue({ path: "" });
     apiMock.getInventorySummary.mockResolvedValue([]);
     apiMock.getCorrectionHistory.mockResolvedValue([]);
     apiMock.reassignEntityPartType.mockResolvedValue({
@@ -282,9 +288,13 @@ describe("RewriteAppController", () => {
     await flush();
 
     expect(document.body.textContent).toContain("lab-admin");
+    expect(document.querySelector('[data-tab="admin"]')).not.toBeNull();
+
+    (document.querySelector('[data-tab="dashboard"]') as HTMLButtonElement).click();
+    await flush();
+
     expect(document.body.textContent).toContain("Part types");
     expect(document.body.textContent).toContain("2");
-    expect(document.querySelector('[data-tab="admin"]')).not.toBeNull();
     controller.dispose();
   });
 
@@ -438,10 +448,21 @@ describe("RewriteAppController", () => {
     quantityInput!.value = "0";
     quantityInput!.dispatchEvent(new Event("input", { bubbles: true }));
 
-    const locationInput = document.querySelector<HTMLInputElement>('input[name="assign.location"]');
-    expect(locationInput).not.toBeNull();
-    locationInput!.value = "Shelf A";
-    locationInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    const openCreateLocation = document.querySelector<HTMLButtonElement>('[data-action="open-path-create"][data-kind="location"]');
+    expect(openCreateLocation).not.toBeNull();
+    openCreateLocation!.click();
+    await flush();
+
+    const locationNameInput = document.querySelector<HTMLInputElement>('input[name="pathPicker.location.createName"]');
+    expect(locationNameInput).not.toBeNull();
+    locationNameInput!.value = "Shelf A";
+    locationNameInput!.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+
+    const commitLocation = document.querySelector<HTMLButtonElement>('[data-action="commit-path-create"][data-kind="location"]');
+    expect(commitLocation).not.toBeNull();
+    commitLocation!.click();
+    await flush();
 
     const assignForm = document.querySelector<HTMLFormElement>('form[data-form="assign"]');
     expect(assignForm).not.toBeNull();

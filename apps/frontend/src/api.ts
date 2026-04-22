@@ -219,6 +219,20 @@ export const api = {
   getKnownCategories(): Promise<string[]> {
     return request(z.array(z.string()), "/api/categories");
   },
+  createCategory(path: string): Promise<{ path: string }> {
+    return request(
+      z.object({ path: z.string() }),
+      "/api/categories",
+      { method: "POST", body: JSON.stringify({ path }), headers: { "Content-Type": "application/json" } },
+    );
+  },
+  createLocation(path: string): Promise<{ path: string }> {
+    return request(
+      z.object({ path: z.string() }),
+      "/api/locations",
+      { method: "POST", body: JSON.stringify({ path }), headers: { "Content-Type": "application/json" } },
+    );
+  },
   splitBulkStock(bulkId: string, payload: { quantity: number; destinationLocation: string; notes: string | null }): Promise<{ source: { id: string; quantity: number }; destination: { id: string; quantity: number } }> {
     return request(
       z.object({
