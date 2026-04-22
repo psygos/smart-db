@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="360" height="320" viewBox="0 0 360 320" fill="none">
   <title>Smart DB Parts Pattern Dark</title>
   <desc>Subtle repeating line-art tile of makerspace parts and inventory motifs for dark backgrounds.</desc>
-  <g stroke="#d6b890" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.14">
+  <g stroke="#817568" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" opacity="0.05">
     <g transform="translate(14 18)">
       <polyline points="0 16 10 16 15 8 23 24 31 8 39 24 47 8 52 16 62 16"/>
     </g>
