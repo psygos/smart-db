@@ -120,7 +120,6 @@ export const rewriteMachineMap = {
       "SPLIT.SUCCEEDED",
       "SPLIT.FAILED",
       "SCAN.CLEAR_REQUESTED",
-      "SCAN.NEXT_REQUESTED",
     ],
     failureStates: [
       "failure.lookup",

@@ -238,7 +238,7 @@ function renderScanTab(state: RewriteUiState): string {
           value="${attr(state.scanCode)}"
           autocomplete="off"
         />
-        <button type="submit" ${disabled(state.pendingAction !== null)}>
+        <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null)}>
           ${state.pendingAction === "scan" ? "Opening..." : state.scanMode.kind === "bulk" ? "Add" : "Open"}
         </button>
       </form>
@@ -335,17 +335,6 @@ function renderScanTab(state: RewriteUiState): string {
         ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "label" ? renderLabelCard(state, labelOptions, assignIssues) : ""}
         ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "interact" ? renderInteractCard(state, eventIssues, bulkQuantityStep, bulkUnitSymbol) : ""}
         ${state.scanMode.kind === "bulk" ? renderBulkQueueCard(state, bulkLabelOptions, bulkAssignIssues) : ""}
-
-        ${state.scanMode.kind === "oneByOne" && state.scanResult && !state.cameraLookupCode ? `
-          <button
-            type="button"
-            class="scan-next-bottom"
-            data-action="scan-next"
-            ${disabled(state.pendingAction !== null)}
-          >
-            Scan next item
-          </button>
-        ` : ""}
       </div>
     </section>
   `;
@@ -424,15 +413,15 @@ function renderBulkQueueCard(
                 </div>
                 <div style="display:flex;gap:0.5rem;align-items:center">
                   <span class="pill info">${escapeHtml(`×${row.count}`)}</span>
-                  <button type="button" data-action="bulk-queue-decrement" data-code="${attr(row.code)}">-1</button>
-                  <button type="button" data-action="bulk-queue-remove" data-code="${attr(row.code)}">Remove</button>
+                  <button type="button" class="btn-ghost" data-action="bulk-queue-decrement" data-code="${attr(row.code)}">-1</button>
+                  <button type="button" class="btn-danger" data-action="bulk-queue-remove" data-code="${attr(row.code)}">Remove</button>
                 </div>
               </li>
             `).join("")}
           </ul>
         </div>
       `}
-      <button type="button" data-action="bulk-queue-clear" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)} style="margin-top:1rem">
+      <button type="button" class="btn-danger" data-action="bulk-queue-clear" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)} style="margin-top:1rem">
         Clear queue
       </button>
       ${state.bulkQueue.action === "label" ? renderBulkLabelForm(state, labelOptions, assignIssues) : ""}
@@ -571,7 +560,7 @@ function renderBulkLabelForm(
           ${assignIssues.minimumQuantity ? `<span class="field-error">${escapeHtml(assignIssues.minimumQuantity)}</span>` : ""}
         </label>
       `}
-      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || Object.keys(assignIssues).length > 0)}>
+      <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || Object.keys(assignIssues).length > 0)}>
         ${state.pendingAction === "bulk" ? "Labeling..." : `Label ${state.bulkQueue.summary.uniqueLabelCount} labels`}
       </button>
     </form>
@@ -589,7 +578,7 @@ function renderBulkMoveForm(state: RewriteUiState): string {
         Notes
         <textarea name="bulkMove.notes">${escapeHtml(state.bulkQueue.moveForm.notes)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.moveForm.location.trim().length === 0)}>
+      <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.moveForm.location.trim().length === 0)}>
         ${state.pendingAction === "bulk" ? "Moving..." : `Move ${state.bulkQueue.summary.uniqueLabelCount} labels`}
       </button>
     </form>
@@ -604,7 +593,7 @@ function renderBulkDeleteForm(state: RewriteUiState): string {
         Reason
         <textarea name="bulkDelete.reason">${escapeHtml(state.bulkQueue.deleteForm.reason)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
+      <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
         ${state.pendingAction === "bulk" ? "Reversing..." : `Reverse ${state.bulkQueue.summary.uniqueLabelCount} ingests`}
       </button>
     </form>
@@ -627,16 +616,12 @@ function renderLabelCard(
       ${renderEntityKindSwitch(state, entityLocked)}
       <h3>Assign ${escapeHtml(state.scanResult?.mode === "label" ? state.scanResult.qrCode.code : "")}</h3>
       ${state.lastAssignment ? `
-        <div class="assign-same-bar">
-          <button type="button" data-action="assign-same" ${disabled(state.pendingAction !== null)}>
-            Assign Same (${escapeHtml(state.lastAssignment.partTypeName)} · ${escapeHtml(state.lastAssignment.location)})
-          </button>
-        </div>
+        <p class="muted-copy assign-prefill-hint">Pre-filled from last scan: <strong>${escapeHtml(state.lastAssignment.partTypeName)}</strong> · ${escapeHtml(state.lastAssignment.location)}</p>
       ` : ""}
       <form class="form-grid" data-form="assign">
         ${renderPartTypeField(state, labelOptions, assignIssues)}
         ${renderSharedAssignFields(state, assignIssues)}
-        <button type="submit" ${disabled(state.pendingAction !== null || Object.keys(assignIssues).length > 0)}>
+        <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || Object.keys(assignIssues).length > 0)}>
           ${state.pendingAction === "assign" ? "Assigning..." : "Assign QR"}
         </button>
       </form>
@@ -889,7 +874,6 @@ function renderInteractCard(
       ` : `<p>Current state: <strong>${escapeHtml(state.scanResult.entity.state)}</strong></p>`}
       ${renderCurrentBorrow(state)}
       <p class="muted-copy" style="font-size:0.78rem">Part-DB sync: ${escapeHtml(state.scanResult.entity.partDbSyncStatus)}</p>
-      ${renderScanQuickChips(state)}
       ${(() => {
         const actions = state.scanResult.availableActions;
         const primary = actions.filter((a) => a === "checked_out");
@@ -942,7 +926,7 @@ function renderInteractCard(
           <textarea name="event.notes">${escapeHtml(state.eventForm.notes)}</textarea>
           ${eventIssues.notes ? `<span class="field-error">${escapeHtml(eventIssues.notes)}</span>` : ""}
         </label>
-        <button type="submit" ${disabled(state.pendingAction !== null || Object.keys(eventIssues).length > 0)}>
+        <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || Object.keys(eventIssues).length > 0)}>
           ${state.pendingAction === "event" ? "Saving..." : escapeHtml(`Confirm ${actionLabel(state.eventForm.event)}`)}
         </button>
       </form>
@@ -1099,38 +1083,6 @@ function renderCurrentBorrow(state: RewriteUiState): string {
   `;
 }
 
-function renderScanQuickChips(state: RewriteUiState): string {
-  if (!state.scanResult || state.scanResult.mode !== "interact") {
-    return "";
-  }
-  const entity = state.scanResult.entity;
-  const available = new Set(state.scanResult.availableActions);
-  const pending = state.pendingAction !== null;
-
-  const chips: string[] = [];
-  if (entity.targetType === "bulk") {
-    if (available.has("restocked")) {
-      chips.push(`<button type="button" data-action="quick-bulk-increment" ${disabled(pending)}>+1</button>`);
-    }
-    if (available.has("consumed") && (entity.quantity ?? 0) > 0) {
-      chips.push(`<button type="button" data-action="quick-bulk-decrement" ${disabled(pending)}>-1</button>`);
-    }
-  } else {
-    if (available.has("checked_out")) {
-      chips.push(`<button type="button" data-action="quick-instance-checkout-me" ${disabled(pending)}>Check out (me)</button>`);
-    }
-    if (available.has("returned")) {
-      chips.push(`<button type="button" data-action="quick-instance-return" ${disabled(pending)}>Return</button>`);
-    }
-  }
-
-  if (chips.length === 0) {
-    return "";
-  }
-
-  return `<div class="quick-chips" aria-label="Quick actions">${chips.join("")}</div>`;
-}
-
 function renderScanLocations(state: RewriteUiState): string {
   if (!state.scanResult || state.scanResult.mode !== "interact") {
     return "";
@@ -1258,7 +1210,7 @@ function renderScanEditReassignForm(
         Reason
         <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Reassign this scan"}</button>
+      <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Reassign this scan"}</button>
     </form>
   `;
 }
@@ -1308,7 +1260,7 @@ function renderScanEditSharedForm(
         Reason
         <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
+      <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
     </form>
   `;
 }
@@ -1324,7 +1276,7 @@ function renderScanEditReverseForm(
         Reason
         <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Reversing..." : "Reverse ingest"}</button>
+      <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Reversing..." : "Reverse ingest"}</button>
     </form>
   `;
 }
@@ -1343,7 +1295,7 @@ function renderInventoryReverseToolbar(state: RewriteUiState, partTypeId: string
         <textarea name="inventoryReverse.reason" placeholder="Why is this being reversed?">${escapeHtml(selection.reason)}</textarea>
       </label>
       <div class="inventory-reverse-actions" style="display:flex;gap:0.5rem;align-items:center">
-        <button type="submit" ${disabled(state.pendingAction !== null || selection.reason.trim().length === 0)}>
+        <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null || selection.reason.trim().length === 0)}>
           ${state.pendingAction === "correct" ? "Reversing..." : `Reverse ${count} ingest${count === 1 ? "" : "s"}`}
         </button>
         <button type="button" class="disclosure" data-action="inventory-reverse-clear" ${disabled(state.pendingAction !== null)}>Clear selection</button>
@@ -1466,13 +1418,17 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
   const items = state.inventoryUi.expandedItems.get(partTypeId) ?? null;
   const error = state.inventoryUi.expandedErrors.get(partTypeId) ?? null;
 
+  const backButton = `
+    <button type="button" class="part-detail-back" data-action="close-part-detail">
+      <span aria-hidden="true">‹</span> Back to Assets
+    </button>
+  `;
+
   if (!row) {
     return `
       <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
         <div class="part-detail">
-          <button type="button" class="part-detail-back" data-action="close-part-detail">
-            <span aria-hidden="true">‹</span> Back to Assets
-          </button>
+          ${backButton}
           <p class="muted-copy">Part type not found in current summary.</p>
         </div>
       </section>
@@ -1500,9 +1456,7 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
   return `
     <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
       <div class="part-detail">
-        <button type="button" class="part-detail-back" data-action="close-part-detail">
-          <span aria-hidden="true">‹</span> Back to Assets
-        </button>
+        ${backButton}
 
         <header class="part-detail-header">
           <p class="eyebrow">${escapeHtml(categoryTop)}${subPath ? ` / ${escapeHtml(subPath)}` : ""}</p>
@@ -1704,7 +1658,7 @@ function renderAdminTab(state: RewriteUiState): string {
           <label>Prefix<input name="batch.prefix" value="${attr(state.batchForm.prefix)}" maxlength="20" /></label>
           <label>Start number<input name="batch.startNumber" type="number" min="0" value="${attr(state.batchForm.startNumber)}" /></label>
           <label>Count<input name="batch.count" type="number" min="1" max="500" value="${attr(state.batchForm.count)}" /></label>
-          <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "batch" ? "Registering..." : "Register batch"}</button>
+          <button type="submit" class="btn-primary" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "batch" ? "Registering..." : "Register batch"}</button>
         </form>
       </section>
 
@@ -1975,7 +1929,7 @@ function renderPathPickerField(
         </label>
         <div class="path-create-actions">
           <button type="button" class="secondary" data-action="close-path-create" data-kind="${kind}">Cancel</button>
-          <button type="button" data-action="commit-path-create" data-kind="${kind}" ${pickerState.createName.trim() === "" ? "disabled" : ""}>Create</button>
+          <button type="button" class="btn-primary" data-action="commit-path-create" data-kind="${kind}" ${pickerState.createName.trim() === "" ? "disabled" : ""}>Create</button>
         </div>
       </div>
     `
@@ -1997,7 +1951,7 @@ function renderPathPickerField(
         ${
           hasAnyKnown
             ? treeBody.trim() !== ""
-              ? `<div class="tree-list" role="tree">${treeBody}</div>`
+              ? `<div class="tree-list" role="tree" data-scroll-key="path-picker-${kind}">${treeBody}</div>`
               : `<p class="muted-copy tree-empty">No matches for "${escapeHtml(pickerState.query)}".</p>`
             : `<p class="muted-copy tree-empty">No ${escapeHtml(label.toLowerCase())}s yet. Create the first one below.</p>`
         }

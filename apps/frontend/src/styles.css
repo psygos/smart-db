@@ -20,15 +20,26 @@
   --ink-2: #52525b;
   --ink-3: #a1a1aa;
 
-  --blue: #1d4ed8;
-  --blue-hover: #2563eb;
-  --blue-bg: rgba(37, 99, 235, 0.06);
+  /* Accent — primary action. Saffron per CLAUDE.md spec. */
+  --accent: #c47214;
+  --accent-hover: #a85f0f;
+  --accent-bg: rgba(196, 114, 20, 0.08);
+  --accent-ring: rgba(196, 114, 20, 0.30);
 
-  --orange: #ea580c;
-  --orange-bg: rgba(234, 88, 12, 0.06);
+  /* State accent — selection, active-tab, focus ring only. Never a CTA. */
+  --state: #1d4ed8;
+  --state-hover: #2563eb;
+  --state-bg: rgba(37, 99, 235, 0.06);
+
+  /* Back-compat aliases. Prefer --accent / --state in new code. */
+  --blue: var(--state);
+  --blue-hover: var(--state-hover);
+  --blue-bg: var(--state-bg);
+  --orange: var(--accent);
+  --orange-bg: var(--accent-bg);
 
   --green: #16a34a; --green-bg: #f0fdf4;
-  --red: #dc2626;   --red-bg: #fef2f2;
+  --red: #dc2626;   --red-bg: #fef2f2; --red-hover: #b91c1c;
   --amber: #d97706; --amber-bg: #fffbeb;
 
   --r: 10px;
@@ -80,7 +91,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 a { -webkit-tap-highlight-color: transparent; }
 ::selection { background: var(--blue-bg); }
 ::placeholder { color: var(--ink-3); opacity: 1; }
-:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--state); outline-offset: 2px; }
 
 /* ── type ─ ─ ─ ─ ─ ─ ─ */
 
@@ -191,25 +202,53 @@ textarea { min-height: 5rem; resize: vertical; }
 select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6' fill='%23a1a1aa'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; padding-right: 2rem; }
 .field-error { font-size: 0.75rem; color: var(--red); text-transform: none; letter-spacing: 0; }
 
-/* ── buttons ─ ─ ─ ─ ─ ─ */
+/* ── buttons ─ ─ ─ ─ ─ ─
+   Four roles:
+     - bare <button>         → secondary (neutral outline, default)
+     - .btn-primary          → saffron fill, main CTAs (submit, confirm)
+     - .btn-danger           → red fill (consume, void, delete)
+     - .btn-ghost / .disclosure → text-only (close, back, disclosures)
+   Blue (--state) is reserved for state indicators
+   (active tab, selected picker row, focus ring) — never a CTA.
+*/
 
 button {
-  border-radius: var(--r); border: 1px solid var(--blue);
-  padding: 0.625rem 1rem; background: var(--blue); color: white;
+  border-radius: var(--r); border: 1px solid var(--border-2);
+  padding: 0.625rem 1rem; background: var(--surface); color: var(--ink);
   min-height: 44px; font-weight: 500; font-size: 0.875rem;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background 0.12s var(--ease-out), border-color 0.12s var(--ease-out), color 0.12s var(--ease-out);
 }
-button:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
+button:hover:not(:disabled) { background: var(--dim); border-color: var(--ink-3); color: var(--ink-strong); }
 button:active:not(:disabled) { opacity: 0.85; }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.btn-primary {
+  background: var(--accent); color: white;
+  border-color: var(--accent); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(196, 114, 20, 0.18);
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); color: white; }
+.btn-primary:focus-visible { outline-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+
+.btn-danger {
+  background: var(--red); color: white;
+  border-color: var(--red); font-weight: 600;
+}
+.btn-danger:hover:not(:disabled) { background: var(--red-hover); border-color: var(--red-hover); color: white; }
+
+.btn-ghost {
+  background: transparent; border-color: transparent; color: var(--ink-2);
+  padding-left: 0.5rem; padding-right: 0.5rem;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--dim); color: var(--ink-strong); border-color: transparent; }
+
 .button-link {
   display: inline-flex; align-items: center; gap: 0.375rem;
-  padding: 0.625rem 1rem; background: var(--blue); color: white;
-  font-weight: 500; font-size: 0.875rem; text-decoration: none;
-  border: 1px solid var(--blue); border-radius: var(--r);
+  padding: 0.625rem 1rem; background: var(--accent); color: white;
+  font-weight: 600; font-size: 0.875rem; text-decoration: none;
+  border: 1px solid var(--accent); border-radius: var(--r);
 }
-.button-link:hover { background: var(--blue-hover); text-decoration: none; }
+.button-link:hover { background: var(--accent-hover); border-color: var(--accent-hover); text-decoration: none; }
 
 /* ── picker (no boxes, just rows) ─ */
 
@@ -390,23 +429,20 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding: 0.625rem 1rem;
   font-size: 0.9375rem;
   min-height: 48px;
-  background: var(--blue-bg);
-  border-color: var(--blue);
-  color: var(--blue);
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
   font-weight: 600;
 }
-.action-buttons-primary button:hover:not(:disabled) { background: var(--blue); color: white; border-color: var(--blue); }
+.action-buttons-primary button:hover:not(:disabled) { background: var(--accent); color: white; border-color: var(--accent); }
 .action-buttons-primary button.selected,
-.action-buttons-primary button[aria-pressed="true"] { background: var(--blue); color: white; }
+.action-buttons-primary button[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
 
 .disclosure { background: transparent; border: none; color: var(--ink-3); font-size: 0.8125rem; padding: 0.375rem 0; text-align: left; min-height: 44px; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
-.disclosure:hover { color: var(--blue); text-decoration-color: var(--blue); background: transparent; }
+.disclosure:hover { color: var(--accent); text-decoration-color: var(--accent); background: transparent; border-color: transparent; }
 
-.assign-same-bar { margin-bottom: 0.75rem; }
-.assign-same-bar button { width: 100%; padding: 0.875rem 1rem; font-size: 0.9375rem; background: var(--orange); color: white; border: 1px solid var(--orange); font-weight: 600; }
-.assign-same-bar button:hover:not(:disabled) { opacity: 0.9; }
+.assign-prefill-hint { margin: 0 0 0.75rem; font-size: 0.8125rem; }
 
-.scan-next-bottom { width: 100%; margin-top: 0.75rem; }
 
 
 
@@ -616,8 +652,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .camera-btn:hover:not(:disabled) {
   background: var(--dim);
-  border-color: var(--blue);
-  color: var(--blue);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .camera-ascii {
@@ -629,7 +665,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .camera-btn:hover .camera-ascii {
-  color: var(--blue);
+  color: var(--accent);
 }
 
 /* ── entity kind corner switch ─────── */

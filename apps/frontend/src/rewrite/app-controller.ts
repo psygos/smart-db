@@ -324,16 +324,10 @@ export class RewriteAppController {
           this.patch({ activeTab: nextTab });
         }
         break;
-      case "scan-next":
-        this.handleScanNext();
-        break;
       case "register-unknown":
         if (actionEl.dataset.code) {
           this.handleRegisterUnknown(actionEl.dataset.code);
         }
-        break;
-      case "assign-same":
-        void this.handleAssignSame();
         break;
       case "set-scan-mode-kind":
         if (actionEl.dataset.scanModeKind === "oneByOne" || actionEl.dataset.scanModeKind === "bulk") {
@@ -580,18 +574,6 @@ export class RewriteAppController {
         break;
       case "camera-scan-next":
         this.handleCameraScanNext();
-        break;
-      case "quick-bulk-increment":
-        this.handleQuickBulkDelta(1);
-        break;
-      case "quick-bulk-decrement":
-        this.handleQuickBulkDelta(-1);
-        break;
-      case "quick-instance-checkout-me":
-        this.handleQuickInstanceCheckoutMe();
-        break;
-      case "quick-instance-return":
-        this.handleQuickInstanceReturn();
         break;
       case "open-correction-on-scan":
         if (actionEl.dataset.qrCode) {
@@ -1712,13 +1694,16 @@ export class RewriteAppController {
     }
     if (response.mode === "label") {
       this.scanActor.send({ type: "LOOKUP.LABEL", qrCode: response.qrCode.code });
+      const prefill = this.state.lastAssignment;
       this.patch({
         scanResult: response,
         scanHistory: nextHistory,
         assignForm: {
           ...defaultAssignForm,
           qrCode: response.qrCode.code,
-          location: this.state.lastAssignment?.location ?? "",
+          partTypeMode: prefill ? "existing" : defaultAssignForm.partTypeMode,
+          existingPartTypeId: prefill?.partTypeId ?? defaultAssignForm.existingPartTypeId,
+          location: prefill?.location ?? "",
         },
         labelSearch: {
           query: "",
@@ -2111,12 +2096,8 @@ export class RewriteAppController {
     await this.performScan(code);
   }
 
-  private handleScanNext(): void {
-    this.clearCurrentScanWorkspace();
-  }
-
   private handleCameraScanNext(): void {
-    this.handleScanNext();
+    this.clearCurrentScanWorkspace();
     void this.startCamera();
   }
 
@@ -2548,133 +2529,6 @@ export class RewriteAppController {
     }
   }
 
-  private async submitQuickEvent(
-    input: Record<string, unknown>,
-    targetType: "instance" | "bulk",
-    successToast: string,
-  ): Promise<void> {
-    const target = this.interactTarget();
-    if (!target) {
-      return;
-    }
-    const parsed = parseEventForm(input);
-    if (!parsed.ok) {
-      this.addToast(this.failureMessage(parsed.error), "error");
-      return;
-    }
-    if (parsed.value.kind !== "record") {
-      this.addToast("Quick action cannot emit a split.", "error");
-      return;
-    }
-
-    this.scanActor.send({
-      type: "EVENT.PARSE_REQUESTED",
-      targetType,
-    });
-    this.scanActor.send({
-      type: "EVENT.SUBMIT_REQUESTED",
-      targetType,
-    });
-    this.patch({ pendingAction: "event" as PendingAction });
-    try {
-      await api.recordEvent(parsed.value.request);
-      this.scanActor.send({
-        type: "EVENT.SUCCEEDED",
-        targetType,
-        qrCode: target.qrCode.code,
-        targetId: target.entity.id,
-      });
-      const refreshed = await api.scan(target.qrCode.code, { autoIncrement: false });
-      this.patch({ scanResult: refreshed });
-      void this.loadScanLocations(refreshed.mode === "interact"
-        ? refreshed.entity.partType.id
-        : target.entity.partType.id);
-      this.addToast(successToast, "success");
-      await this.loadAuthenticatedData();
-    } catch (caught) {
-      this.scanActor.send({
-        type: "EVENT.FAILED",
-        failure: {
-          kind: "unexpected",
-          operation: "scan.recordEvent",
-          message: errorMessage(caught),
-          retryability: "never",
-          details: { machine: "scanSession" },
-          cause: caught,
-        },
-      });
-      if (!this.handleApiFailure(caught)) {
-        this.addToast(errorMessage(caught), "error");
-      }
-    } finally {
-      this.patch({ pendingAction: null });
-    }
-  }
-
-  private handleQuickBulkDelta(direction: 1 | -1): void {
-    const target = this.interactTarget();
-    if (!target || target.entity.targetType !== "bulk") {
-      return;
-    }
-    const event = direction === 1 ? "restocked" : "consumed";
-    const nextQty =
-      direction === 1
-        ? (target.entity.quantity ?? 0) + 1
-        : (target.entity.quantity ?? 0) - 1;
-    const symbol = target.entity.partType.unit.symbol;
-    void this.submitQuickEvent(
-      {
-        targetType: "bulk",
-        targetId: target.entity.id,
-        event,
-        quantityDelta: 1,
-      },
-      "bulk",
-      `${direction === 1 ? "+1" : "-1"} ${target.entity.partType.canonicalName} (now ${nextQty} ${symbol})`,
-    );
-  }
-
-  private handleQuickInstanceCheckoutMe(): void {
-    const target = this.interactTarget();
-    if (!target || target.entity.targetType !== "instance") {
-      return;
-    }
-    const session =
-      this.state.authState.status === "authenticated"
-        ? this.state.authState.session
-        : null;
-    if (!session) {
-      this.addToast("Sign in to check this out.", "error");
-      return;
-    }
-    void this.submitQuickEvent(
-      {
-        targetType: "instance",
-        targetId: target.entity.id,
-        event: "checked_out",
-        assignee: session.username,
-      },
-      "instance",
-      `Checked out to ${session.username}.`,
-    );
-  }
-
-  private handleQuickInstanceReturn(): void {
-    const target = this.interactTarget();
-    if (!target || target.entity.targetType !== "instance") {
-      return;
-    }
-    void this.submitQuickEvent(
-      {
-        targetType: "instance",
-        targetId: target.entity.id,
-        event: "returned",
-      },
-      "instance",
-      `Returned.`,
-    );
-  }
-
   private handleRegisterUnknown(code: string): void {
     this.scanActor.send({ type: "UNKNOWN.PROMOTED_TO_INTAKE" });
     this.patch({
@@ -2710,72 +2564,6 @@ export class RewriteAppController {
     this.scanActor.send({ type: "ASSIGN.PARSE_REQUESTED" });
     try {
       const parsed = parseAssignForm(this.state.assignForm);
-      if (!parsed.ok) {
-        this.scanActor.send({ type: "ASSIGN.FAILED", failure: parsed.error });
-        this.addToast(this.failureMessage(parsed.error), "error");
-        return;
-      }
-      const request = parsed.value;
-      this.scanActor.send({ type: "ASSIGN.SUBMIT_REQUESTED" });
-      const response = await api.assignQr(request);
-      this.scanActor.send({
-        type: "ASSIGN.SUCCEEDED",
-        targetType: response.targetType,
-        qrCode: request.qrCode,
-        targetId: response.id,
-        lastAssignment: {
-          partTypeName: response.partType.canonicalName,
-          partTypeId: response.partType.id,
-          location: response.location,
-        },
-      });
-      this.addToast(`${response.partType.canonicalName} assigned to ${request.qrCode}`, "success");
-      this.patch({
-        lastAssignment: {
-          partTypeName: response.partType.canonicalName,
-          partTypeId: response.partType.id,
-          location: response.location,
-        },
-        assignForm: defaultAssignForm,
-        scanCode: "",
-      });
-      await this.performScan(request.qrCode, { silent: true });
-      this.patch({ scanCode: "" });
-      await this.loadAuthenticatedData();
-    } catch (caught) {
-      this.scanActor.send({
-        type: "ASSIGN.FAILED",
-        failure: {
-          kind: "unexpected",
-          operation: "scan.assign",
-          message: errorMessage(caught),
-          retryability: "never",
-          details: { machine: "scanSession" },
-          cause: caught,
-        },
-      });
-      if (!this.handleApiFailure(caught)) {
-        this.addToast(errorMessage(caught), "error");
-      }
-    } finally {
-      this.patch({ pendingAction: null });
-    }
-  }
-
-  private async handleAssignSame(): Promise<void> {
-    if (!this.state.lastAssignment || !this.state.scanResult || this.state.scanResult.mode !== "label") {
-      return;
-    }
-    this.patch({ pendingAction: "assign" });
-    this.scanActor.send({ type: "ASSIGN.PARSE_REQUESTED" });
-    try {
-      const parsed = parseAssignForm({
-        ...defaultAssignForm,
-        qrCode: this.state.scanResult.qrCode.code,
-        partTypeMode: "existing",
-        existingPartTypeId: this.state.lastAssignment.partTypeId,
-        location: this.state.lastAssignment.location,
-      });
       if (!parsed.ok) {
         this.scanActor.send({ type: "ASSIGN.FAILED", failure: parsed.error });
         this.addToast(this.failureMessage(parsed.error), "error");
@@ -3353,11 +3141,14 @@ export class RewriteAppController {
   private setTopLevelScanMode(kind: "oneByOne" | "bulk"): void {
     if (kind === "oneByOne") {
       this.clearBulkQueue();
+      this.scanActor.send({ type: "SCAN.CLEAR_REQUESTED" });
       this.patch({
         scanMode: {
           kind: "oneByOne",
           behavior: this.preferredOneByOneBehavior,
         },
+        lastAssignment: null,
+        scanHistory: [],
       });
       return;
     }
@@ -3397,6 +3188,7 @@ export class RewriteAppController {
 
   private clearCurrentScanWorkspace(): void {
     this.cameraService.stop();
+    this.scanActor.send({ type: "SCAN.CLEAR_REQUESTED" });
     this.patch({
       cameraLookupCode: null,
       scanCode: "",
@@ -3404,6 +3196,8 @@ export class RewriteAppController {
       assignForm: defaultAssignForm,
       eventForm: defaultEventForm,
       labelSearch: defaultSearchState,
+      scanHistory: [],
+      lastAssignment: null,
     });
   }
 
@@ -3560,6 +3354,8 @@ export class RewriteAppController {
 
   private render(): void {
     const focusSnapshot = this.captureFocus();
+    const scrollY = window.scrollY;
+    const scrollKeys = this.captureScrollPositions();
 
     // If the camera is actively scanning, preserve the live video element.
     // innerHTML replacement would destroy it and kill the stream.
@@ -3579,6 +3375,33 @@ export class RewriteAppController {
     }
 
     this.restoreFocus(focusSnapshot);
+    this.restoreScrollPositions(scrollKeys);
+    if (window.scrollY !== scrollY) {
+      window.scrollTo({ top: scrollY, left: 0, behavior: "instant" as ScrollBehavior });
+    }
+  }
+
+  private captureScrollPositions(): Map<string, number> {
+    const map = new Map<string, number>();
+    this.root.querySelectorAll<HTMLElement>("[data-scroll-key]").forEach((el) => {
+      const key = el.dataset.scrollKey;
+      if (key && el.scrollTop > 0) {
+        map.set(key, el.scrollTop);
+      }
+    });
+    return map;
+  }
+
+  private restoreScrollPositions(map: Map<string, number>): void {
+    if (map.size === 0) {
+      return;
+    }
+    map.forEach((top, key) => {
+      const el = this.root.querySelector<HTMLElement>(`[data-scroll-key="${CSS.escape(key)}"]`);
+      if (el) {
+        el.scrollTop = top;
+      }
+    });
   }
 
   private captureFocus(): FocusSnapshot | null {
