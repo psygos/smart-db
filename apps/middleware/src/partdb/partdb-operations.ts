@@ -2,6 +2,7 @@ import { type Result, Ok, Err } from "@smart-db/contracts";
 import type { OutboxOperation } from "../outbox/outbox-types.js";
 import type { PartDbError } from "./partdb-errors.js";
 import { CategoryResolver } from "./category-resolver.js";
+import { LocationResolver } from "./location-resolver.js";
 import { PartDbMeasurementUnitsResource } from "./resources/measurement-units.js";
 import { PartDbPartLotsResource } from "./resources/part-lots.js";
 import { PartDbPartsResource } from "./resources/parts.js";
@@ -19,7 +20,28 @@ export class PartDbOperations {
     private readonly parts: PartDbPartsResource,
     private readonly partLots: PartDbPartLotsResource,
     private readonly storageLocations: PartDbStorageLocationsResource,
+    private readonly locations: LocationResolver | null = null,
   ) {}
+
+  private async resolveStorageLocation(
+    path: string[] | undefined,
+    name: string,
+  ): Promise<Result<string, PartDbError>> {
+    if (path && path.length > 0 && this.locations) {
+      const resolved = await this.locations.resolveOrCreate(path);
+      return resolved.ok ? Ok(resolved.value.iri) : resolved;
+    }
+
+    const existing = await this.storageLocations.findByName(name);
+    if (!existing.ok) {
+      return existing;
+    }
+    if (existing.value) {
+      return Ok(existing.value["@id"]);
+    }
+    const created = await this.storageLocations.create({ name });
+    return created.ok ? Ok(created.value["@id"]) : created;
+  }
 
   async execute(
     operation: OutboxOperation,
@@ -156,23 +178,14 @@ export class PartDbOperations {
           return Err({ kind: "dependency_missing", dependency: "partIri", retryable: false });
         }
 
-        const existingLocation = await this.storageLocations.findByName(operation.payload.storageLocationName);
-        if (!existingLocation.ok) {
-          return existingLocation;
+        const resolvedLocation = await this.resolveStorageLocation(
+          operation.payload.storageLocationPath,
+          operation.payload.storageLocationName,
+        );
+        if (!resolvedLocation.ok) {
+          return resolvedLocation;
         }
-
-        let storageLocationIri: string;
-        if (existingLocation.value) {
-          storageLocationIri = existingLocation.value["@id"];
-        } else {
-          const createdLocation = await this.storageLocations.create({
-            name: operation.payload.storageLocationName,
-          });
-          if (!createdLocation.ok) {
-            return createdLocation;
-          }
-          storageLocationIri = createdLocation.value["@id"];
-        }
+        const storageLocationIri: string = resolvedLocation.value;
 
         const created = await this.partLots.create({
           part: operation.payload.partIri,
@@ -191,22 +204,14 @@ export class PartDbOperations {
 
         let storageLocationIri: string | undefined;
         if (operation.payload.patch.storageLocationName) {
-          const existingLocation = await this.storageLocations.findByName(operation.payload.patch.storageLocationName);
-          if (!existingLocation.ok) {
-            return existingLocation;
+          const resolvedLocation = await this.resolveStorageLocation(
+            operation.payload.patch.storageLocationPath,
+            operation.payload.patch.storageLocationName,
+          );
+          if (!resolvedLocation.ok) {
+            return resolvedLocation;
           }
-
-          if (existingLocation.value) {
-            storageLocationIri = existingLocation.value["@id"];
-          } else {
-            const createdLocation = await this.storageLocations.create({
-              name: operation.payload.patch.storageLocationName,
-            });
-            if (!createdLocation.ok) {
-              return createdLocation;
-            }
-            storageLocationIri = createdLocation.value["@id"];
-          }
+          storageLocationIri = resolvedLocation.value;
         }
 
         const updated = await this.partLots.patch(operation.payload.lotIri, {

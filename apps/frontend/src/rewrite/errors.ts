@@ -7,6 +7,10 @@ export type OperationName =
   | "scan.assign"
   | "scan.recordEvent"
   | "scan.splitBulk"
+  | "bulk.collect"
+  | "bulk.assign"
+  | "bulk.move"
+  | "bulk.delete"
   | "correction.scan"
   | "correction.loadHistory"
   | "correction.reassignEntityPartType"
@@ -41,7 +45,12 @@ export type DomainFailureCode =
   | "missing_assignable_lookup"
   | "invalid_route_access"
   | "machine_contract_broken"
-  | "unsupported_action";
+  | "unsupported_action"
+  | "bulk_queue_empty"
+  | "bulk_queue_mixed_kind"
+  | "bulk_queue_mode_mismatch"
+  | "bulk_queue_ineligible"
+  | "bulk_queue_external_unsupported";
 
 export type RewriteFailure =
   | {
@@ -130,6 +139,10 @@ const parseOperationContexts: Record<OperationName, string> = {
   "scan.assign": "assignment form",
   "scan.recordEvent": "event form",
   "scan.splitBulk": "split form",
+  "bulk.collect": "bulk queue scan",
+  "bulk.assign": "bulk label form",
+  "bulk.move": "bulk move form",
+  "bulk.delete": "bulk delete form",
   "correction.scan": "correction scan",
   "correction.loadHistory": "correction history",
   "correction.reassignEntityPartType": "entity correction",

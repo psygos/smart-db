@@ -3,6 +3,12 @@ import {
   applicationErrorResponseSchema,
   assignQrRequestSchema,
   authSessionSchema,
+  bulkAssignQrsRequestSchema,
+  bulkAssignQrsResponseSchema,
+  bulkMoveEntitiesRequestSchema,
+  bulkMoveEntitiesResponseSchema,
+  bulkReverseIngestRequestSchema,
+  bulkReverseIngestResponseSchema,
   correctionEventSchema,
   correctionHistoryQuerySchema,
   dashboardSummarySchema,
@@ -31,6 +37,12 @@ import {
   stockEventSchema,
   type AssignQrRequest,
   type AuthSession,
+  type BulkAssignQrsRequest,
+  type BulkAssignQrsResponse,
+  type BulkMoveEntitiesRequest,
+  type BulkMoveEntitiesResponse,
+  type BulkReverseIngestRequest,
+  type BulkReverseIngestResponse,
   type CorrectionEvent,
   type CorrectionHistoryQuery,
   type DashboardSummary,
@@ -81,14 +93,22 @@ async function request<TSchema extends z.ZodTypeAny>(
   const combinedSignal = init?.signal
     ? AbortSignal.any([init.signal, timeoutSignal])
     : timeoutSignal;
-  const { headers: initHeaders, signal: _ignoredSignal, ...restInit } = init ?? {};
+  const { headers: initHeaders, signal: _ignoredSignal, body: initBody, ...restInit } = init ?? {};
+  // Only declare the JSON content-type when we actually have a JSON body to
+  // send. Fastify's default JSON parser rejects body-less requests that carry
+  // a Content-Type: application/json header with FST_ERR_CTP_EMPTY_JSON_BODY
+  // (status 400) before the route handler runs, which made every body-less
+  // POST (logout, sync-drain, etc.) fail with an opaque invariant 500.
+  const hasBody = initBody !== undefined && initBody !== null;
+  const headers: HeadersInit = {
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(initHeaders ?? {}),
+  };
   const response = await fetch(apiUrl(path), {
     ...restInit,
+    ...(hasBody ? { body: initBody } : {}),
     credentials: "include",
-    headers: {
-      ...(restInit.body != null ? { "Content-Type": "application/json" } : {}),
-      ...(initHeaders ?? {}),
-    },
+    headers,
     signal: combinedSignal,
   });
 
@@ -143,6 +163,7 @@ export const inventorySummaryRowSchema = z.object({
   bins: z.number(),
   instanceCount: z.number(),
   onHand: z.number(),
+  entityCount: z.number(),
   partDbSyncStatus: z.string(),
 });
 export type InventorySummaryRow = z.output<typeof inventorySummaryRowSchema>;
@@ -154,6 +175,7 @@ export const partTypeItemsResponseSchema = z.object({
     quantity: z.number(),
     location: z.string(),
     minimumQuantity: z.number().nullable(),
+    canReverseIngest: z.boolean(),
   })),
   instances: z.array(z.object({
     id: z.string(),
@@ -161,6 +183,7 @@ export const partTypeItemsResponseSchema = z.object({
     status: z.string(),
     location: z.string(),
     assignee: z.string().nullable(),
+    canReverseIngest: z.boolean(),
   })),
 });
 export type PartTypeItemsResponse = z.output<typeof partTypeItemsResponseSchema>;
@@ -258,6 +281,10 @@ export const api = {
     });
     return request(correctionEventSchema.array(), `/api/corrections/history?${params.toString()}`);
   },
+  listCorrectionEvents(limit: number = 50): Promise<CorrectionEvent[]> {
+    const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(200, Math.floor(limit)))) });
+    return request(correctionEventSchema.array(), `/api/corrections?${params.toString()}`);
+  },
   getInventorySummary(): Promise<InventorySummaryRow[]> {
     return request(inventorySummaryRowSchema.array(), "/api/inventory/summary");
   },
@@ -297,10 +324,24 @@ export const api = {
       headers: idempotencyHeaders(),
     });
   },
+  bulkAssignQrs(payload: BulkAssignQrsRequest): Promise<BulkAssignQrsResponse> {
+    return request(bulkAssignQrsResponseSchema, "/api/bulk/assign", {
+      method: "POST",
+      body: JSON.stringify(parseWithSchema(bulkAssignQrsRequestSchema, payload, "bulk assignment form")),
+      headers: idempotencyHeaders(),
+    });
+  },
   recordEvent(payload: RecordEventRequest): Promise<StockEvent> {
     return request(stockEventSchema, "/api/events", {
       method: "POST",
       body: JSON.stringify(parseWithSchema(recordEventRequestSchema, payload, "event form")),
+      headers: idempotencyHeaders(),
+    });
+  },
+  bulkMoveEntities(payload: BulkMoveEntitiesRequest): Promise<BulkMoveEntitiesResponse> {
+    return request(bulkMoveEntitiesResponseSchema, "/api/bulk/move", {
+      method: "POST",
+      body: JSON.stringify(parseWithSchema(bulkMoveEntitiesRequestSchema, payload, "bulk move form")),
       headers: idempotencyHeaders(),
     });
   },
@@ -329,6 +370,13 @@ export const api = {
     return request(reverseIngestAssignmentResponseSchema, "/api/corrections/reverse-ingest", {
       method: "POST",
       body: JSON.stringify(parseWithSchema(reverseIngestAssignmentRequestSchema, payload, "reverse ingest request")),
+      headers: idempotencyHeaders(),
+    });
+  },
+  bulkReverseIngest(payload: BulkReverseIngestRequest): Promise<BulkReverseIngestResponse> {
+    return request(bulkReverseIngestResponseSchema, "/api/bulk/reverse-ingest", {
+      method: "POST",
+      body: JSON.stringify(parseWithSchema(bulkReverseIngestRequestSchema, payload, "bulk reverse ingest request")),
       headers: idempotencyHeaders(),
     });
   },

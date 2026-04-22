@@ -1,5 +1,8 @@
 export { parseAssignForm, type AssignCommand } from "./assign";
 export { parseBatchForm, type BatchCommand } from "./batch";
+export { parseBulkAssignForm, type BulkAssignCommand } from "./bulk-assign";
+export { parseBulkDeleteForm, type BulkDeleteCommand } from "./bulk-delete";
+export { parseBulkMoveForm, type BulkMoveCommand } from "./bulk-move";
 export { parseEditPartTypeDefinitionForm, type EditPartTypeDefinitionCommand } from "./edit-part-type-definition";
 export { parseEventForm, type EventCommand } from "./event";
 export { parseMergeForm, type MergeCommand } from "./merge";

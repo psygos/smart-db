@@ -21,6 +21,7 @@ import { PartDbOutbox } from "./outbox/partdb-outbox.js";
 import { PartDbOutboxWorker } from "./outbox/partdb-worker.js";
 import { PartDbClient } from "./partdb/partdb-client.js";
 import { CategoryResolver } from "./partdb/category-resolver.js";
+import { LocationResolver } from "./partdb/location-resolver.js";
 import { PartDbOperations } from "./partdb/partdb-operations.js";
 import { registerAuthRoutes } from "./routes/auth-routes.js";
 import { registerInventoryRoutes } from "./routes/inventory-routes.js";
@@ -121,6 +122,15 @@ export async function buildServer(options: BuildServerOptions = {}) {
               apiToken: activeConfig.partDb.apiToken!,
             }),
           ),
+          new LocationResolver(
+            db,
+            new PartDbStorageLocationsResource(
+              new PartDbRestClient({
+                baseUrl: activeConfig.partDb.baseUrl!,
+                apiToken: activeConfig.partDb.apiToken!,
+              }),
+            ),
+          ),
         ),
         app.log,
       )
@@ -201,16 +211,55 @@ export async function buildServer(options: BuildServerOptions = {}) {
     });
   }
 
-  app.setErrorHandler((error, _request, reply) => {
-    const applicationError = isApplicationError(error)
-      ? error
-      : new InvariantError("Unhandled middleware failure.", {}, { cause: error });
+  app.setErrorHandler((error, request, reply) => {
+    if (isApplicationError(error)) {
+      reply.status(error.httpStatus).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+        },
+      });
+      return;
+    }
 
-    reply.status(applicationError.httpStatus).send({
+    // Fastify's own errors (request parsing, validation, rate-limits etc.)
+    // carry their own statusCode + code. Surface them faithfully instead of
+    // wrapping as 500/invariant — a 400 "empty JSON body" is a client
+    // problem and must stay a 400.
+    const fastifyError = error as { statusCode?: number; code?: string; message?: string };
+    if (
+      typeof fastifyError.statusCode === "number" &&
+      fastifyError.statusCode >= 400 &&
+      fastifyError.statusCode < 500
+    ) {
+      request.log.warn(
+        { err: error, url: request.url, method: request.method },
+        "client request rejected by fastify",
+      );
+      reply.status(fastifyError.statusCode).send({
+        error: {
+          code: typeof fastifyError.code === "string" ? fastifyError.code : "bad_request",
+          message: typeof fastifyError.message === "string" ? fastifyError.message : "Bad request.",
+          details: {},
+        },
+      });
+      return;
+    }
+
+    // Genuine unexpected failure: log the cause so diagnosing "invariant /
+    // Unhandled middleware failure" in production no longer requires a
+    // redeploy-with-extra-logging cycle.
+    const wrapped = new InvariantError("Unhandled middleware failure.", {}, { cause: error });
+    request.log.error(
+      { err: error, url: request.url, method: request.method },
+      "unhandled middleware failure",
+    );
+    reply.status(wrapped.httpStatus).send({
       error: {
-        code: applicationError.code,
-        message: applicationError.message,
-        details: applicationError.details,
+        code: wrapped.code,
+        message: wrapped.message,
+        details: wrapped.details,
       },
     });
   });

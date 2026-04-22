@@ -3,10 +3,16 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   bulkLevels,
   bulkStockSchema,
+  type BulkAssignQrsCommand,
+  type BulkAssignQrsResponse,
   categoryLeafFromPath,
   ConflictError,
   correctionEventSchema,
   defaultMeasurementUnit,
+  type BulkMoveEntitiesCommand,
+  type BulkMoveEntitiesResponse,
+  type BulkReverseIngestCommand,
+  type BulkReverseIngestResponse,
   type CorrectionEvent,
   type CorrectionKind,
   type CorrectionTargetKind,
@@ -22,8 +28,10 @@ import {
   partTypeSchema,
   qrBatchSchema,
   type AssignQrCommand,
+  type BorrowCloseReason,
   type BulkLevel,
   type DashboardSummary,
+  type OpenBorrowSummary,
   type InventoryEntitySummary,
   type InventoryTargetKind,
   type MergePartTypesRequest,
@@ -41,6 +49,7 @@ import {
   partTypeSchema as persistedPartTypeSchema,
   physicalInstanceSchema,
   parseCategoryPathInput,
+  parseLocationPathInput,
   qrCodeSchema,
   stockEventSchema,
   getAvailableInstanceActions,
@@ -96,6 +105,8 @@ interface ResetInventoryStateResult {
 }
 
 export class InventoryService {
+  private transactionDepth = 0;
+
   constructor(
     private readonly db: DatabaseSync,
     private readonly partDbClient: PartDbClient,
@@ -200,8 +211,8 @@ export class InventoryService {
   }
 
   getPartTypeItems(partTypeId: string): {
-    bulkStocks: Array<{ id: string; qrCode: string; quantity: number; location: string; minimumQuantity: number | null }>;
-    instances: Array<{ id: string; qrCode: string; status: string; location: string; assignee: string | null }>;
+    bulkStocks: Array<{ id: string; qrCode: string; quantity: number; location: string; minimumQuantity: number | null; canReverseIngest: boolean }>;
+    instances: Array<{ id: string; qrCode: string; status: string; location: string; assignee: string | null; canReverseIngest: boolean }>;
   } {
     const pt = this.db
       .prepare(`SELECT id FROM part_types WHERE id = ?`)
@@ -225,6 +236,7 @@ export class InventoryService {
         quantity: Number(r.quantity),
         location: r.location,
         minimumQuantity: r.minimum_quantity !== null ? Number(r.minimum_quantity) : null,
+        canReverseIngest: this.canReverseIngest("bulk", r.id),
       })),
       instances: instances.map((r) => ({
         id: r.id,
@@ -232,7 +244,180 @@ export class InventoryService {
         status: r.status,
         location: r.location,
         assignee: r.assignee !== null ? String(r.assignee) : null,
+        canReverseIngest: this.canReverseIngest("instance", r.id),
       })),
+    };
+  }
+
+  private syncEntityFromInstance(instanceId: string): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+        SELECT id, qr_code, part_type_id, location, 1, NULL, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'instance'
+        FROM physical_instances
+        WHERE id = ?
+        ON CONFLICT(id) DO UPDATE SET
+          qr_code = excluded.qr_code,
+          part_type_id = excluded.part_type_id,
+          location = excluded.location,
+          quantity = excluded.quantity,
+          minimum_quantity = excluded.minimum_quantity,
+          status = excluded.status,
+          assignee = excluded.assignee,
+          version = excluded.version,
+          partdb_lot_id = excluded.partdb_lot_id,
+          partdb_sync_status = excluded.partdb_sync_status,
+          updated_at = excluded.updated_at
+      `,
+      )
+      .run(instanceId);
+  }
+
+  private syncEntityFromBulk(bulkId: string): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+        SELECT id, qr_code, part_type_id, location, quantity, minimum_quantity, 'available', NULL, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'bulk'
+        FROM bulk_stocks
+        WHERE id = ?
+        ON CONFLICT(id) DO UPDATE SET
+          qr_code = excluded.qr_code,
+          part_type_id = excluded.part_type_id,
+          location = excluded.location,
+          quantity = excluded.quantity,
+          minimum_quantity = excluded.minimum_quantity,
+          status = excluded.status,
+          version = excluded.version,
+          partdb_lot_id = excluded.partdb_lot_id,
+          partdb_sync_status = excluded.partdb_sync_status,
+          updated_at = excluded.updated_at
+      `,
+      )
+      .run(bulkId);
+  }
+
+  private removeEntity(id: string): void {
+    this.db.prepare(`DELETE FROM entities WHERE id = ?`).run(id);
+  }
+
+  private syncAllEntitiesFromPartType(partTypeId: string): void {
+    const instances = this.db
+      .prepare(`SELECT id FROM physical_instances WHERE part_type_id = ?`)
+      .all(partTypeId) as Array<{ id: string }>;
+    const bulks = this.db
+      .prepare(`SELECT id FROM bulk_stocks WHERE part_type_id = ?`)
+      .all(partTypeId) as Array<{ id: string }>;
+    for (const row of instances) {
+      this.syncEntityFromInstance(row.id);
+    }
+    for (const row of bulks) {
+      this.syncEntityFromBulk(row.id);
+    }
+  }
+
+  listEntitiesForPartType(partTypeId: string): Array<{
+    id: string;
+    qrCode: string;
+    partTypeId: string;
+    location: string;
+    quantity: number;
+    minimumQuantity: number | null;
+    status: "available" | "checked_out" | "consumed" | "damaged" | "lost";
+    assignee: string | null;
+    sourceKind: "instance" | "bulk";
+    partDbLotId: string | null;
+    partDbSyncStatus: string;
+    createdAt: string;
+    updatedAt: string;
+  }> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          qr_code AS qrCode,
+          part_type_id AS partTypeId,
+          location,
+          quantity,
+          minimum_quantity AS minimumQuantity,
+          status,
+          assignee,
+          source_kind AS sourceKind,
+          partdb_lot_id AS partDbLotId,
+          partdb_sync_status AS partDbSyncStatus,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM entities
+        WHERE part_type_id = ?
+        ORDER BY location, qr_code
+      `,
+      )
+      .all(partTypeId) as Array<{
+        id: string;
+        qrCode: string;
+        partTypeId: string;
+        location: string;
+        quantity: number;
+        minimumQuantity: number | null;
+        status: string;
+        assignee: string | null;
+        sourceKind: string;
+        partDbLotId: string | null;
+        partDbSyncStatus: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      qrCode: row.qrCode,
+      partTypeId: row.partTypeId,
+      location: row.location,
+      quantity: Number(row.quantity),
+      minimumQuantity: row.minimumQuantity !== null ? Number(row.minimumQuantity) : null,
+      status: row.status as "available" | "checked_out" | "consumed" | "damaged" | "lost",
+      assignee: row.assignee,
+      sourceKind: row.sourceKind as "instance" | "bulk",
+      partDbLotId: row.partDbLotId,
+      partDbSyncStatus: row.partDbSyncStatus,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  getOpenBorrow(instanceId: string): OpenBorrowSummary | null {
+    const row = this.db
+      .prepare(
+        `
+        SELECT id, instance_id, borrower, borrowed_at, due_at
+        FROM borrow_records
+        WHERE instance_id = ? AND returned_at IS NULL
+        LIMIT 1
+        `,
+      )
+      .get(instanceId) as
+      | {
+          id: string;
+          instance_id: string;
+          borrower: string;
+          borrowed_at: string;
+          due_at: string | null;
+        }
+      | undefined;
+    if (!row) {
+      return null;
+    }
+    const dueAt = row.due_at;
+    const isOverdue = dueAt !== null ? Date.parse(dueAt) < Date.now() : false;
+    return {
+      id: row.id,
+      instanceId: row.instance_id,
+      borrower: row.borrower,
+      borrowedAt: row.borrowed_at,
+      dueAt,
+      isOverdue,
     };
   }
 
@@ -245,6 +430,7 @@ export class InventoryService {
     bins: number;
     instanceCount: number;
     onHand: number;
+    entityCount: number;
     partDbSyncStatus: string;
   }> {
     const rows = this.db
@@ -261,8 +447,9 @@ export class InventoryService {
           pt.countable,
           pt.partdb_sync_status,
           (SELECT COUNT(*) FROM bulk_stocks WHERE part_type_id = pt.id) AS bins,
-          COALESCE((SELECT SUM(quantity) FROM bulk_stocks WHERE part_type_id = pt.id), 0) AS on_hand,
-          (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS instance_count
+          (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS instance_count,
+          (SELECT COUNT(*) FROM bulk_stocks WHERE part_type_id = pt.id) + (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS entity_count,
+          COALESCE((SELECT SUM(quantity) FROM bulk_stocks WHERE part_type_id = pt.id), 0) + (SELECT COUNT(*) FROM physical_instances WHERE part_type_id = pt.id) AS on_hand
         FROM part_types pt
         ORDER BY pt.canonical_name
         `,
@@ -280,6 +467,7 @@ export class InventoryService {
         bins: number;
         on_hand: number;
         instance_count: number;
+        entity_count: number;
       }>;
 
     return rows.map((row) => {
@@ -303,6 +491,7 @@ export class InventoryService {
         bins: Number(row.bins),
         instanceCount: Number(row.instance_count),
         onHand: Number(row.on_hand),
+        entityCount: Number(row.entity_count),
         partDbSyncStatus: row.partdb_sync_status,
       };
     });
@@ -482,6 +671,8 @@ export class InventoryService {
         .all(entity.targetType, entity.id)
         .map((row) => mapStockEvent(row as SqlRow));
 
+      const canReverseIngest = this.canReverseIngest(entity.targetType, entity.id);
+      const canEditSharedType = this.isAdminActor(actor);
       if (entity.targetType === "instance") {
         return {
           mode: "interact",
@@ -493,6 +684,9 @@ export class InventoryService {
           recentEvents,
           availableActions: getAvailableInstanceActions(entity.state as PhysicalInstance["status"]),
           partDb,
+          currentBorrow: this.getOpenBorrow(entity.id),
+          canReverseIngest,
+          canEditSharedType,
         };
       }
 
@@ -533,6 +727,8 @@ export class InventoryService {
         recentEvents: workingRecentEvents,
         availableActions: getAvailableBulkActions(workingEntity.quantity ?? 0),
         partDb,
+        canReverseIngest,
+        canEditSharedType,
         ...(autoIncremented ? { autoIncremented: true } : {}),
       };
     }
@@ -598,6 +794,7 @@ export class InventoryService {
         this.db.prepare(`UPDATE bulk_stocks SET location = ?, updated_at = ? WHERE id = ?`).run(canonicalDest, timestamp, bulkId);
         this.insertEvent({ targetType: "bulk", targetId: bulkId, event: "moved", fromState: formatBulkState(sourceQty, unitSymbol, minQty), toState: formatBulkState(sourceQty, unitSymbol, minQty), location: canonicalDest, actor, notes, createdAt: timestamp });
         this.enqueueLotUpdate({ table: "bulk_stocks", rowId: bulkId, column: "partdb_lot_id" }, correlationId, { storageLocationName: canonicalDest });
+        this.syncEntityFromBulk(bulkId);
         return { source: { id: bulkId, quantity: sourceQty }, destination: { id: bulkId, quantity: sourceQty } };
       }
 
@@ -617,6 +814,8 @@ export class InventoryService {
         this.db.prepare(`UPDATE bulk_stocks SET quantity = ?, updated_at = ? WHERE id = ?`).run(newDestQty, timestamp, existingDest.id);
         this.insertEvent({ targetType: "bulk", targetId: existingDest.id, event: "restocked", fromState: formatBulkState(prevDestQty, unitSymbol, null), toState: formatBulkState(newDestQty, unitSymbol, null), location: canonicalDest, actor, notes: `Received ${quantity} from ${currentLocation}`, createdAt: timestamp });
         this.enqueueLotUpdate({ table: "bulk_stocks", rowId: existingDest.id, column: "partdb_lot_id" }, correlationId, { amount: newDestQty });
+        this.syncEntityFromBulk(bulkId);
+        this.syncEntityFromBulk(existingDest.id);
         return { source: { id: bulkId, quantity: newSourceQty }, destination: { id: existingDest.id, quantity: newDestQty } };
       }
 
@@ -633,6 +832,8 @@ export class InventoryService {
         const partSyncDep = this.ensurePartTypeSync(partType, correlationId);
         this.enqueueCreateLot({ table: "bulk_stocks", rowId: newBulkId, column: "partdb_lot_id" }, correlationId, partType, canonicalDest, newQrCode, `Split from ${currentLocation}`, quantity, partSyncDep);
       }
+      this.syncEntityFromBulk(bulkId);
+      this.syncEntityFromBulk(newBulkId);
       return { source: { id: bulkId, quantity: newSourceQty }, destination: { id: newBulkId, quantity } };
     });
   }
@@ -684,6 +885,8 @@ export class InventoryService {
         correlationId,
         { amount: newQuantity },
       );
+
+      this.syncEntityFromBulk(bulkId);
     });
 
     return { newQuantity };
@@ -786,6 +989,7 @@ export class InventoryService {
           notes: input.notes ?? null,
           createdAt: timestamp,
         });
+        this.syncEntityFromInstance(id);
       } else {
         const initialQuantity = requireFinitePositiveQuantity(input.initialQuantity, "initialQuantity");
         const minimumQuantity =
@@ -834,6 +1038,7 @@ export class InventoryService {
           notes: input.notes ?? null,
           createdAt: timestamp,
         });
+        this.syncEntityFromBulk(id);
       }
 
       const assignedQr = this.db
@@ -849,6 +1054,40 @@ export class InventoryService {
     }
 
     return summary;
+  }
+
+  bulkAssignQrs(input: BulkAssignQrsCommand): BulkAssignQrsResponse {
+    return this.withTransaction(() => {
+      const entities: InventoryEntitySummary[] = [];
+      let sharedExistingPartTypeId: string | null = null;
+
+      for (const [index, qrCode] of input.qrs.entries()) {
+        const partType =
+          input.assignment.partType.kind === "new" && sharedExistingPartTypeId
+            ? {
+                kind: "existing" as const,
+                existingPartTypeId: sharedExistingPartTypeId,
+              }
+            : input.assignment.partType;
+
+        const entity = this.assignQr({
+          ...input.assignment,
+          qrCode,
+          partType,
+          actor: input.actor,
+        });
+        entities.push(entity);
+
+        if (index === 0 && input.assignment.partType.kind === "new") {
+          sharedExistingPartTypeId = entity.partType.id;
+        }
+      }
+
+      return {
+        entities,
+        processedCount: entities.length,
+      };
+    });
   }
 
   recordEvent(input: RecordEventCommand): StockEvent {
@@ -909,6 +1148,17 @@ export class InventoryService {
           createdAt: timestamp,
         });
 
+        this.applyBorrowSideEffect({
+          instanceId: current.id,
+          event: input.event,
+          borrower: input.event === "checked_out" ? assignee ?? null : null,
+          dueAt: input.event === "checked_out" ? input.dueAt ?? null : null,
+          notes: input.notes ?? null,
+          actor,
+          timestamp,
+          previousStatus: current.status,
+        });
+
         if (input.event === "moved") {
           this.enqueueLotUpdate(
             {
@@ -922,6 +1172,8 @@ export class InventoryService {
             },
           );
         }
+
+        this.syncEntityFromInstance(current.id);
       });
 
       return this.latestEvent("instance", current.id);
@@ -1021,9 +1273,31 @@ export class InventoryService {
           },
         );
       }
+
+      this.syncEntityFromBulk(current.id);
     });
 
     return this.latestEvent("bulk", current.id);
+  }
+
+  bulkMoveEntities(input: BulkMoveEntitiesCommand): BulkMoveEntitiesResponse {
+    return this.withTransaction(() => {
+      const events = input.targets.map((target) =>
+        this.recordEvent({
+          targetType: target.targetType,
+          targetId: target.targetId,
+          event: "moved",
+          location: input.location,
+          notes: input.notes,
+          actor: input.actor,
+        }),
+      );
+
+      return {
+        events,
+        processedCount: events.length,
+      };
+    });
   }
 
   mergePartTypes(input: MergePartTypesRequest): PartType {
@@ -1064,6 +1338,9 @@ export class InventoryService {
         .run(destination.id, source.id);
       this.db
         .prepare(`UPDATE bulk_stocks SET part_type_id = ? WHERE part_type_id = ?`)
+        .run(destination.id, source.id);
+      this.db
+        .prepare(`UPDATE entities SET part_type_id = ? WHERE part_type_id = ?`)
         .run(destination.id, source.id);
       this.db
         .prepare(
@@ -1126,6 +1403,7 @@ export class InventoryService {
               notes: "Voided via QR void",
               createdAt: timestamp,
             });
+            this.closeOpenBorrow(instance.id, "void_cascade", timestamp);
             this.enqueueDeleteLot(
               {
                 table: "physical_instances",
@@ -1134,6 +1412,7 @@ export class InventoryService {
               },
               correlationId,
             );
+            this.syncEntityFromInstance(instance.id);
           }
         } else {
           const row = this.db
@@ -1163,6 +1442,7 @@ export class InventoryService {
               },
               correlationId,
             );
+            this.syncEntityFromBulk(bulk.id);
           }
         }
       }
@@ -1206,6 +1486,21 @@ export class InventoryService {
         LIMIT 50
       `)
       .all(targetType, targetId)
+      .map((row) => mapCorrectionEvent(row as SqlRow));
+  }
+
+  listCorrectionEvents(limit: number = 50): CorrectionEvent[] {
+    const bounded = Math.max(1, Math.min(200, Math.floor(limit)));
+    return this.db
+      .prepare(
+        `
+        SELECT *
+        FROM correction_events
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `,
+      )
+      .all(bounded)
       .map((row) => mapCorrectionEvent(row as SqlRow));
   }
 
@@ -1290,6 +1585,12 @@ export class InventoryService {
           target.targetType === "instance" ? 1 : (target.quantity ?? 0),
           partDependencyId,
         );
+      }
+
+      if (target.targetType === "instance") {
+        this.syncEntityFromInstance(target.id);
+      } else {
+        this.syncEntityFromBulk(target.id);
       }
     });
 
@@ -1507,6 +1808,7 @@ export class InventoryService {
       }
 
       this.db.prepare(`DELETE FROM ${target.table} WHERE id = ?`).run(target.id);
+      this.removeEntity(target.id);
       this.db
         .prepare(`
           UPDATE qrcodes
@@ -1535,6 +1837,31 @@ export class InventoryService {
       qrCode: mapQrCode(updated),
       correctionEvent,
     };
+  }
+
+  bulkReverseIngest(input: BulkReverseIngestCommand): BulkReverseIngestResponse {
+    return this.withTransaction(() => {
+      const qrCodes: QRCode[] = [];
+      const correctionEvents: CorrectionEvent[] = [];
+
+      for (const target of input.targets) {
+        const reversed = this.reverseIngestAssignment({
+          qrCode: target.qrCode,
+          assignedKind: target.assignedKind,
+          assignedId: target.assignedId,
+          actor: input.actor,
+          reason: input.reason,
+        });
+        qrCodes.push(reversed.qrCode);
+        correctionEvents.push(reversed.correctionEvent);
+      }
+
+      return {
+        qrCodes,
+        correctionEvents,
+        processedCount: qrCodes.length,
+      };
+    });
   }
 
   async getPartDbStatus(): Promise<PartDbConnectionStatus> {
@@ -1612,13 +1939,17 @@ export class InventoryService {
         }
       }
 
+      this.db.prepare(`DELETE FROM borrow_records`).run();
+      this.db.prepare(`DELETE FROM correction_events`).run();
       this.db.prepare(`DELETE FROM stock_events`).run();
+      this.db.prepare(`DELETE FROM entities`).run();
       this.db.prepare(`DELETE FROM physical_instances`).run();
       this.db.prepare(`DELETE FROM bulk_stocks`).run();
       this.db.prepare(`DELETE FROM qrcodes`).run();
       this.db.prepare(`DELETE FROM qr_batches`).run();
       this.db.prepare(`DELETE FROM part_types`).run();
       this.db.prepare(`DELETE FROM partdb_category_cache`).run();
+      this.db.prepare(`DELETE FROM partdb_location_cache`).run();
       this.db.prepare(`DELETE FROM idempotency_keys`).run();
     });
 
@@ -1926,12 +2257,16 @@ export class InventoryService {
       return;
     }
 
+    const parsedLocationPath = parseLocationPathInput(location);
+    const storageLocationPath = parsedLocationPath.ok ? parsedLocationPath.value : undefined;
+
     this.partDbOutbox.enqueue(
       {
         kind: "create_lot",
         payload: {
           partIri: partType.partDbPartId ? `/api/parts/${partType.partDbPartId}` : null,
           storageLocationName: location,
+          ...(storageLocationPath ? { storageLocationPath } : {}),
           amount,
           description,
           userBarcode: qrCode,
@@ -1950,6 +2285,7 @@ export class InventoryService {
     patch: {
       amount?: number | undefined;
       storageLocationName?: string | undefined;
+      storageLocationPath?: string[] | undefined;
     },
   ): void {
     if (!this.partDbOutbox) {
@@ -1966,12 +2302,22 @@ export class InventoryService {
       return;
     }
 
+    const enrichedPatch =
+      patch.storageLocationName && !patch.storageLocationPath
+        ? ((): typeof patch => {
+            const parsed = parseLocationPathInput(patch.storageLocationName);
+            return parsed.ok
+              ? { ...patch, storageLocationPath: parsed.value }
+              : patch;
+          })()
+        : patch;
+
     this.partDbOutbox.enqueue(
       {
         kind: "update_lot",
         payload: {
           lotIri: lotId ? `/api/part_lots/${lotId}` : null,
-          patch,
+          patch: enrichedPatch,
         },
         target,
         dependsOnId: dependency?.id ?? null,
@@ -2513,22 +2859,92 @@ export class InventoryService {
   }
 
   private assertOnlyLabeledHistory(targetType: InventoryTargetKind, targetId: string): void {
+    if (!this.canReverseIngest(targetType, targetId)) {
+      throw new ConflictError("Only fresh ingest assignments can be reversed.", {
+        targetType,
+        targetId,
+      });
+    }
+  }
+
+  private isAdminActor(actor: string | null): boolean {
+    // All authenticated sessions currently get admin (see commit 605c1e7); this
+    // helper is the sanctioned hook to tighten gating without threading role
+    // through every call site. Returning true when the caller is authenticated
+    // keeps behaviour identical today; it also narrows the place to change when
+    // non-admin sessions are reintroduced.
+    return actor !== null && actor.trim().length > 0;
+  }
+
+  canReverseIngest(targetType: InventoryTargetKind, targetId: string): boolean {
     const rows = this.db
-      .prepare(`
+      .prepare(
+        `
         SELECT event
         FROM stock_events
         WHERE target_type = ? AND target_id = ?
         ORDER BY created_at, id
-      `)
+      `,
+      )
       .all(targetType, targetId) as Array<{ event: string }>;
+    return rows.length === 1 && rows[0]?.event === "labeled";
+  }
 
-    if (rows.length !== 1 || rows[0]?.event !== "labeled") {
-      throw new ConflictError("Only fresh ingest assignments can be reversed.", {
-        targetType,
-        targetId,
-        eventCount: rows.length,
-      });
+  private applyBorrowSideEffect(input: {
+    instanceId: string;
+    event: string;
+    borrower: string | null;
+    dueAt: string | null;
+    notes: string | null;
+    actor: string;
+    timestamp: string;
+    previousStatus: string;
+  }): void {
+    const { instanceId, event, borrower, dueAt, notes, actor, timestamp, previousStatus } = input;
+
+    if (event === "checked_out") {
+      if (previousStatus === "checked_out") {
+        this.closeOpenBorrow(instanceId, "re_checkout", timestamp);
+      }
+      const resolvedBorrower = borrower && borrower.trim().length > 0 ? borrower : actor;
+      this.db
+        .prepare(
+          `
+          INSERT INTO borrow_records
+            (id, instance_id, borrower, borrowed_at, due_at, returned_at, close_reason, notes, actor, created_at)
+          VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+          `,
+        )
+        .run(randomUUID(), instanceId, resolvedBorrower, timestamp, dueAt, notes, actor, timestamp);
+      return;
     }
+
+    const closeMap: Record<string, BorrowCloseReason> = {
+      returned: previousStatus === "lost" ? "returned_after_lost" : "returned",
+      consumed: "consumed",
+      disposed: "disposed",
+      lost: "lost",
+    };
+    const closeReason = closeMap[event];
+    if (closeReason) {
+      this.closeOpenBorrow(instanceId, closeReason, timestamp);
+    }
+  }
+
+  private closeOpenBorrow(
+    instanceId: string,
+    closeReason: BorrowCloseReason,
+    timestamp: string,
+  ): void {
+    this.db
+      .prepare(
+        `
+        UPDATE borrow_records
+        SET returned_at = ?, close_reason = ?
+        WHERE instance_id = ? AND returned_at IS NULL
+        `,
+      )
+      .run(timestamp, closeReason, instanceId);
   }
 
   private insertEvent(input: {
@@ -2587,13 +3003,30 @@ export class InventoryService {
   }
 
   private withTransaction<T>(work: () => T): T {
-    this.db.exec("BEGIN");
+    const savepoint = `smartdb_tx_${this.transactionDepth}`;
+    if (this.transactionDepth === 0) {
+      this.db.exec("BEGIN");
+    } else {
+      this.db.exec(`SAVEPOINT ${savepoint}`);
+    }
+    this.transactionDepth += 1;
     try {
       const result = work();
-      this.db.exec("COMMIT");
+      this.transactionDepth -= 1;
+      if (this.transactionDepth === 0) {
+        this.db.exec("COMMIT");
+      } else {
+        this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+      }
       return result;
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      this.transactionDepth -= 1;
+      if (this.transactionDepth === 0) {
+        this.db.exec("ROLLBACK");
+      } else {
+        this.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+      }
       throw error;
     }
   }

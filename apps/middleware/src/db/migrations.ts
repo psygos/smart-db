@@ -226,6 +226,147 @@ CREATE INDEX IF NOT EXISTS correction_events_target_idx
   },
   {
     version: 9,
+    description: "borrow records for countable instances",
+    sql: `
+CREATE TABLE IF NOT EXISTS borrow_records (
+  id TEXT PRIMARY KEY,
+  instance_id TEXT NOT NULL REFERENCES physical_instances(id),
+  borrower TEXT NOT NULL,
+  borrowed_at TEXT NOT NULL,
+  due_at TEXT,
+  returned_at TEXT,
+  close_reason TEXT,
+  notes TEXT,
+  actor TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS borrow_records_open_one_per_instance
+  ON borrow_records(instance_id) WHERE returned_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS borrow_records_overdue_idx
+  ON borrow_records(due_at) WHERE returned_at IS NULL;
+
+INSERT INTO borrow_records (id, instance_id, borrower, borrowed_at, due_at, returned_at, close_reason, notes, actor, created_at)
+SELECT
+  lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6))),
+  pi.id,
+  COALESCE(NULLIF(TRIM(pi.assignee), ''), 'unknown (migrated)'),
+  pi.updated_at,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'migration',
+  pi.updated_at
+FROM physical_instances pi
+WHERE pi.status = 'checked_out'
+  AND NOT EXISTS (
+    SELECT 1 FROM borrow_records br
+    WHERE br.instance_id = pi.id AND br.returned_at IS NULL
+  );
+    `,
+  },
+  {
+    version: 10,
+    description: "partdb storage location cache",
+    sql: `
+CREATE TABLE IF NOT EXISTS partdb_location_cache (
+  path_key TEXT PRIMARY KEY,
+  partdb_iri TEXT NOT NULL,
+  cached_at TEXT NOT NULL
+);
+    `,
+  },
+  {
+    version: 11,
+    description: "unified entities table backfilled from instances and bulk_stocks",
+    sql: `
+CREATE TABLE IF NOT EXISTS entities (
+  id TEXT PRIMARY KEY,
+  qr_code TEXT NOT NULL UNIQUE REFERENCES qrcodes(code),
+  part_type_id TEXT NOT NULL REFERENCES part_types(id),
+  location TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  minimum_quantity REAL,
+  status TEXT NOT NULL DEFAULT 'available',
+  assignee TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  partdb_lot_id TEXT,
+  partdb_sync_status TEXT NOT NULL DEFAULT 'never',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('instance', 'bulk'))
+);
+
+CREATE INDEX IF NOT EXISTS entities_part_type_idx ON entities(part_type_id);
+CREATE INDEX IF NOT EXISTS entities_status_idx ON entities(status);
+
+INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+SELECT id, qr_code, part_type_id, location, 1, NULL, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'instance'
+FROM physical_instances;
+
+INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+SELECT id, qr_code, part_type_id, location, quantity, minimum_quantity, 'available', NULL, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'bulk'
+FROM bulk_stocks;
+    `,
+  },
+  {
+    version: 12,
+    description: "branch-merge catch-up for borrow_records",
+    sql: `
+CREATE TABLE IF NOT EXISTS borrow_records (
+  id TEXT PRIMARY KEY,
+  instance_id TEXT NOT NULL REFERENCES physical_instances(id),
+  borrower TEXT NOT NULL,
+  borrowed_at TEXT NOT NULL,
+  due_at TEXT,
+  returned_at TEXT,
+  close_reason TEXT,
+  notes TEXT,
+  actor TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS borrow_records_open_one_per_instance
+  ON borrow_records(instance_id) WHERE returned_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS borrow_records_overdue_idx
+  ON borrow_records(due_at) WHERE returned_at IS NULL;
+
+INSERT INTO borrow_records (id, instance_id, borrower, borrowed_at, due_at, returned_at, close_reason, notes, actor, created_at)
+SELECT
+  lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6))),
+  pi.id,
+  COALESCE(NULLIF(TRIM(pi.assignee), ''), 'unknown (migrated)'),
+  pi.updated_at,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'migration',
+  pi.updated_at
+FROM physical_instances pi
+WHERE pi.status = 'checked_out'
+  AND NOT EXISTS (
+    SELECT 1 FROM borrow_records br
+    WHERE br.instance_id = pi.id AND br.returned_at IS NULL
+  );
+    `,
+  },
+  {
+    version: 13,
+    description: "branch-merge catch-up for partdb storage location cache",
+    sql: `
+CREATE TABLE IF NOT EXISTS partdb_location_cache (
+  path_key TEXT PRIMARY KEY,
+  partdb_iri TEXT NOT NULL,
+  cached_at TEXT NOT NULL
+);
+    `,
+  },
+  {
+    version: 14,
     description: "standalone known_categories table",
     sql: `
 CREATE TABLE IF NOT EXISTS known_categories (
@@ -234,7 +375,7 @@ CREATE TABLE IF NOT EXISTS known_categories (
     `,
   },
   {
-    version: 10,
+    version: 15,
     description: "standalone known_locations table",
     sql: `
 CREATE TABLE IF NOT EXISTS known_locations (

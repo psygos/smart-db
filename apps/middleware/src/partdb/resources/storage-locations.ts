@@ -36,4 +36,28 @@ export class PartDbStorageLocationsResource {
     const match = listed.value.find((location) => location.name === name) ?? null;
     return { ok: true, value: match };
   }
+
+  async findByNameAndParent(
+    name: string,
+    parentIri: string | null,
+  ): Promise<Result<PartDbStorageLocationResponse | null, PartDbError>> {
+    const listed = await this.list(new URLSearchParams({ name }));
+    if (!listed.ok) {
+      return listed;
+    }
+
+    const match = listed.value.find((location) => {
+      if (location.name !== name) {
+        return false;
+      }
+      const parent =
+        typeof location.parent === "string"
+          ? location.parent
+          : location.parent && typeof location.parent === "object" && "@id" in location.parent
+            ? location.parent["@id"]
+            : null;
+      return (parent ?? null) === parentIri;
+    }) ?? null;
+    return { ok: true, value: match };
+  }
 }

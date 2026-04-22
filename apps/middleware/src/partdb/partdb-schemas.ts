@@ -37,6 +37,9 @@ export const partDbStorageLocationResponseSchema = z.object({
   "@id": partDbIriSchema,
   id: partDbIdSchema,
   name: z.string(),
+  parent: z
+    .union([partDbIriSchema, z.object({ "@id": partDbIriSchema }), z.null()])
+    .optional(),
 });
 
 export const partDbMeasurementUnitResponseSchema = z.object({

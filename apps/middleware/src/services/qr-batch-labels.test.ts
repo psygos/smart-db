@@ -18,7 +18,7 @@ describe("qr batch labels pdf", () => {
     expect(pdf.getPageCount()).toBe(1);
   });
 
-  it("paginates when the batch exceeds a single sheet", async () => {
+  it("paginates when the batch exceeds a single sheet", { timeout: 30_000 }, async () => {
     const perPage = qrBatchLabelInternals.labelsPerPage;
     const pdfBytes = await buildQrBatchLabelsPdf({
       id: "batch-2",

@@ -75,6 +75,7 @@ export type OutboxOperation =
       payload: {
         partIri: string | null;
         storageLocationName: string;
+        storageLocationPath?: string[] | undefined;
         amount: number;
         description: string;
         userBarcode: string;
@@ -90,6 +91,7 @@ export type OutboxOperation =
         patch: {
           amount?: number | undefined;
           storageLocationName?: string | undefined;
+          storageLocationPath?: string[] | undefined;
           description?: string | undefined;
         };
       };

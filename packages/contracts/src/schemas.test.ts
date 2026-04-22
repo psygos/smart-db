@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   applicationErrorResponseSchema,
   assignQrRequestSchema,
+  bulkAssignQrsRequestSchema,
+  bulkAssignQrsResponseSchema,
+  bulkMoveEntitiesRequestSchema,
+  bulkMoveEntitiesResponseSchema,
+  bulkReverseIngestRequestSchema,
+  bulkReverseIngestResponseSchema,
   categoryLeafFromPath,
   categoryPathSchema,
   configEnvironmentSchema,
@@ -501,6 +507,188 @@ describe("schemas", () => {
     ).toBeTruthy();
 
     expect(
+      bulkAssignQrsRequestSchema.parse({
+        qrs: ["QR-1001", "QR-1002"],
+        assignment: {
+          entityKind: "instance",
+          location: "Shelf A",
+          notes: null,
+          partType: {
+            kind: "existing",
+            existingPartTypeId: "part-a",
+          },
+          initialStatus: "available",
+        },
+      }),
+    ).toEqual({
+      qrs: ["QR-1001", "QR-1002"],
+      assignment: {
+        entityKind: "instance",
+        location: "Shelf A",
+        notes: null,
+        partType: {
+          kind: "existing",
+          existingPartTypeId: "part-a",
+        },
+        initialStatus: "available",
+      },
+    });
+
+    expect(() =>
+      bulkAssignQrsRequestSchema.parse({
+        qrs: ["QR-1001", "QR-1001"],
+        assignment: {
+          entityKind: "instance",
+          location: "Shelf A",
+          notes: null,
+          partType: {
+            kind: "existing",
+            existingPartTypeId: "part-a",
+          },
+          initialStatus: "available",
+        },
+      }),
+    ).toThrow();
+
+    expect(
+      bulkMoveEntitiesRequestSchema.parse({
+        targets: [
+          {
+            targetType: "instance",
+            targetId: "instance-1",
+            qrCode: "QR-1001",
+          },
+          {
+            targetType: "bulk",
+            targetId: "bulk-1",
+            qrCode: "QR-1002",
+          },
+        ],
+        location: "Shelf B",
+        notes: null,
+      }),
+    ).toEqual({
+      targets: [
+        {
+          targetType: "instance",
+          targetId: "instance-1",
+          qrCode: "QR-1001",
+        },
+        {
+          targetType: "bulk",
+          targetId: "bulk-1",
+          qrCode: "QR-1002",
+        },
+      ],
+      location: "Shelf B",
+      notes: null,
+    });
+
+    expect(
+      bulkReverseIngestRequestSchema.parse({
+        targets: [
+          {
+            assignedKind: "instance",
+            assignedId: "instance-1",
+            qrCode: "QR-1001",
+          },
+        ],
+        reason: "Undo bad ingest",
+      }),
+    ).toEqual({
+      targets: [
+        {
+          assignedKind: "instance",
+          assignedId: "instance-1",
+          qrCode: "QR-1001",
+        },
+      ],
+      reason: "Undo bad ingest",
+    });
+
+    expect(
+      bulkAssignQrsResponseSchema.parse({
+        entities: [
+          {
+            id: "instance-1",
+            targetType: "instance",
+            qrCode: "QR-1001",
+            partType: {
+              id: "part-a",
+              canonicalName: "Correct Type",
+              category: "Misc",
+              categoryPath: ["Misc"],
+              aliases: [],
+              imageUrl: null,
+              notes: null,
+              countable: true,
+              unit: {
+                symbol: "pcs",
+                name: "Pieces",
+                isInteger: true,
+              },
+              needsReview: false,
+              partDbPartId: null,
+              partDbCategoryId: null,
+              partDbUnitId: null,
+              partDbSyncStatus: "never",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            location: "Shelf A",
+            state: "available",
+            assignee: null,
+            partDbSyncStatus: "never",
+            quantity: null,
+            minimumQuantity: null,
+          },
+        ],
+        processedCount: 1,
+      }),
+    ).toBeTruthy();
+
+    expect(
+      bulkMoveEntitiesResponseSchema.parse({
+        events: [
+          {
+            id: "event-1",
+            targetType: "instance",
+            targetId: "instance-1",
+            event: "moved",
+            fromState: "available",
+            toState: "available",
+            location: "Shelf B",
+            actor: "lab-admin",
+            notes: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        processedCount: 1,
+      }),
+    ).toBeTruthy();
+
+    expect(
+      bulkReverseIngestResponseSchema.parse({
+        qrCodes: [
+          qrCodeSchema.parse({
+            code: "QR-1001",
+            batchId: "batch-1",
+            status: "printed",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          }),
+        ],
+        correctionEvents: [
+          {
+            ...correctionEvent,
+            correctionKind: "ingest_reversed",
+          },
+        ],
+        processedCount: 1,
+      }),
+    ).toBeTruthy();
+
+    expect(
       scanResponseSchema.parse({
         mode: "interact",
         qrCode: {
@@ -549,6 +737,9 @@ describe("schemas", () => {
           connected: false,
           message: "Not configured",
         },
+        currentBorrow: null,
+        canReverseIngest: true,
+        canEditSharedType: true,
       }),
     ).toEqual({
       mode: "interact",
@@ -601,6 +792,9 @@ describe("schemas", () => {
         connected: false,
         message: "Not configured",
       },
+      currentBorrow: null,
+      canReverseIngest: true,
+      canEditSharedType: true,
     });
 
     expect(

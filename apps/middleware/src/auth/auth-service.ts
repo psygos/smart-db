@@ -138,9 +138,21 @@ export class AuthService {
     const existing = this.sessions.get(sessionId);
     this.sessions.delete(sessionId);
 
-    return {
-      redirectUrl: await this.identityProvider.logoutUrl(existing?.idToken ?? null),
-    };
+    // Building the Zitadel end-session URL requires the OIDC discovery doc.
+    // If Zitadel is unreachable, misconfigured, or its discovery endpoint
+    // errors out, we still want logout to succeed: the local session is
+    // already deleted, the HTTP cookie is about to be cleared by the route
+    // handler, and the user has no way to reauth against a broken IDP
+    // anyway. Surface null redirectUrl on any failure; the client's
+    // handleLogout already falls back to resetAuthenticatedView when
+    // redirectUrl is empty.
+    let redirectUrl: string | null = null;
+    try {
+      redirectUrl = await this.identityProvider.logoutUrl(existing?.idToken ?? null);
+    } catch {
+      redirectUrl = null;
+    }
+    return { redirectUrl };
   }
 
   private requireSecret(): string {

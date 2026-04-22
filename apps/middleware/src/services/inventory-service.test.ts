@@ -1133,7 +1133,8 @@ describe("InventoryService", () => {
           countable: true,
           bins: 1,
           instanceCount: 1,
-          onHand: 12,
+          onHand: 13,
+          entityCount: 2,
         }),
       ]),
     );
@@ -1455,6 +1456,240 @@ describe("InventoryService", () => {
     expect(reversed.qrCode.status).toBe("printed");
     expect(reversed.correctionEvent.correctionKind).toBe("ingest_reversed");
     expect(service.getCorrectionHistory("bulk", entity.id)).toHaveLength(1);
+  });
+
+  it("bulk labels multiple QR codes against one shared assignment and reuses the created part type", () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6750,
+      count: 2,
+    });
+
+    const response = service.bulkAssignQrs({
+      qrs: ["QR-6750", "QR-6751"],
+      assignment: {
+        entityKind: "instance",
+        location: "Shelf A",
+        notes: null,
+        partType: {
+          kind: "new",
+          canonicalName: "Bulk Label Part",
+          category: "Fixtures",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: true,
+          unit: {
+            symbol: "pcs",
+            name: "Pieces",
+            isInteger: true,
+          },
+        },
+        initialStatus: "available",
+      },
+      actor: "labeler",
+    });
+
+    expect(response.processedCount).toBe(2);
+    expect(new Set(response.entities.map((entity) => entity.partType.id)).size).toBe(1);
+    expect(service.searchPartTypes("Bulk Label Part")).toHaveLength(1);
+  });
+
+  it("bulk labels reuse a pre-existing part type rather than creating a duplicate", () => {
+    const { service } = makeService();
+
+    const existing = service.assignQr({
+      qrCode: "QR-6740",
+      actor: "labeler",
+      entityKind: "instance",
+      location: "Shelf Z",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Shared Fixture",
+        category: "Fixtures",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+      },
+      initialStatus: "available",
+    });
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6741,
+      count: 3,
+    });
+
+    const response = service.bulkAssignQrs({
+      qrs: ["QR-6741", "QR-6742", "QR-6743"],
+      assignment: {
+        entityKind: "instance",
+        location: "Shelf A",
+        notes: null,
+        partType: {
+          kind: "new",
+          canonicalName: "Shared Fixture",
+          category: "Fixtures",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: true,
+          unit: {
+            symbol: "pcs",
+            name: "Pieces",
+            isInteger: true,
+          },
+        },
+        initialStatus: "available",
+      },
+      actor: "labeler",
+    });
+
+    expect(response.processedCount).toBe(3);
+    expect(new Set(response.entities.map((entity) => entity.partType.id))).toEqual(new Set([existing.partType.id]));
+    expect(service.searchPartTypes("Shared Fixture")).toHaveLength(1);
+  });
+
+  it("bulk moves mixed assigned targets with one shared location payload", () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6760,
+      count: 2,
+    });
+
+    const instance = service.assignQr({
+      qrCode: "QR-6760",
+      actor: "labeler",
+      entityKind: "instance",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Bulk Move Instance",
+        category: "Fixtures",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+      },
+      initialStatus: "available",
+    });
+
+    const bulk = service.assignQr({
+      qrCode: "QR-6761",
+      actor: "labeler",
+      entityKind: "bulk",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Bulk Move Stock",
+        category: "Consumables",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
+      },
+      initialQuantity: 2,
+      minimumQuantity: null,
+    });
+
+    const moved = service.bulkMoveEntities({
+      targets: [
+        { targetType: "instance", targetId: instance.id, qrCode: "QR-6760" },
+        { targetType: "bulk", targetId: bulk.id, qrCode: "QR-6761" },
+      ],
+      location: "Shelf B",
+      notes: "Batch relocation",
+      actor: "labeler",
+    });
+
+    expect(moved.processedCount).toBe(2);
+    expect(moved.events.every((event) => event.location === "Shelf B")).toBe(true);
+  });
+
+  it("rolls back an entire bulk delete when any target is no longer reverse-ingest eligible", async () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6770,
+      count: 2,
+    });
+
+    const fresh = service.assignQr({
+      qrCode: "QR-6770",
+      actor: "labeler",
+      entityKind: "bulk",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Fresh Ingest",
+        category: "Materials",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
+      },
+      initialQuantity: 2,
+      minimumQuantity: null,
+    });
+
+    const touched = service.assignQr({
+      qrCode: "QR-6771",
+      actor: "labeler",
+      entityKind: "bulk",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "Touched Ingest",
+        category: "Materials",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
+      },
+      initialQuantity: 2,
+      minimumQuantity: null,
+    });
+    service.recordEvent({
+      targetType: "bulk",
+      targetId: touched.id,
+      event: "moved",
+      location: "Shelf B",
+      notes: null,
+      actor: "labeler",
+    });
+
+    expect(() =>
+      service.bulkReverseIngest({
+        targets: [
+          { assignedKind: "bulk", assignedId: fresh.id, qrCode: "QR-6770" },
+          { assignedKind: "bulk", assignedId: touched.id, qrCode: "QR-6771" },
+        ],
+        reason: "Undo bad batch",
+        actor: "admin",
+      }),
+    ).toThrowError(ConflictError);
+
+    await expect(service.scanCode("QR-6770")).resolves.toMatchObject({
+      mode: "interact",
+      entity: {
+        id: fresh.id,
+      },
+    });
   });
 
   it("rejects ambiguous normalized barcode matches instead of choosing arbitrarily", async () => {
@@ -1868,5 +2103,310 @@ describe("InventoryService", () => {
     });
     db.prepare(`DELETE FROM physical_instances WHERE id = ?`).run(dangling.id);
     await expect(service.scanCode("QR-6001")).rejects.toThrowError(InvariantError);
+  });
+
+  describe("borrow records", () => {
+    function assignBorrowInstance(service: InventoryService, qrCode: string) {
+      service.registerQrBatch({ actor: "admin", prefix: qrCode.split("-")[0]!, startNumber: Number(qrCode.split("-")[1]!), count: 1 });
+      return service.assignQr({
+        qrCode,
+        actor: "labeler",
+        entityKind: "instance",
+        location: "Shelf A",
+        notes: null,
+        partType: {
+          kind: "new",
+          canonicalName: `Borrow ${qrCode}`,
+          category: "Fixtures",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: true,
+        },
+        initialStatus: "available",
+      });
+    }
+
+    function listBorrows(db: ReturnType<typeof createDatabase>, instanceId: string) {
+      return db
+        .prepare(
+          `SELECT id, instance_id AS instanceId, borrower, borrowed_at AS borrowedAt, due_at AS dueAt, returned_at AS returnedAt, close_reason AS closeReason, actor FROM borrow_records WHERE instance_id = ? ORDER BY created_at, id`,
+        )
+        .all(instanceId) as Array<{
+        id: string;
+        instanceId: string;
+        borrower: string;
+        borrowedAt: string;
+        dueAt: string | null;
+        returnedAt: string | null;
+        closeReason: string | null;
+        actor: string;
+      }>;
+    }
+
+    it("opens a borrow record when an instance is checked out", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7100");
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "maker-jo",
+      });
+
+      const rows = listBorrows(db, instance.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        borrower: "maker-jo",
+        returnedAt: null,
+        closeReason: null,
+        actor: "labeler",
+      });
+      expect(service.getOpenBorrow(instance.id)).toMatchObject({ borrower: "maker-jo", isOverdue: false });
+    });
+
+    it("closes the previous borrow with close_reason='re_checkout' on re-checkout", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7101");
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "alice",
+      });
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "bob",
+      });
+
+      const rows = listBorrows(db, instance.id);
+      expect(rows).toHaveLength(2);
+      const closed = rows.find((row) => row.returnedAt !== null);
+      const open = rows.find((row) => row.returnedAt === null);
+      expect(closed).toMatchObject({ borrower: "alice", closeReason: "re_checkout" });
+      expect(open).toMatchObject({ borrower: "bob", closeReason: null });
+    });
+
+    it("closes the open borrow with close_reason='returned' on return", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7102");
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "alice",
+      });
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "returned",
+        location: null,
+        notes: null,
+        assignee: null,
+      });
+
+      const [row] = listBorrows(db, instance.id);
+      expect(row).toMatchObject({ borrower: "alice", closeReason: "returned" });
+      expect(row!.returnedAt).not.toBeNull();
+      expect(service.getOpenBorrow(instance.id)).toBeNull();
+    });
+
+    it("closes the open borrow with close_reason='void_cascade' when the QR is voided", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7103");
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "alice",
+      });
+      service.voidQrCode("BR-7103", "admin");
+
+      const [row] = listBorrows(db, instance.id);
+      expect(row).toMatchObject({ borrower: "alice", closeReason: "void_cascade" });
+      expect(row!.returnedAt).not.toBeNull();
+    });
+
+    it("enforces one-open-borrow-per-instance via the unique partial index", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7104");
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "alice",
+      });
+
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO borrow_records (id, instance_id, borrower, borrowed_at, due_at, returned_at, close_reason, notes, actor, created_at) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)`,
+          )
+          .run("dup-id", instance.id, "bob", new Date().toISOString(), "labeler", new Date().toISOString()),
+      ).toThrowError(/UNIQUE|constraint/i);
+    });
+
+    it("backfills entities for every physical instance and bulk stock with matching ids", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7190");
+      service.registerQrBatch({ actor: "admin", prefix: "BR", startNumber: 7191, count: 1 });
+      const bulk = service.assignQr({
+        qrCode: "BR-7191",
+        actor: "labeler",
+        entityKind: "bulk",
+        location: "Shelf C",
+        notes: null,
+        partType: { kind: "existing", existingPartTypeId: instance.partType.id },
+        initialQuantity: 10,
+        minimumQuantity: null,
+      });
+
+      // Fresh rows inserted through the service bypass the migration SQL, so we
+      // backfill manually here to exercise the exact migration path.
+      db.prepare(
+        `INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+         SELECT id, qr_code, part_type_id, location, 1, NULL, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'instance'
+         FROM physical_instances`,
+      ).run();
+      db.prepare(
+        `INSERT OR IGNORE INTO entities (id, qr_code, part_type_id, location, quantity, minimum_quantity, status, assignee, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, source_kind)
+         SELECT id, qr_code, part_type_id, location, quantity, minimum_quantity, 'available', NULL, version, partdb_lot_id, partdb_sync_status, created_at, updated_at, 'bulk'
+         FROM bulk_stocks`,
+      ).run();
+
+      const entities = service.listEntitiesForPartType(instance.partType.id);
+      expect(entities).toHaveLength(2);
+      const byKind = new Map(entities.map((e) => [e.sourceKind, e]));
+      expect(byKind.get("instance")!).toMatchObject({ id: instance.id, qrCode: "BR-7190", quantity: 1 });
+      expect(byKind.get("bulk")!).toMatchObject({ id: bulk.id, qrCode: "BR-7191", sourceKind: "bulk" });
+    });
+
+    it("reverses only one of two sibling instances, leaving the other intact and printing the QR", async () => {
+      const { service } = makeService();
+      const first = assignBorrowInstance(service, "BR-7180");
+      service.registerQrBatch({ actor: "lab-admin", prefix: "BR", startNumber: 7181, count: 1 });
+      const second = service.assignQr({
+        qrCode: "BR-7181",
+        actor: "labeler",
+        entityKind: "instance",
+        location: "Shelf A",
+        notes: null,
+        partType: { kind: "existing", existingPartTypeId: first.partType.id },
+        initialStatus: "available",
+      });
+
+      const itemsBefore = service.getPartTypeItems(first.partType.id);
+      expect(itemsBefore.instances).toHaveLength(2);
+      expect(itemsBefore.instances.every((row) => row.canReverseIngest)).toBe(true);
+
+      service.bulkReverseIngest({
+        targets: [{ assignedKind: "instance", assignedId: second.id, qrCode: "BR-7181" }],
+        reason: "Mislabeled on intake",
+        actor: "lab-admin",
+      });
+
+      const itemsAfter = service.getPartTypeItems(first.partType.id);
+      expect(itemsAfter.instances).toHaveLength(1);
+      expect(itemsAfter.instances[0]!.id).toBe(first.id);
+
+      const rescan = await service.scanCode("BR-7181", "lab-admin");
+      expect(rescan.mode).toBe("label");
+    });
+
+    it("listCorrectionEvents returns events ordered newest-first with a bounded limit", () => {
+      const { service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7170");
+      service.reverseIngestAssignment({
+        qrCode: "BR-7170",
+        assignedKind: "instance",
+        assignedId: instance.id,
+        actor: "labeler",
+        reason: "Fat-finger",
+      });
+
+      const all = service.listCorrectionEvents();
+      expect(all).toHaveLength(1);
+      expect(all[0]).toMatchObject({
+        correctionKind: "ingest_reversed",
+        reason: "Fat-finger",
+        targetType: "instance",
+      });
+
+      const bounded = service.listCorrectionEvents(0);
+      expect(bounded).toHaveLength(1);
+      const big = service.listCorrectionEvents(999);
+      expect(big.length).toBeLessThanOrEqual(200);
+    });
+
+    it("exposes canReverseIngest as true for a fresh assignment and false after any event", async () => {
+      const { service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7150");
+
+      const fresh = await service.scanCode("BR-7150", "lab-admin");
+      if (fresh.mode !== "interact") throw new Error("expected interact");
+      expect(fresh.canReverseIngest).toBe(true);
+      expect(fresh.canEditSharedType).toBe(true);
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "lab-admin",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "alice",
+      });
+
+      const after = await service.scanCode("BR-7150", "lab-admin");
+      if (after.mode !== "interact") throw new Error("expected interact");
+      expect(after.canReverseIngest).toBe(false);
+      expect(after.canEditSharedType).toBe(true);
+    });
+
+    it("marks a record as overdue when due_at is past", () => {
+      const { db, service } = makeService();
+      const instance = assignBorrowInstance(service, "BR-7105");
+
+      service.recordEvent({
+        targetType: "instance",
+        targetId: instance.id,
+        actor: "labeler",
+        event: "checked_out",
+        location: null,
+        notes: null,
+        assignee: "alice",
+      });
+
+      const pastDue = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      db.prepare(`UPDATE borrow_records SET due_at = ? WHERE instance_id = ? AND returned_at IS NULL`).run(pastDue, instance.id);
+
+      expect(service.getOpenBorrow(instance.id)).toMatchObject({ isOverdue: true });
+    });
   });
 });

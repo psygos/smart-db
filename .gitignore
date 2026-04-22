@@ -15,3 +15,11 @@ deploy/config/*.env
 deploy/state
 deploy/backups
 *.wasm
+# The ZXing barcode-detector WASM is a build artefact of a dependency, so the
+# blanket *.wasm rule above correctly keeps random .wasm generated files out.
+# But the frontend ships this specific file as a public asset — the gateway
+# serves it to every browser that lacks a native BarcodeDetector (Safari,
+# Firefox, many Chromes). Without it, the scanner silently fails to decode
+# anything the native detector can't handle, and even QR fallback through
+# the polyfill is broken. Force-track this one file.
+!apps/frontend/public/zxing_reader.wasm

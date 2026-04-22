@@ -1,6 +1,6 @@
 # CI/CD Pipeline Spec — Smart DB
 
-Branch: `dev`  
+Branch: `dev`
 Date: 2026-04-16
 
 ---
@@ -18,25 +18,25 @@ One workflow: `.github/workflows/ci.yml`
 
 ### Known Problems
 
-**P1 — Deploy job assumes a git repo on server.**  
+**P1 — Deploy job assumes a git repo on server.**
 `ci.yml` runs `git fetch origin main && git reset --hard origin/main`, but the server has no git repo. This step silently does nothing or fails.
 
-**P2 — `pnpm build` never runs in CI.**  
+**P2 — `pnpm build` never runs in CI.**
 The gateway Dockerfile builds the frontend internally — a broken Vite build is only caught inside the container build, after the green CI check.
 
-**P3 — Coverage not enforced.**  
+**P3 — Coverage not enforced.**
 `pnpm test` is called, not `pnpm coverage`. 100% coverage requirement goes unenforced. When `pnpm coverage` was introduced in CI it revealed ~70% actual coverage — `scripts/`, `app-controller.ts`, `render.ts`, `zitadel-client.ts`, and several partdb files are significantly undertested. Coverage enforcement is deferred until that debt is addressed.
 
-**P4 — No CI on `dev` branch.**  
+**P4 — No CI on `dev` branch.**
 Workflow only triggers on `main`. All work on `dev` is unchecked until a PR is opened.
 
-**P5 — No staging or preview environments.**  
+**P5 — No staging or preview environments.**
 One environment: production. Every merged commit goes directly to prod with no intermediate validation.
 
-**P6 — No rollback path.**  
+**P6 — No rollback path.**
 Health check failure leaves partially-upgraded containers running with no recovery.
 
-**P7 — Unlabeled self-hosted runner.**  
+**P7 — Unlabeled self-hosted runner.**
 `runs-on: self-hosted` with no labels — any registered runner can pick up the deploy job.
 
 ---
@@ -66,16 +66,16 @@ All non-production environments live on **staging-lxc**.
 | staging     | `dev`  | `smartdb-staging` | 9443       | no      | `state/staging/` | **persistent across deploys** |
 | preview-N   | PR branch | `smartdb-pr-{N}` | `10000+N` | no  | `state/preview-{N}/` | **reset on every commit** |
 
-**Part-DB:**  
+**Part-DB:**
 Part-DB is too heavy to spin up per preview. Staging and previews run without it. The middleware outbox will queue failed sync attempts harmlessly — SmartDB is the source of truth and the app stays fully functional.
 
-**Port arithmetic for previews:**  
+**Port arithmetic for previews:**
 `HTTPS_PORT = 10000 + PR_NUMBER`. For PR #42: `https://{STAGING_HOST}:10042`. Supports up to PR #9999. A guard in the workflow rejects any PR whose computed port collides with 9443 (staging) or 443/8443 (not on this host, but guard anyway).
 
-**TLS:**  
+**TLS:**
 Shared root CA. The prod root CA (`smart-db-root-ca.key` + `smart-db-root-ca.crt`) signs both the prod and staging server certs. Client devices only need to trust one CA. `generate-tls-certs.sh` will be parameterized to accept a target IP so it can be run for `192.168.7.3` using the existing CA — the CA key never needs to permanently live on staging-lxc. Only `server.crt` and `server.key` are deployed there.
 
-**Self-hosted runners:**  
+**Self-hosted runners:**
 Both runners run directly inside their respective LXC containers and call `docker compose` commands directly — no SSH indirection.
 
 ---

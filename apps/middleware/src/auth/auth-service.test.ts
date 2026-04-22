@@ -178,6 +178,39 @@ describe("AuthService", () => {
     expect(logoutUrl).toHaveBeenCalledWith("id-token");
   });
 
+  it("still completes logout when the identity provider's logoutUrl throws", async () => {
+    const logoutUrl = vi.fn(async () => {
+      throw new Error("discovery fetch failed");
+    });
+    const store = new SessionStore(db);
+    const service = new AuthService(
+      {
+        authorizationUrl: vi.fn(async () => "https://auth.example.com/login"),
+        exchangeAuthorizationCode: vi.fn(),
+        logoutUrl,
+      } as never,
+      store,
+      {
+        frontendOrigin: "https://smartdb.example.com",
+        redirectUri: "https://smartdb.example.com/api/auth/callback",
+        sessionCookieSecret: "super-secret",
+      },
+    );
+    const stored = store.create({
+      subject: "zitadel-user-2",
+      username: "maker",
+      name: null,
+      email: null,
+      roles: [],
+      expiresAt: "2030-04-02T00:00:00.000Z",
+      idToken: "id-token-2",
+    });
+
+    await expect(service.logout(stored.id)).resolves.toEqual({ redirectUrl: null });
+    // The local session is gone regardless of IdP availability.
+    expect(service.getSession(stored.id)).toBeNull();
+  });
+
   it("rejects invalid callback state", async () => {
     const service = new AuthService(
       {

@@ -35,6 +35,13 @@ describe("applyMigrations", () => {
     expect(versions[5]).toMatchObject({ version: 6, description: "partdb outbox failure timestamps" });
     expect(versions[6]).toMatchObject({ version: 7, description: "physical instance sync status" });
     expect(versions[7]).toMatchObject({ version: 8, description: "correction events" });
+    expect(versions[8]).toMatchObject({ version: 9, description: "borrow records for countable instances" });
+    expect(versions[9]).toMatchObject({ version: 10, description: "partdb storage location cache" });
+    expect(versions[10]).toMatchObject({ version: 11, description: "unified entities table backfilled from instances and bulk_stocks" });
+    expect(versions[11]).toMatchObject({ version: 12, description: "branch-merge catch-up for borrow_records" });
+    expect(versions[12]).toMatchObject({ version: 13, description: "branch-merge catch-up for partdb storage location cache" });
+    expect(versions[13]).toMatchObject({ version: 14, description: "standalone known_categories table" });
+    expect(versions[14]).toMatchObject({ version: 15, description: "standalone known_locations table" });
   });
 
   it("skips already-applied migrations on subsequent runs", () => {
@@ -69,6 +76,11 @@ describe("applyMigrations", () => {
     expect(tableNames).toContain("partdb_category_cache");
     expect(tableNames).toContain("partdb_outbox");
     expect(tableNames).toContain("correction_events");
+    expect(tableNames).toContain("borrow_records");
+    expect(tableNames).toContain("partdb_location_cache");
+    expect(tableNames).toContain("entities");
+    expect(tableNames).toContain("known_categories");
+    expect(tableNames).toContain("known_locations");
     expect(tableNames).toContain("schema_version");
   });
 
@@ -229,5 +241,61 @@ describe("applyMigrations", () => {
       .prepare(`SELECT COUNT(*) AS count FROM sqlite_master WHERE name = 'broken_table'`)
       .get() as { count: number };
     expect(Number(brokenTable.count)).toBe(0);
+  });
+
+  it("upgrades a database created from the old dev-branch migration lineage", () => {
+    const db = makeDb();
+    const devBranchMigrations: Migration[] = [
+      ...migrations.slice(0, 8),
+      {
+        version: 9,
+        description: "standalone known_categories table",
+        sql: `
+CREATE TABLE IF NOT EXISTS known_categories (
+  path TEXT PRIMARY KEY
+);
+        `,
+      },
+      {
+        version: 10,
+        description: "standalone known_locations table",
+        sql: `
+CREATE TABLE IF NOT EXISTS known_locations (
+  path TEXT PRIMARY KEY
+);
+        `,
+      },
+    ];
+
+    expect(applyMigrations(db, devBranchMigrations).current).toBe(10);
+
+    const result = applyMigrations(db);
+    expect(result.current).toBe(migrations[migrations.length - 1]!.version);
+
+    const tables = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+      .all() as Array<{ name: string }>;
+    const tableNames = new Set(tables.map((row) => row.name));
+
+    expect(tableNames.has("borrow_records")).toBe(true);
+    expect(tableNames.has("partdb_location_cache")).toBe(true);
+    expect(tableNames.has("entities")).toBe(true);
+    expect(tableNames.has("known_categories")).toBe(true);
+    expect(tableNames.has("known_locations")).toBe(true);
+  });
+
+  it("upgrades a database created from the old main-branch migration lineage", () => {
+    const db = makeDb();
+    const mainBranchMigrations = migrations.slice(0, 11);
+
+    expect(applyMigrations(db, mainBranchMigrations).current).toBe(11);
+
+    const result = applyMigrations(db);
+    expect(result.current).toBe(migrations[migrations.length - 1]!.version);
+
+    const tables = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('known_categories', 'known_locations')`)
+      .all() as Array<{ name: string }>;
+    expect(new Set(tables.map((row) => row.name))).toEqual(new Set(["known_categories", "known_locations"]));
   });
 });

@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  type BulkAssignQrsResponse,
+  type BulkMoveEntitiesResponse,
+  type BulkReverseIngestResponse,
   ConflictError,
   type CorrectionEvent,
   type DashboardSummary,
@@ -127,6 +130,22 @@ const reverseIngestResponse: ReverseIngestAssignmentResponse = {
     ...correctionEvent,
     correctionKind: "ingest_reversed",
   },
+};
+
+const bulkAssignResponse: BulkAssignQrsResponse = {
+  entities: [entitySummary],
+  processedCount: 1,
+};
+
+const bulkMoveResponse: BulkMoveEntitiesResponse = {
+  events: [stockEvent],
+  processedCount: 1,
+};
+
+const bulkReverseResponse: BulkReverseIngestResponse = {
+  qrCodes: [reverseIngestResponse.qrCode],
+  correctionEvents: [reverseIngestResponse.correctionEvent],
+  processedCount: 1,
 };
 
 const partDbStatus: PartDbConnectionStatus = {
@@ -257,6 +276,20 @@ describe("buildServer", () => {
     });
     expect(logout.statusCode).toBe(200);
     expect(logout.json()).toEqual({ ok: true, redirectUrl: null });
+
+    // Regression: the browser's logout POST historically carried
+    // Content-Type: application/json with no body. Fastify's default JSON
+    // parser rejects that with FST_ERR_CTP_EMPTY_JSON_BODY (status 400)
+    // before the route runs. A faithful server response is a 400 with the
+    // original fastify code, not a 500 "invariant / Unhandled middleware
+    // failure" envelope.
+    const empty = await app.inject({
+      method: "POST",
+      url: "/api/auth/logout",
+      headers: { ...sessionHeaders, "content-type": "application/json" },
+    });
+    expect(empty.statusCode).toBe(400);
+    expect(empty.json().error.code).toBe("FST_ERR_CTP_EMPTY_JSON_BODY");
 
     expect(authService.startLogin).toHaveBeenCalledTimes(1);
     expect(authService.completeLogin).toHaveBeenCalledTimes(1);
@@ -475,12 +508,15 @@ describe("buildServer", () => {
       })),
       scanCode: vi.fn(async () => scanResponse),
       assignQr: vi.fn(() => entitySummary),
+      bulkAssignQrs: vi.fn(() => bulkAssignResponse),
       recordEvent: vi.fn(() => stockEvent),
+      bulkMoveEntities: vi.fn(() => bulkMoveResponse),
       mergePartTypes: vi.fn(() => partType),
       getCorrectionHistory: vi.fn(() => [correctionEvent]),
       reassignEntityPartType: vi.fn(() => reassignResponse),
       editPartTypeDefinition: vi.fn(() => editPartTypeResponse),
       reverseIngestAssignment: vi.fn(() => reverseIngestResponse),
+      bulkReverseIngest: vi.fn(() => bulkReverseResponse),
       getPartDbStatus: vi.fn(async () => partDbStatus),
       voidQrCode: vi.fn(() => voidedQr),
       approvePartType: vi.fn(() => ({ ...partType, needsReview: false })),
@@ -555,11 +591,46 @@ describe("buildServer", () => {
     await expect(
       app.inject({
         method: "POST",
+        url: "/api/bulk/assign",
+        payload: {
+          qrs: ["QR-1001"],
+          assignment: {
+            entityKind: "instance",
+            location: "Shelf A",
+            partType: {
+              kind: "existing",
+              existingPartTypeId: "part-1",
+            },
+          },
+        },
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "POST",
         url: "/api/events",
         payload: {
           targetType: "instance",
           targetId: "instance-1",
           event: "moved",
+          location: "Shelf B",
+        },
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "POST",
+        url: "/api/bulk/move",
+        payload: {
+          targets: [
+            {
+              targetType: "instance",
+              targetId: "instance-1",
+              qrCode: "QR-1001",
+            },
+          ],
           location: "Shelf B",
         },
         headers: sessionHeaders,
@@ -659,6 +730,23 @@ describe("buildServer", () => {
     ).resolves.toMatchObject({ statusCode: 200 });
     await expect(
       app.inject({
+        method: "POST",
+        url: "/api/bulk/reverse-ingest",
+        payload: {
+          targets: [
+            {
+              assignedKind: "instance",
+              assignedId: "instance-1",
+              qrCode: "QR-1001",
+            },
+          ],
+          reason: "Wrong ingest",
+        },
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
         method: "GET",
         url: "/api/qr-batches/batch-1/labels.pdf",
         headers: sessionHeaders,
@@ -674,9 +762,12 @@ describe("buildServer", () => {
     expect(service.voidQrCode).toHaveBeenCalledWith("QR-1001", "labeler");
     expect(service.approvePartType).toHaveBeenCalledWith("part-1");
     expect(service.getCorrectionHistory).toHaveBeenCalledWith("instance", "instance-1");
+    expect(service.bulkAssignQrs).toHaveBeenCalled();
+    expect(service.bulkMoveEntities).toHaveBeenCalled();
     expect(service.reassignEntityPartType).toHaveBeenCalled();
     expect(service.editPartTypeDefinition).toHaveBeenCalled();
     expect(service.reverseIngestAssignment).toHaveBeenCalled();
+    expect(service.bulkReverseIngest).toHaveBeenCalled();
     await app.close();
   });
 
@@ -697,8 +788,11 @@ describe("buildServer", () => {
       }),
       scanCode: vi.fn(async () => scanResponse),
       assignQr: vi.fn(() => entitySummary),
+      bulkAssignQrs: vi.fn(() => bulkAssignResponse),
       recordEvent: vi.fn(() => stockEvent),
+      bulkMoveEntities: vi.fn(() => bulkMoveResponse),
       mergePartTypes: vi.fn(() => partType),
+      bulkReverseIngest: vi.fn(() => bulkReverseResponse),
       getPartDbStatus: vi.fn(async () => partDbStatus),
     };
 

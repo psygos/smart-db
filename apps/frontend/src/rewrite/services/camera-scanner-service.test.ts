@@ -25,6 +25,7 @@ function createStream() {
 }
 
 function createVideo(playImpl = vi.fn().mockResolvedValue(undefined)) {
+  const listeners = new Map<string, Set<EventListener>>();
   return {
     srcObject: null as MediaStream | null,
     play: playImpl,
@@ -35,6 +36,14 @@ function createVideo(playImpl = vi.fn().mockResolvedValue(undefined)) {
     HAVE_ENOUGH_DATA: 4,
     videoWidth: 1280,
     videoHeight: 720,
+    addEventListener: vi.fn((type: string, listener: EventListener) => {
+      const bucket = listeners.get(type) ?? new Set<EventListener>();
+      bucket.add(listener);
+      listeners.set(type, bucket);
+    }),
+    removeEventListener: vi.fn((type: string, listener: EventListener) => {
+      listeners.get(type)?.delete(listener);
+    }),
     style: { transform: "" },
   } as unknown as HTMLVideoElement & { HAVE_ENOUGH_DATA: number };
 }
@@ -345,6 +354,142 @@ describe("CameraScannerService", () => {
     expectIdle(snapshot);
     expect(stop).toHaveBeenCalledTimes(1);
     expect(documentStub.addEventListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+  });
+
+  it("walks the focus-mode priority chain and applies the first supported mode on start", async () => {
+    const applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const track = {
+      stop: vi.fn(),
+      readyState: "live",
+      getCapabilities: () => ({
+        focusMode: ["single-shot", "manual"],
+        exposureMode: ["continuous"],
+        whiteBalanceMode: ["continuous"],
+      }),
+      applyConstraints,
+    };
+    const stream = {
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+    } as unknown as MediaStream;
+    const { service, getUserMedia } = buildService();
+    getUserMedia.mockResolvedValueOnce(stream);
+
+    await service.attachVideoElement(createVideo());
+    const result = await service.start();
+    expect(result.ok).toBe(true);
+
+    // continuous is not supported, so chain walks to single-shot
+    expect(applyConstraints).toHaveBeenCalledWith({
+      advanced: [{ focusMode: "single-shot" }],
+    });
+    expect(applyConstraints).toHaveBeenCalledWith({
+      advanced: [{ exposureMode: "continuous" }],
+    });
+    expect(applyConstraints).toHaveBeenCalledWith({
+      advanced: [{ whiteBalanceMode: "continuous" }],
+    });
+  });
+
+  it("warns via the logger when a device reports no focusMode capability at all", async () => {
+    const track = {
+      stop: vi.fn(),
+      readyState: "live",
+      getCapabilities: () => ({ focusMode: [] }),
+      applyConstraints: vi.fn().mockResolvedValue(undefined),
+    };
+    const stream = {
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+    } as unknown as MediaStream;
+    const { service, getUserMedia, warn } = buildService();
+    getUserMedia.mockResolvedValueOnce(stream);
+
+    await service.attachVideoElement(createVideo());
+    await service.start();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no focusMode capability"));
+  });
+
+  it("refocus at a normalised point calls applyConstraints with pointsOfInterest when supported", async () => {
+    const applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const track = {
+      stop: vi.fn(),
+      readyState: "live",
+      getCapabilities: () => ({
+        focusMode: ["continuous", "single-shot"],
+        pointsOfInterest: { min: 0, max: 1 },
+      }),
+      applyConstraints,
+    };
+    const stream = {
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+    } as unknown as MediaStream;
+    const { service, getUserMedia } = buildService();
+    getUserMedia.mockResolvedValueOnce(stream);
+
+    await service.attachVideoElement(createVideo());
+    await service.start();
+
+    applyConstraints.mockClear();
+    await service.refocus({ x: 0.4, y: 0.6 });
+    expect(applyConstraints).toHaveBeenCalledWith({
+      advanced: [
+        {
+          focusMode: "single-shot",
+          pointsOfInterest: [{ x: 0.4, y: 0.6 }],
+        },
+      ],
+    });
+  });
+
+  it("refocus without a point re-engages the continuous chain", async () => {
+    const applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const track = {
+      stop: vi.fn(),
+      readyState: "live",
+      getCapabilities: () => ({ focusMode: ["continuous"] }),
+      applyConstraints,
+    };
+    const stream = {
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+    } as unknown as MediaStream;
+    const { service, getUserMedia } = buildService();
+    getUserMedia.mockResolvedValueOnce(stream);
+
+    await service.attachVideoElement(createVideo());
+    await service.start();
+
+    applyConstraints.mockClear();
+    await service.refocus();
+    expect(applyConstraints).toHaveBeenCalledWith({
+      advanced: [{ focusMode: "continuous" }],
+    });
+  });
+
+  it("refocus is a no-op when the track is ended", async () => {
+    const applyConstraints = vi.fn().mockResolvedValue(undefined);
+    const track = {
+      stop: vi.fn(),
+      readyState: "ended",
+      getCapabilities: () => ({ focusMode: ["continuous"] }),
+      applyConstraints,
+    };
+    const stream = {
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+    } as unknown as MediaStream;
+    const { service, getUserMedia } = buildService();
+    getUserMedia.mockResolvedValueOnce(stream);
+
+    await service.attachVideoElement(createVideo());
+    await service.start();
+
+    applyConstraints.mockClear();
+    await service.refocus({ x: 0.5, y: 0.5 });
+    expect(applyConstraints).not.toHaveBeenCalled();
   });
 });
 

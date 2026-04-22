@@ -19,6 +19,7 @@ import {
 import { attr, checked, disabled, escapeHtml, joinHtml, selected } from "./html";
 import type { RewriteUiState, TabId, ToastRecord } from "./ui-state";
 import { findSharedTypeConflictCandidates, getPartDbHealthPill, getPartDbSyncPill } from "./view-helpers";
+import { buildTreePickerView } from "./tree-picker";
 
 export function renderApp(state: RewriteUiState): string {
   if (state.authState.status === "checking") {
@@ -189,11 +190,16 @@ function renderTabBar(activeTab: TabId, tabs: readonly TabId[]): string {
 
 function renderScanTab(state: RewriteUiState): string {
   const assignIssues = getAssignFormIssues(state.assignForm);
+  const bulkAssignIssues = getAssignFormIssues({
+    ...state.bulkQueue.labelForm,
+    qrCode: "__bulk__",
+  });
   const eventIssues = getEventFormIssues(state.eventForm);
+  const isOneByOne = state.scanMode.kind === "oneByOne";
   const cameraBlockedReason =
     state.pendingAction !== null
       ? "Finish the current action before scanning another item."
-      : state.scanResult
+      : isOneByOne && state.scanResult
         ? "Finish or clear the current scan form before scanning another item."
         : null;
   const labelOptions =
@@ -202,6 +208,10 @@ function renderScanTab(state: RewriteUiState): string {
       : state.scanResult?.mode === "label"
         ? state.scanResult.suggestions
         : state.catalogSuggestions;
+  const bulkLabelOptions =
+    state.bulkQueue.labelSearch.query.trim() || state.bulkQueue.labelSearch.results.length > 0
+      ? state.bulkQueue.labelSearch.results
+      : state.catalogSuggestions;
   const selectedMeasurementUnit =
     measurementUnitCatalog.find((unit) => unit.symbol === state.assignForm.unitSymbol) ??
     measurementUnitCatalog[0];
@@ -229,12 +239,86 @@ function renderScanTab(state: RewriteUiState): string {
           autocomplete="off"
         />
         <button type="submit" ${disabled(state.pendingAction !== null)}>
-          ${state.pendingAction === "scan" ? "Opening..." : "Open"}
+          ${state.pendingAction === "scan" ? "Opening..." : state.scanMode.kind === "bulk" ? "Add" : "Open"}
         </button>
       </form>
 
+      <div class="scan-mode-bar">
+        <button
+          type="button"
+          class="scan-mode-btn ${state.scanMode.kind === "oneByOne" ? "active" : ""}"
+          data-action="set-scan-mode-kind"
+          data-scan-mode-kind="oneByOne"
+        >
+          <span class="scan-mode-icon">◇</span>
+          One-by-one
+        </button>
+        <button
+          type="button"
+          class="scan-mode-btn ${state.scanMode.kind === "bulk" ? "active" : ""}"
+          data-action="set-scan-mode-kind"
+          data-scan-mode-kind="bulk"
+        >
+          <span class="scan-mode-icon">≡</span>
+          Bulk
+        </button>
+      </div>
+
+      ${state.scanMode.kind === "oneByOne" ? `
+        <div class="scan-mode-bar">
+          <button
+            type="button"
+            class="scan-mode-btn ${state.scanMode.behavior === "viewOnly" ? "active" : ""}"
+            data-action="set-scan-behavior"
+            data-scan-behavior="viewOnly"
+          >
+            <span class="scan-mode-icon">◇</span>
+            View only
+          </button>
+          <button
+            type="button"
+            class="scan-mode-btn ${state.scanMode.behavior === "increment" ? "active" : ""}"
+            data-action="set-scan-behavior"
+            data-scan-behavior="increment"
+          >
+            <span class="scan-mode-icon">+1</span>
+            Auto-count
+          </button>
+        </div>
+      ` : `
+        <div class="scan-mode-bar">
+          <button
+            type="button"
+            class="scan-mode-btn ${state.bulkQueue.action === "label" ? "active" : ""}"
+            data-action="set-bulk-action"
+            data-bulk-action="label"
+          >
+            <span class="scan-mode-icon">#</span>
+            Bulk label
+          </button>
+          <button
+            type="button"
+            class="scan-mode-btn ${state.bulkQueue.action === "move" ? "active" : ""}"
+            data-action="set-bulk-action"
+            data-bulk-action="move"
+          >
+            <span class="scan-mode-icon">→</span>
+            Bulk move
+          </button>
+          <button
+            type="button"
+            class="scan-mode-btn ${state.bulkQueue.action === "delete" ? "active" : ""}"
+            data-action="set-bulk-action"
+            data-bulk-action="delete"
+          >
+            <span class="scan-mode-icon">↶</span>
+            Bulk reverse
+          </button>
+        </div>
+      `}
+
       <div aria-live="polite">
-        ${state.scanResult?.mode === "unknown" ? `
+        ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "unknown" ? `
           <div class="result-card">
             <h3>${escapeHtml(state.scanResult.code)} is unknown to Smart DB</h3>
             <p>
@@ -248,9 +332,20 @@ function renderScanTab(state: RewriteUiState): string {
           </div>
         ` : ""}
 
-        ${state.scanResult?.mode === "label" ? renderLabelCard(state, labelOptions, assignIssues) : ""}
-        ${state.scanResult?.mode === "interact" ? renderInteractCard(state, eventIssues, bulkQuantityStep, bulkUnitSymbol) : ""}
+        ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "label" ? renderLabelCard(state, labelOptions, assignIssues) : ""}
+        ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "interact" ? renderInteractCard(state, eventIssues, bulkQuantityStep, bulkUnitSymbol) : ""}
+        ${state.scanMode.kind === "bulk" ? renderBulkQueueCard(state, bulkLabelOptions, bulkAssignIssues) : ""}
 
+        ${state.scanMode.kind === "oneByOne" && state.scanResult && !state.cameraLookupCode ? `
+          <button
+            type="button"
+            class="scan-next-bottom"
+            data-action="scan-next"
+            ${disabled(state.pendingAction !== null)}
+          >
+            Scan next item
+          </button>
+        ` : ""}
       </div>
     </section>
   `;
@@ -287,12 +382,62 @@ function renderScanner(state: RewriteUiState, isLookingUp: boolean, blockedReaso
       <div class="viewfinder"${state.camera.activeStream ? "" : " hidden"}>
         <video id="rewrite-camera-video" playsinline muted autoplay></video>
         <div class="viewfinder-guide"></div>
+        ${state.camera.activeStream ? `<div class="viewfinder-hint" aria-hidden="true">Tap the preview to refocus</div>` : ""}
         ${state.camera.lastResult && state.camera.activeStream ? `<div class="scan-flash"></div>` : ""}
       </div>
       ${state.camera.activeStream ? `<button type="button" data-action="camera-stop">Switch to manual input</button>` : ""}
       ${!state.camera.activeStream && state.camera.lastResult && !isLookingUp ? `
         <button type="button" data-action="camera-scan-next" ${disabled(Boolean(blockedReason))}>Scan next</button>
       ` : ""}
+    </div>
+  `;
+}
+
+function renderBulkQueueCard(
+  state: RewriteUiState,
+  labelOptions: readonly PartType[],
+  assignIssues: ReturnType<typeof getAssignFormIssues>,
+): string {
+  const summary = state.bulkQueue.summary;
+
+  return `
+    <div class="result-card">
+      <h3>${escapeHtml(bulkActionHeading(state.bulkQueue.action))}</h3>
+      <p class="muted-copy">
+        ${escapeHtml(`${summary.uniqueLabelCount} unique labels · ${summary.totalScanCount} scans${summary.duplicateScanCount > 0 ? ` · ${summary.duplicateScanCount} duplicates collapsed` : ""}`)}
+      </p>
+      ${state.bulkQueue.failure ? `<p class="banner error">${escapeHtml(state.bulkQueue.failure.message)}</p>` : ""}
+      ${state.bulkQueue.rows.length === 0 ? `
+        <p class="muted-copy">${escapeHtml(emptyBulkQueueCopy(state.bulkQueue.action))}</p>
+      ` : `
+        <div class="event-list">
+          <ul class="activity-list">
+            ${state.bulkQueue.rows.map((row) => `
+              <li class="activity-row">
+                <div>
+                  <strong>${escapeHtml(row.code)}</strong>
+                  <div class="activity-detail">
+                    ${row.kind === "unlabeled"
+                      ? escapeHtml(`Printed label · batch ${row.batchId}`)
+                      : escapeHtml(`${row.partTypeName} · ${row.location} · ${row.targetType}`)}
+                  </div>
+                </div>
+                <div style="display:flex;gap:0.5rem;align-items:center">
+                  <span class="pill info">${escapeHtml(`×${row.count}`)}</span>
+                  <button type="button" data-action="bulk-queue-decrement" data-code="${attr(row.code)}">-1</button>
+                  <button type="button" data-action="bulk-queue-remove" data-code="${attr(row.code)}">Remove</button>
+                </div>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+      `}
+      <button type="button" data-action="bulk-queue-clear" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)} style="margin-top:1rem">
+        Clear queue
+      </button>
+      ${state.bulkQueue.action === "label" ? renderBulkLabelForm(state, labelOptions, assignIssues) : ""}
+      ${state.bulkQueue.action === "move" ? renderBulkMoveForm(state) : ""}
+      ${state.bulkQueue.action === "delete" ? renderBulkDeleteForm(state) : ""}
     </div>
   `;
 }
@@ -319,6 +464,150 @@ function renderEntityKindSwitch(state: RewriteUiState, locked: boolean): string 
         data-entity-kind="bulk"
       >Bulk Item</button>
     </div>
+  `;
+}
+
+function renderBulkLabelForm(
+  state: RewriteUiState,
+  labelOptions: readonly PartType[],
+  assignIssues: ReturnType<typeof getAssignFormIssues>,
+): string {
+  const form = state.bulkQueue.labelForm;
+  const selectedPartType =
+    labelOptions.find((partType) => partType.id === form.existingPartTypeId) ??
+    state.catalogSuggestions.find((partType) => partType.id === form.existingPartTypeId);
+
+  return `
+    <form class="form-grid" data-form="bulk-label" style="margin-top:1rem">
+      <div class="wide mode-toggle" role="radiogroup" aria-label="Bulk label type mode">
+        <button type="button" role="radio" class="${form.partTypeMode === "existing" ? "selected" : ""}" aria-checked="${String(form.partTypeMode === "existing")}" data-action="set-bulk-label-mode" data-assign-mode="existing">Use existing type</button>
+        <button type="button" role="radio" class="${form.partTypeMode === "new" ? "selected" : ""}" aria-checked="${String(form.partTypeMode === "new")}" data-action="set-bulk-label-mode" data-assign-mode="new">Create new type</button>
+      </div>
+      ${form.partTypeMode === "existing" ? `
+        <label class="wide">
+          Search existing part types
+          <input name="bulkLabelSearch.query" value="${attr(state.bulkQueue.labelSearch.query)}" placeholder="Arduino, JST, PLA, cotton..." />
+        </label>
+        ${state.bulkQueue.labelSearch.error ? `<p class="banner error wide">${escapeHtml(state.bulkQueue.labelSearch.error)}</p>` : ""}
+        ${assignIssues.existingPartTypeId ? `<p class="field-error wide">${escapeHtml(assignIssues.existingPartTypeId)}</p>` : ""}
+        <div class="wide picker" role="radiogroup" aria-label="Existing part types">
+          ${labelOptions.length > 0 ? labelOptions.map((partType) => `
+            <button
+              type="button"
+              role="radio"
+              aria-checked="${String(form.existingPartTypeId === partType.id)}"
+              class="${form.existingPartTypeId === partType.id ? "selected" : ""}"
+              data-action="select-bulk-label-part"
+              data-part-id="${attr(partType.id)}"
+            >
+              <strong>${escapeHtml(partType.canonicalName)}</strong>
+              <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+            </button>
+          `).join("") : `<p class="muted-copy">No matching part types yet.</p>`}
+        </div>
+        ${selectedPartType ? `
+          <button type="button" class="disclosure wide" data-action="create-bulk-label-variant" data-part-id="${attr(selectedPartType.id)}">
+            Create a variant of "${escapeHtml(selectedPartType.canonicalName)}"
+          </button>
+        ` : ""}
+      ` : `
+        <label class="wide">
+          New canonical name
+          <input name="bulkLabel.canonicalName" value="${attr(form.canonicalName)}" placeholder="Arduino Uno R3" />
+          ${assignIssues.canonicalName ? `<span class="field-error">${escapeHtml(assignIssues.canonicalName)}</span>` : ""}
+        </label>
+        <label class="wide">
+          Category path
+          <input name="bulkLabel.category" value="${attr(form.category)}" placeholder="Electronics / Resistors / SMD 0603" />
+          ${assignIssues.category ? `<span class="field-error">${escapeHtml(assignIssues.category)}</span>` : ""}
+        </label>
+      `}
+      ${form.partTypeMode === "existing" && selectedPartType?.countable ? `
+        <div class="wide mode-toggle" role="radiogroup" aria-label="Inventory entry">
+          <button type="button" role="radio" aria-checked="${String(form.entityKind === "instance")}" class="${form.entityKind === "instance" ? "selected" : ""}" data-action="set-bulk-label-entity-kind" data-entity-kind="instance">Tracked unit</button>
+          <button type="button" role="radio" aria-checked="${String(form.entityKind === "bulk")}" class="${form.entityKind === "bulk" ? "selected" : ""}" data-action="set-bulk-label-entity-kind" data-entity-kind="bulk">Bulk pool</button>
+        </div>
+      ` : ""}
+      ${form.partTypeMode === "new" && form.entityKind === "bulk" ? `
+        <div class="wide mode-toggle" role="radiogroup" aria-label="Part type kind">
+          <button type="button" role="radio" aria-checked="${String(form.countable)}" class="${form.countable ? "selected" : ""}" data-action="set-bulk-label-countability" data-countable="true">Piece-counted</button>
+          <button type="button" role="radio" aria-checked="${String(!form.countable)}" class="${!form.countable ? "selected" : ""}" data-action="set-bulk-label-countability" data-countable="false">Measured</button>
+        </div>
+      ` : ""}
+      <label class="wide">
+        Location
+        <input name="bulkLabel.location" value="${attr(form.location)}" placeholder="Shelf A / Bin 7" />
+        ${assignIssues.location ? `<span class="field-error">${escapeHtml(assignIssues.location)}</span>` : ""}
+      </label>
+      ${renderLocationTreePicker(state.knownLocations, form.location, "tree-pick-bulk-label-location")}
+      <label class="wide">
+        Notes
+        <textarea name="bulkLabel.notes">${escapeHtml(form.notes)}</textarea>
+      </label>
+      ${form.entityKind === "instance" ? `
+        <label>
+          Initial status
+          <select name="bulkLabel.initialStatus">
+            ${instanceStatuses.map((status) => `<option value="${status}"${selected(status === form.initialStatus)}>${escapeHtml(status)}</option>`).join("")}
+          </select>
+        </label>
+      ` : `
+        <label>
+          Unit of measure
+          <select name="bulkLabel.unitSymbol">
+            ${measurementUnitCatalog.filter((unit) => (form.countable ? unit.isInteger : true)).map((unit) => `
+              <option value="${attr(unit.symbol)}"${selected(unit.symbol === form.unitSymbol)}>${escapeHtml(unit.name)} (${escapeHtml(unit.symbol)})</option>
+            `).join("")}
+          </select>
+        </label>
+        <label>
+          Starting quantity
+          <input type="number" min="${(measurementUnitCatalog.find((unit) => unit.symbol === form.unitSymbol) ?? measurementUnitCatalog[0]).isInteger ? "1" : "0.000001"}" inputmode="decimal" name="bulkLabel.initialQuantity" value="${attr(form.initialQuantity)}" step="${quantityInputStep((measurementUnitCatalog.find((unit) => unit.symbol === form.unitSymbol) ?? measurementUnitCatalog[0]).isInteger)}" placeholder="${(measurementUnitCatalog.find((unit) => unit.symbol === form.unitSymbol) ?? measurementUnitCatalog[0]).isInteger ? "1" : "0.1"}" />
+          ${assignIssues.initialQuantity ? `<span class="field-error">${escapeHtml(assignIssues.initialQuantity)}</span>` : ""}
+        </label>
+        <label>
+          Low-stock threshold
+          <input type="number" min="0" inputmode="decimal" name="bulkLabel.minimumQuantity" value="${attr(form.minimumQuantity)}" step="${quantityInputStep((measurementUnitCatalog.find((unit) => unit.symbol === form.unitSymbol) ?? measurementUnitCatalog[0]).isInteger)}" placeholder="Optional" />
+          ${assignIssues.minimumQuantity ? `<span class="field-error">${escapeHtml(assignIssues.minimumQuantity)}</span>` : ""}
+        </label>
+      `}
+      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || Object.keys(assignIssues).length > 0)}>
+        ${state.pendingAction === "bulk" ? "Labeling..." : `Label ${state.bulkQueue.summary.uniqueLabelCount} labels`}
+      </button>
+    </form>
+  `;
+}
+
+function renderBulkMoveForm(state: RewriteUiState): string {
+  return `
+    <form class="form-grid" data-form="bulk-move" style="margin-top:1rem">
+      <label class="wide">
+        Destination location
+        <input name="bulkMove.location" value="${attr(state.bulkQueue.moveForm.location)}" placeholder="Shelf B" />
+      </label>
+      <label class="wide">
+        Notes
+        <textarea name="bulkMove.notes">${escapeHtml(state.bulkQueue.moveForm.notes)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.moveForm.location.trim().length === 0)}>
+        ${state.pendingAction === "bulk" ? "Moving..." : `Move ${state.bulkQueue.summary.uniqueLabelCount} labels`}
+      </button>
+    </form>
+  `;
+}
+
+function renderBulkDeleteForm(state: RewriteUiState): string {
+  return `
+    <form class="form-grid" data-form="bulk-delete" style="margin-top:1rem">
+      <p class="banner error wide">Reverses fresh ingests only. The correction audit row survives, so this is never data loss.</p>
+      <label class="wide">
+        Reason
+        <textarea name="bulkDelete.reason">${escapeHtml(state.bulkQueue.deleteForm.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
+        ${state.pendingAction === "bulk" ? "Reversing..." : `Reverse ${state.bulkQueue.summary.uniqueLabelCount} ingests`}
+      </button>
+    </form>
   `;
 }
 
@@ -598,7 +887,9 @@ function renderInteractCard(
           ${state.scanResult.entity.minimumQuantity !== null ? `<span class="quantity-threshold">min ${escapeHtml(formatQuantity(state.scanResult.entity.minimumQuantity))} ${escapeHtml(state.scanResult.entity.partType.unit.symbol)}</span>` : ""}
         </div>
       ` : `<p>Current state: <strong>${escapeHtml(state.scanResult.entity.state)}</strong></p>`}
+      ${renderCurrentBorrow(state)}
       <p class="muted-copy" style="font-size:0.78rem">Part-DB sync: ${escapeHtml(state.scanResult.entity.partDbSyncStatus)}</p>
+      ${renderScanQuickChips(state)}
       ${(() => {
         const actions = state.scanResult.availableActions;
         const primary = actions.filter((a) => a === "checked_out");
@@ -655,6 +946,7 @@ function renderInteractCard(
           ${state.pendingAction === "event" ? "Saving..." : escapeHtml(`Confirm ${actionLabel(state.eventForm.event)}`)}
         </button>
       </form>
+      ${renderScanLocations(state)}
       <div class="event-list">
         ${state.scanResult.recentEvents.map((stockEvent) => `
           <article>
@@ -664,7 +956,399 @@ function renderInteractCard(
           </article>
         `).join("")}
       </div>
+      ${state.scanEdit.status === "closed"
+        ? renderScanEditEntry(state)
+        : renderScanEditPanel(state)}
     </div>
+  `;
+}
+
+function renderScanEditEntry(state: RewriteUiState): string {
+  const scan = state.scanResult;
+  if (!scan || scan.mode !== "interact") {
+    return "";
+  }
+  const canReverse = "canReverseIngest" in scan ? scan.canReverseIngest : false;
+  const canEditShared = "canEditSharedType" in scan ? scan.canEditSharedType : false;
+  const pending = state.pendingAction !== null;
+
+  const reverseButton = canReverse
+    ? `<button type="button" data-action="scan-edit-open-reverse" ${disabled(pending)}>Reverse ingest</button>`
+    : `<p class="muted-copy" style="margin:0.25rem 0">Reverse ingest is only possible for fresh, untouched assignments.</p>`;
+  const sharedButton = canEditShared
+    ? `<button type="button" data-action="scan-edit-open-shared" ${disabled(pending)}>Rename shared part type</button>`
+    : "";
+
+  return `
+    <div class="scan-edit-entry" style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.35rem">
+      <button type="button" class="disclosure primary" data-action="scan-edit-open" ${disabled(pending)}>Relabel</button>
+      <details class="more-corrections">
+        <summary style="cursor:pointer;font-size:0.85rem">More corrections</summary>
+        <div class="more-corrections-body" style="display:flex;flex-direction:column;gap:0.35rem;margin-top:0.35rem">
+          ${reverseButton}
+          ${sharedButton}
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+function renderLocationTreePicker(
+  knownLocations: readonly string[],
+  current: string,
+  pickAction: string,
+): string {
+  if (knownLocations.length === 0) {
+    return "";
+  }
+  const view = buildTreePickerView(knownLocations, current);
+  const breadcrumbButtons = [
+    `<button type="button" class="disclosure" data-action="${attr(pickAction)}" data-location="">All</button>`,
+    ...view.breadcrumb.map(
+      (entry) =>
+        `<button type="button" class="disclosure" data-action="${attr(pickAction)}" data-location="${attr(entry.pathUpToHere)}">${escapeHtml(entry.segment)}</button>`,
+    ),
+  ].join(`<span aria-hidden="true" style="margin:0 0.25rem">/</span>`);
+
+  const children = view.children.length === 0
+    ? ""
+    : `
+      <div class="wide picker" role="listbox" aria-label="Location children">
+        ${view.children
+          .map(
+            (child) => `
+              <button type="button" role="option" data-action="${attr(pickAction)}" data-location="${attr(child.fullPath)}">
+                <strong>${escapeHtml(child.segment)}</strong>
+                ${child.hasChildren ? `<span>nested</span>` : child.isKnownLeaf ? `<span>leaf</span>` : ""}
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
+
+  return `
+    <div class="tree-picker wide" aria-label="Location tree">
+      <div class="tree-breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;margin-bottom:0.35rem">${breadcrumbButtons}</div>
+      ${children}
+    </div>
+  `;
+}
+
+function renderCategoryTreePicker(
+  knownCategories: readonly string[],
+  current: string,
+  pickAction: string,
+): string {
+  const view = buildTreePickerView(knownCategories, current);
+  if (knownCategories.length === 0) {
+    return "";
+  }
+  const breadcrumbButtons = [
+    `<button type="button" class="disclosure" data-action="${attr(pickAction)}" data-category="">All</button>`,
+    ...view.breadcrumb.map(
+      (entry) =>
+        `<button type="button" class="disclosure" data-action="${attr(pickAction)}" data-category="${attr(entry.pathUpToHere)}">${escapeHtml(entry.segment)}</button>`,
+    ),
+  ].join(`<span aria-hidden="true" style="margin:0 0.25rem">/</span>`);
+
+  const children = view.children.length === 0
+    ? ""
+    : `
+      <div class="wide picker" role="listbox" aria-label="Category children">
+        ${view.children
+          .map(
+            (child) => `
+              <button type="button" role="option" data-action="${attr(pickAction)}" data-category="${attr(child.fullPath)}">
+                <strong>${escapeHtml(child.segment)}</strong>
+                ${child.hasChildren ? `<span>nested</span>` : child.isKnownLeaf ? `<span>leaf</span>` : ""}
+              </button>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
+
+  return `
+    <div class="tree-picker wide" aria-label="Category tree">
+      <div class="tree-breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;margin-bottom:0.35rem">${breadcrumbButtons}</div>
+      ${children}
+    </div>
+  `;
+}
+
+function renderCurrentBorrow(state: RewriteUiState): string {
+  const scan = state.scanResult;
+  if (!scan || scan.mode !== "interact" || !("currentBorrow" in scan)) {
+    return "";
+  }
+  const borrow = scan.currentBorrow;
+  if (!borrow) {
+    return "";
+  }
+  const overdue = borrow.isOverdue
+    ? `<span class="pill overdue" style="margin-left:0.5rem">Overdue</span>`
+    : "";
+  const due = borrow.dueAt
+    ? ` · due ${escapeHtml(formatTimestamp(borrow.dueAt))}`
+    : "";
+  return `
+    <p class="borrow-status" style="margin-top:0.25rem">
+      Borrowed by <strong>${escapeHtml(borrow.borrower)}</strong> since ${escapeHtml(formatTimestamp(borrow.borrowedAt))}${due}${overdue}
+    </p>
+  `;
+}
+
+function renderScanQuickChips(state: RewriteUiState): string {
+  if (!state.scanResult || state.scanResult.mode !== "interact") {
+    return "";
+  }
+  const entity = state.scanResult.entity;
+  const available = new Set(state.scanResult.availableActions);
+  const pending = state.pendingAction !== null;
+
+  const chips: string[] = [];
+  if (entity.targetType === "bulk") {
+    if (available.has("restocked")) {
+      chips.push(`<button type="button" data-action="quick-bulk-increment" ${disabled(pending)}>+1</button>`);
+    }
+    if (available.has("consumed") && (entity.quantity ?? 0) > 0) {
+      chips.push(`<button type="button" data-action="quick-bulk-decrement" ${disabled(pending)}>-1</button>`);
+    }
+  } else {
+    if (available.has("checked_out")) {
+      chips.push(`<button type="button" data-action="quick-instance-checkout-me" ${disabled(pending)}>Check out (me)</button>`);
+    }
+    if (available.has("returned")) {
+      chips.push(`<button type="button" data-action="quick-instance-return" ${disabled(pending)}>Return</button>`);
+    }
+  }
+
+  if (chips.length === 0) {
+    return "";
+  }
+
+  return `<div class="quick-chips" aria-label="Quick actions">${chips.join("")}</div>`;
+}
+
+function renderScanLocations(state: RewriteUiState): string {
+  if (!state.scanResult || state.scanResult.mode !== "interact") {
+    return "";
+  }
+  const locations = state.scanLocations;
+  const currentPartTypeId = state.scanResult.entity.partType.id;
+  const scannedId = state.scanResult.entity.id;
+  const unit = state.scanResult.entity.partType.unit;
+
+  if (locations.status === "idle") {
+    return "";
+  }
+  if (locations.partTypeId !== currentPartTypeId) {
+    return "";
+  }
+  if (locations.status === "loading") {
+    return `<p class="muted-copy" style="margin-top:0.5rem">Loading other locations...</p>`;
+  }
+  if (locations.status === "error") {
+    return `<p class="banner error" style="margin-top:0.5rem">${escapeHtml(locations.message)}</p>`;
+  }
+  const { bulkStocks, instances } = locations.data;
+  const total = bulkStocks.length + instances.length;
+  if (total <= 1) {
+    return `<p class="muted-copy" style="margin-top:0.5rem">No other ${escapeHtml(state.scanResult.entity.partType.canonicalName)} on record.</p>`;
+  }
+
+  return `
+    <section class="scan-locations" aria-label="Other locations for this part" style="margin-top:0.75rem">
+      <p class="muted-copy">At ${total} places:</p>
+      <ul class="inventory-detail-list">
+        ${bulkStocks.map((bulk) => `
+          <li class="inventory-detail-item${bulk.id === scannedId ? " selected" : ""}">
+            <code>${escapeHtml(bulk.qrCode)}</code>
+            <span>${escapeHtml(bulk.location)}</span>
+            <strong>${escapeHtml(String(bulk.quantity))} ${escapeHtml(unit.symbol)}</strong>
+          </li>
+        `).join("")}
+        ${instances.map((instance) => `
+          <li class="inventory-detail-item${instance.id === scannedId ? " selected" : ""}">
+            <code>${escapeHtml(instance.qrCode)}</code>
+            <span>${escapeHtml(instance.location)}</span>
+            <strong>${escapeHtml(instance.status)}</strong>
+            ${instance.assignee ? `<span>${escapeHtml(instance.assignee)}</span>` : ""}
+          </li>
+        `).join("")}
+      </ul>
+    </section>
+  `;
+}
+
+function renderScanEditPanel(state: RewriteUiState): string {
+  if (state.scanEdit.status !== "open" || !state.scanResult || state.scanResult.mode !== "interact") {
+    return "";
+  }
+  const edit = state.scanEdit;
+  const target = state.scanResult;
+  const targetEntity = target.entity;
+
+  return `
+    <section class="scan-edit-panel" aria-label="Edit this part">
+      <div class="scan-edit-header">
+        <strong>Edit</strong>
+        <button type="button" class="disclosure" data-action="scan-edit-close" ${disabled(state.pendingAction !== null)}>Close</button>
+      </div>
+      <p class="muted-copy">
+        Category: ${escapeHtml(formatCategoryPath(targetEntity.partType.categoryPath))}
+      </p>
+      <div class="wide mode-toggle" role="radiogroup" aria-label="Edit action">
+        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reassign")}" class="${edit.form.action === "reassign" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reassign">Relabel</button>
+        ${"canEditSharedType" in target && target.canEditSharedType ? `<button type="button" role="radio" aria-checked="${String(edit.form.action === "editShared")}" class="${edit.form.action === "editShared" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="editShared">Rename shared type</button>` : ""}
+        ${"canReverseIngest" in target && target.canReverseIngest ? `<button type="button" role="radio" aria-checked="${String(edit.form.action === "reverseIngest")}" class="${edit.form.action === "reverseIngest" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reverseIngest">Reverse ingest</button>` : ""}
+      </div>
+
+      ${edit.form.action === "reassign" ? renderScanEditReassignForm(state, edit.form, targetEntity) : ""}
+      ${edit.form.action === "editShared" ? renderScanEditSharedForm(state, edit.form, targetEntity) : ""}
+      ${edit.form.action === "reverseIngest" ? renderScanEditReverseForm(state, edit.form) : ""}
+
+      ${edit.history.length > 0 || edit.historyError ? `
+        <div class="event-list" style="margin-top:1rem">
+          ${edit.historyError ? `<p class="banner error">${escapeHtml(edit.historyError)}</p>` : ""}
+          ${edit.history.map((event) => `
+            <article>
+              <strong>${escapeHtml(correctionLabel(event.correctionKind))}</strong>
+              <span>${escapeHtml(event.actor)} · ${escapeHtml(formatTimestamp(event.createdAt))}</span>
+              <small>${escapeHtml(event.reason)}</small>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderScanEditReassignForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "reassign" },
+  targetEntity: Extract<RewriteUiState["scanResult"], { mode: "interact" }>["entity"],
+): string {
+  const compatibleReplacementTypes = (form.search.results.length > 0 ? form.search.results : state.catalogSuggestions)
+    .filter((partType) => partType.id !== targetEntity.partType.id)
+    .filter((partType) => {
+      if (targetEntity.targetType === "instance") {
+        return partType.countable;
+      }
+      return !partType.countable || partType.unit.isInteger;
+    });
+
+  return `
+    <form class="form-grid" data-form="scan-edit-reassign">
+      <label class="wide">
+        Find replacement part type
+        <input name="scanEditSearch.query" value="${attr(form.search.query)}" placeholder="Search existing type" />
+      </label>
+      ${form.search.error ? `<p class="banner error wide">${escapeHtml(form.search.error)}</p>` : ""}
+      <div class="wide picker" role="radiogroup" aria-label="Replacement part type">
+        ${compatibleReplacementTypes.map((partType) => `
+          <button type="button" role="radio" aria-checked="${String(form.replacementPartTypeId === partType.id)}" class="${form.replacementPartTypeId === partType.id ? "selected" : ""}" data-action="select-scan-edit-part" data-part-id="${attr(partType.id)}">
+            <strong>${escapeHtml(partType.canonicalName)}</strong>
+            <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+          </button>
+        `).join("")}
+      </div>
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Reassign this scan"}</button>
+    </form>
+  `;
+}
+
+function renderScanEditSharedForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "editShared" },
+  targetEntity: Extract<RewriteUiState["scanResult"], { mode: "interact" }>["entity"],
+): string {
+  const usage = state.inventorySummary.find((row) => row.id === targetEntity.partType.id) ?? null;
+  const sharedEditConflicts = findSharedTypeConflictCandidates(
+    state.inventorySummary,
+    targetEntity.partType.id,
+    form.sharedCanonicalName,
+    form.sharedCategory,
+  );
+
+  return `
+    <form class="form-grid" data-form="scan-edit-shared">
+      <p class="banner error wide">
+        This renames the shared catalog type itself, not just the scanned item.
+        ${usage ? escapeHtml(` It is currently linked to ${usage.entityCount ?? usage.instanceCount + usage.bins} QR${(usage.entityCount ?? usage.instanceCount + usage.bins) === 1 ? "" : "s"} across locations.`) : ""}
+      </p>
+      <label class="wide">
+        Shared canonical name
+        <input name="scanEdit.sharedCanonicalName" value="${attr(form.sharedCanonicalName)}" />
+      </label>
+      <label class="wide">
+        Shared category path
+        <input name="scanEdit.sharedCategory" value="${attr(form.sharedCategory)}" />
+      </label>
+      ${renderCategoryTreePicker(state.knownCategories, form.sharedCategory, "tree-pick-scan-edit-category")}
+      ${sharedEditConflicts.length > 0 ? `
+        <div class="wide">
+          <p class="banner error">A matching part type already exists. Use 'Fix this item only' to reassign this scan instead of renaming the shared type.</p>
+          <div class="picker" role="listbox" aria-label="Existing matching part types">
+            ${sharedEditConflicts.map((match) => `
+              <button type="button" role="option" data-action="select-scan-edit-part" data-part-id="${attr(match.id)}">
+                <strong>${escapeHtml(match.canonicalName)}</strong>
+                <span>${escapeHtml(formatCategoryPath(match.categoryPath))}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
+    </form>
+  `;
+}
+
+function renderScanEditReverseForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "reverseIngest" },
+): string {
+  return `
+    <form class="form-grid" data-form="scan-edit-reverse">
+      <p class="banner error">Reverse ingest only when this was the original intake mistake. Historical lifecycle events remain in the audit trail.</p>
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Reversing..." : "Reverse ingest"}</button>
+    </form>
+  `;
+}
+
+function renderInventoryReverseToolbar(state: RewriteUiState, partTypeId: string): string {
+  const selection = state.inventoryReverseSelection;
+  if (selection.partTypeId !== partTypeId || selection.targets.length === 0) {
+    return "";
+  }
+  const count = selection.targets.length;
+  return `
+    <form class="form-grid inventory-reverse-toolbar" data-form="inventory-reverse" style="margin-top:0.75rem;border-top:1px solid var(--rule, #ccc);padding-top:0.75rem">
+      <p class="banner error wide">Reversing sends each selected QR back to printed. The correction audit row survives.</p>
+      <label class="wide">
+        Reason
+        <textarea name="inventoryReverse.reason" placeholder="Why is this being reversed?">${escapeHtml(selection.reason)}</textarea>
+      </label>
+      <div class="inventory-reverse-actions" style="display:flex;gap:0.5rem;align-items:center">
+        <button type="submit" ${disabled(state.pendingAction !== null || selection.reason.trim().length === 0)}>
+          ${state.pendingAction === "correct" ? "Reversing..." : `Reverse ${count} ingest${count === 1 ? "" : "s"}`}
+        </button>
+        <button type="button" class="disclosure" data-action="inventory-reverse-clear" ${disabled(state.pendingAction !== null)}>Clear selection</button>
+      </div>
+    </form>
   `;
 }
 
@@ -723,8 +1407,7 @@ function renderInventoryTab(state: RewriteUiState): string {
                       ${subPath ? `<span>${escapeHtml(subPath)}</span>` : ""}
                     </div>
                     <div class="inventory-row-quantity">
-                      <span class="qty-value">${row.countable ? row.instanceCount : escapeHtml(formatQuantity(row.onHand))}</span>
-                      <span class="qty-unit">${escapeHtml(row.unit.symbol)}</span>
+                      <span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span><span class="qty-unit">${escapeHtml(row.unit.symbol)}${row.entityCount > 0 ? ` · ${row.entityCount} QR${row.entityCount === 1 ? "" : "s"}` : ""}</span>
                     </div>
                   </button>
                   <button type="button" class="inventory-row-arrow" data-action="open-part-detail" data-part-type-id="${attr(row.id)}" aria-label="Open ${attr(row.canonicalName)} details">
@@ -734,22 +1417,37 @@ function renderInventoryTab(state: RewriteUiState): string {
                     <div class="inventory-row-detail">
                       ${expandedError ? `<p class="banner error">${escapeHtml(expandedError)}</p>` : expandedItems && (expandedItems.bulkStocks.length > 0 || expandedItems.instances.length > 0) ? `
                         <ul class="inventory-detail-list">
-                          ${expandedItems.bulkStocks.map((bulk) => `
-                            <li class="inventory-detail-item">
-                              <code>${escapeHtml(bulk.qrCode)}</code>
-                              <span>${escapeHtml(bulk.location)}</span>
-                              <strong>${escapeHtml(formatQuantity(bulk.quantity))} ${escapeHtml(row.unit.symbol)}</strong>
-                            </li>
-                          `).join("")}
-                          ${expandedItems.instances.map((instance) => `
-                            <li class="inventory-detail-item">
-                              <code>${escapeHtml(instance.qrCode)}</code>
-                              <span>${escapeHtml(instance.location)}</span>
-                              <strong>${escapeHtml(instance.status)}</strong>
-                              ${instance.assignee ? `<span>${escapeHtml(instance.assignee)}</span>` : ""}
-                            </li>
-                          `).join("")}
+                          ${expandedItems.bulkStocks.map((bulk) => {
+                            const key = `bulk:${bulk.id}`;
+                            const selected =
+                              state.inventoryReverseSelection.partTypeId === row.id &&
+                              state.inventoryReverseSelection.targets.some((t) => `${t.kind}:${t.id}` === key);
+                            return `
+                              <li class="inventory-detail-item${selected ? " selected" : ""}">
+                                ${bulk.canReverseIngest ? `<input type="checkbox"${selected ? " checked" : ""} data-action="inventory-reverse-toggle" data-part-type-id="${attr(row.id)}" data-kind="bulk" data-id="${attr(bulk.id)}" data-qr-code="${attr(bulk.qrCode)}" aria-label="Select ${attr(bulk.qrCode)} for reverse" />` : `<span class="inventory-checkbox-spacer" aria-hidden="true"></span>`}
+                                <code>${escapeHtml(bulk.qrCode)}</code>
+                                <span>${escapeHtml(bulk.location)}</span>
+                                <strong>${escapeHtml(formatQuantity(bulk.quantity))} ${escapeHtml(row.unit.symbol)}</strong>
+                              </li>
+                            `;
+                          }).join("")}
+                          ${expandedItems.instances.map((instance) => {
+                            const key = `instance:${instance.id}`;
+                            const selected =
+                              state.inventoryReverseSelection.partTypeId === row.id &&
+                              state.inventoryReverseSelection.targets.some((t) => `${t.kind}:${t.id}` === key);
+                            return `
+                              <li class="inventory-detail-item${selected ? " selected" : ""}">
+                                ${instance.canReverseIngest ? `<input type="checkbox"${selected ? " checked" : ""} data-action="inventory-reverse-toggle" data-part-type-id="${attr(row.id)}" data-kind="instance" data-id="${attr(instance.id)}" data-qr-code="${attr(instance.qrCode)}" aria-label="Select ${attr(instance.qrCode)} for reverse" />` : `<span class="inventory-checkbox-spacer" aria-hidden="true"></span>`}
+                                <code>${escapeHtml(instance.qrCode)}</code>
+                                <span>${escapeHtml(instance.location)}</span>
+                                <strong>${escapeHtml(instance.status)}</strong>
+                                ${instance.assignee ? `<span>${escapeHtml(instance.assignee)}</span>` : ""}
+                              </li>
+                            `;
+                          }).join("")}
                         </ul>
+                        ${renderInventoryReverseToolbar(state, row.id)}
                       ` : `<p class="muted-copy">No items assigned to this part type.</p>`}
                     </div>
                   ` : ""}
@@ -901,6 +1599,7 @@ function renderActivityTab(state: RewriteUiState): string {
           }).join("")}
         </ul>
       ` : ""}
+      ${renderCorrectionLog(state)}
       ${state.scanHistory.length > 0 ? `
         <h3 class="activity-section-title">This session</h3>
         <ul class="activity-list">
@@ -919,6 +1618,38 @@ function renderActivityTab(state: RewriteUiState): string {
         </ul>
       ` : ""}
     </section>
+  `;
+}
+
+function renderCorrectionLog(state: RewriteUiState): string {
+  if (state.correctionLog.length === 0 && !state.correctionLogError) {
+    return "";
+  }
+  return `
+    <h3 class="activity-section-title">Corrections</h3>
+    ${state.correctionLogError ? `<p class="banner error">${escapeHtml(state.correctionLogError)}</p>` : ""}
+    <ul class="activity-list correction-log">
+      ${state.correctionLog.map((event) => {
+        const after = (event.after ?? null) as Record<string, unknown> | null;
+        const before = (event.before ?? null) as Record<string, unknown> | null;
+        const qrCode =
+          typeof after?.qrCode === "string"
+            ? after.qrCode
+            : typeof before?.qrCode === "string"
+              ? before.qrCode
+              : null;
+        return `
+          <li class="activity-item">
+            <div class="activity-item-header">
+              <span class="activity-action">${escapeHtml(correctionLabel(event.correctionKind))} by ${escapeHtml(event.actor)}</span>
+              <span class="activity-time">${escapeHtml(formatTimestamp(event.createdAt))}</span>
+            </div>
+            <span class="activity-detail">${escapeHtml(event.reason)}</span>
+            ${qrCode ? `<button type="button" class="disclosure" data-action="open-correction-on-scan" data-qr-code="${attr(qrCode)}" style="margin-top:0.25rem;font-size:0.8rem">Open ${escapeHtml(qrCode)} on scan</button>` : ""}
+          </li>
+        `;
+      }).join("")}
+    </ul>
   `;
 }
 
@@ -978,7 +1709,7 @@ function renderAdminTab(state: RewriteUiState): string {
       </section>
 
       <section class="panel">
-        ${renderPanelTitle("Canonicalize provisional types", "Merge cleanup uses its own predictive search state and request ordering.")}
+        ${renderPanelTitle("Canonicalize provisional types", "A provisional type is one a scanner created on the fly because the catalog didn't have it yet. This tool is where you merge near-duplicates into the canonical row or approve a provisional as canonical.")}
         <div class="stack">
           <label>
             Provisional source
@@ -1005,25 +1736,6 @@ function renderAdminTab(state: RewriteUiState): string {
         </div>
       </section>
 
-      <section class="panel">
-        ${renderPanelTitle("Correct mislabeled ingest", "Scan an already-ingested item or bin, then correct its linked part type, edit the shared definition, or reverse the ingest with a typed correction record.")}
-        <form class="scan-form" data-form="correction-scan">
-          <label class="sr-only" for="correction-scan-input">Scan ingested QR / Data Matrix</label>
-          <input
-            id="correction-scan-input"
-            name="correction.scanCode"
-            aria-label="Scan ingested QR / Data Matrix"
-            placeholder="Scan ingested QR / Data Matrix"
-            value="${attr(state.correctionUi.scanCode)}"
-            autocomplete="off"
-          />
-          <button type="submit" ${disabled(state.pendingAction !== null)}>
-            ${state.pendingAction === "correct" ? "Opening..." : "Open"}
-          </button>
-        </form>
-        ${state.correctionUi.targetError ? `<p class="banner error">${escapeHtml(state.correctionUi.targetError)}</p>` : ""}
-        ${state.correctionUi.target ? renderCorrectionTarget(state) : ""}
-      </section>
     </section>
   `;
 }
@@ -1347,129 +2059,26 @@ function scanModeLabel(mode: string): string {
   }
 }
 
-function renderCorrectionTarget(state: RewriteUiState): string {
-  const target = state.correctionUi.target!;
-  const targetEntity = target.entity;
-  const usage = state.inventorySummary.find((row) => row.id === targetEntity.partType.id) ?? null;
-  const sharedEditConflicts = findSharedTypeConflictCandidates(
-    state.inventorySummary,
-    targetEntity.partType.id,
-    state.correctionUi.sharedCanonicalName,
-    state.correctionUi.sharedCategory,
-  );
-  const compatibleReplacementTypes = (state.correctionUi.search.results.length > 0 ? state.correctionUi.search.results : state.catalogSuggestions)
-    .filter((partType) => partType.id !== targetEntity.partType.id)
-    .filter((partType) => {
-      if (targetEntity.targetType === "instance") {
-        return partType.countable;
-      }
-      return !partType.countable || partType.unit.isInteger;
-    });
+function bulkActionHeading(action: "label" | "move" | "delete"): string {
+  switch (action) {
+    case "label":
+      return "Bulk label queue";
+    case "move":
+      return "Bulk move queue";
+    case "delete":
+      return "Bulk reverse queue";
+  }
+}
 
-  return `
-    <div class="result-card">
-      <h3>${escapeHtml(targetEntity.partType.canonicalName)}</h3>
-      <p class="muted-copy">
-        ${escapeHtml(target.qrCode.code)} · ${escapeHtml(targetEntity.targetType)} · ${escapeHtml(targetEntity.location)}
-      </p>
-      <p class="muted-copy">
-        Category: ${escapeHtml(formatCategoryPath(targetEntity.partType.categoryPath))}
-      </p>
-      <div class="wide mode-toggle" role="radiogroup" aria-label="Correction action">
-        <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "reassign")}" class="${state.correctionUi.action === "reassign" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="reassign">Fix this item/bin only</button>
-        <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "editShared")}" class="${state.correctionUi.action === "editShared" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="editShared">Rename shared type (all linked items)</button>
-        <button type="button" role="radio" aria-checked="${String(state.correctionUi.action === "reverseIngest")}" class="${state.correctionUi.action === "reverseIngest" ? "selected" : ""}" data-action="set-correction-action" data-correction-action="reverseIngest">Reverse ingest</button>
-      </div>
-
-      ${state.correctionUi.action === "reassign" ? `
-        <form class="form-grid" data-form="correction-reassign">
-          <label class="wide">
-            Find replacement part type
-            <input name="correctionSearch.query" value="${attr(state.correctionUi.search.query)}" placeholder="Search existing type" />
-          </label>
-          ${state.correctionUi.search.error ? `<p class="banner error wide">${escapeHtml(state.correctionUi.search.error)}</p>` : ""}
-          <div class="wide picker" role="radiogroup" aria-label="Replacement part type">
-            ${compatibleReplacementTypes.map((partType) => `
-              <button type="button" role="radio" aria-checked="${String(state.correctionUi.replacementPartTypeId === partType.id)}" class="${state.correctionUi.replacementPartTypeId === partType.id ? "selected" : ""}" data-action="select-correction-part" data-part-id="${attr(partType.id)}">
-                <strong>${escapeHtml(partType.canonicalName)}</strong>
-                <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
-              </button>
-            `).join("")}
-          </div>
-          <label class="wide">
-            Reason
-            <textarea name="correction.reason">${escapeHtml(state.correctionUi.reason)}</textarea>
-          </label>
-          <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Reassign item/bin"}</button>
-        </form>
-      ` : ""}
-
-      ${state.correctionUi.action === "editShared" ? `
-        <form class="form-grid" data-form="correction-edit-shared">
-          <p class="banner error wide">
-            This renames the shared catalog type itself, not just the scanned item.
-            ${usage ? escapeHtml(` It is currently linked to ${usage.instanceCount} tracked items and ${usage.bins} bulk bins.`) : ""}
-          </p>
-          <label class="wide">
-            Shared canonical name
-            <input name="correction.sharedCanonicalName" value="${attr(state.correctionUi.sharedCanonicalName)}" />
-          </label>
-          <label class="wide">
-            Shared category path
-            <input name="correction.sharedCategory" value="${attr(state.correctionUi.sharedCategory)}" />
-          </label>
-          ${sharedEditConflicts.length > 0 ? `
-            <div class="wide">
-              <p class="banner error">A matching part type already exists. Reassign this scanned item to it instead of renaming the shared type.</p>
-              <div class="picker" role="listbox" aria-label="Existing matching part types">
-                ${sharedEditConflicts.map((match) => `
-                  <button type="button" role="option" data-action="use-correction-match" data-part-id="${attr(match.id)}" data-query="${attr(match.canonicalName)}">
-                    <strong>${escapeHtml(match.canonicalName)}</strong>
-                    <span>${escapeHtml(formatCategoryPath(match.categoryPath))}</span>
-                  </button>
-                `).join("")}
-              </div>
-            </div>
-          ` : ""}
-          <label class="wide">
-            Reason
-            <textarea name="correction.reason">${escapeHtml(state.correctionUi.reason)}</textarea>
-          </label>
-          <button type="submit" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
-        </form>
-      ` : ""}
-
-      ${state.correctionUi.action === "reverseIngest" ? `
-        <form class="form-grid" data-form="correction-reverse-ingest">
-          <p class="banner error">Reverse ingest only when this was the original intake mistake. Historical lifecycle events remain in the audit trail.</p>
-          <label class="wide">
-            Reason
-            <textarea name="correction.reason">${escapeHtml(state.correctionUi.reason)}</textarea>
-          </label>
-          <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Reversing..." : "Reverse ingest"}</button>
-        </form>
-      ` : ""}
-
-      <div class="event-list" style="margin-top:1rem">
-        ${target.recentEvents.map((stockEvent) => `
-          <article>
-            <strong>${escapeHtml(actionLabel(stockEvent.event))}</strong>
-            <span>${escapeHtml(stockEvent.actor)} · ${escapeHtml(formatTimestamp(stockEvent.createdAt))}</span>
-            <small>${escapeHtml(`${stockEvent.fromState ?? "none"} → ${stockEvent.toState ?? "none"}`)}</small>
-          </article>
-        `).join("")}
-        ${state.correctionUi.history.map((event) => `
-          <article>
-            <strong>${escapeHtml(correctionLabel(event.correctionKind))}</strong>
-            <span>${escapeHtml(event.actor)} · ${escapeHtml(formatTimestamp(event.createdAt))}</span>
-            <small>${escapeHtml(event.reason)}</small>
-          </article>
-        `).join("")}
-      </div>
-
-      <button type="button" data-action="correction-clear" ${disabled(state.pendingAction !== null)} style="margin-top:1rem">Clear correction target</button>
-    </div>
-  `;
+function emptyBulkQueueCopy(action: "label" | "move" | "delete"): string {
+  switch (action) {
+    case "label":
+      return "Scan printed Smart DB labels to build a homogeneous bulk labeling queue.";
+    case "move":
+      return "Scan assigned Smart DB labels to move several entities at once.";
+    case "delete":
+      return "Scan fresh ingests whose history is still just the original labeled event to reverse them in bulk.";
+  }
 }
 
 function correctionLabel(kind: string): string {

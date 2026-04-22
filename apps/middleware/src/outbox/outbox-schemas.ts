@@ -75,6 +75,7 @@ const createLotPayloadSchema = z
   .object({
     partIri: z.string().trim().nullable(),
     storageLocationName: z.string().trim().min(1),
+    storageLocationPath: z.array(z.string().trim().min(1)).min(1).optional(),
     amount: z.number().nonnegative(),
     description: z.string(),
     userBarcode: z.string().trim().min(1),
@@ -89,6 +90,7 @@ const updateLotPayloadSchema = z
       .object({
         amount: z.number().optional(),
         storageLocationName: z.string().trim().min(1).optional(),
+        storageLocationPath: z.array(z.string().trim().min(1)).min(1).optional(),
         description: z.string().optional(),
       })
       .strict(),
