@@ -157,6 +157,31 @@ function renderWorkspaceHeader(title: string, copy: string, kicker: string): str
   `;
 }
 
+function iconIdForPart(name: string, categoryPath: readonly string[]): string {
+  const blob = foldSearchText(`${name} ${categoryPath.join(" ")}`);
+  if (blob.includes("camera")) return "scan";
+  if (blob.includes("motor") || blob.includes("actuator") || blob.includes("servo")) return "actuator";
+  if (blob.includes("resistor")) return "resistor";
+  if (blob.includes("bearing")) return "bearing";
+  if (blob.includes("capacitor")) return "capacitor";
+  if (blob.includes("connector") || blob.includes("jst") || blob.includes("adapter")) return "connector";
+  if (blob.includes("pcb") || blob.includes("perf board") || blob.includes("proto-board")) return "pcb";
+  if (blob.includes("filament") || blob.includes("vinyl") || blob.includes("resin")) return "spool";
+  if (blob.includes("storage") || blob.includes("bin") || blob.includes("box")) return "inventory";
+  if (blob.includes("electronics") || blob.includes("compute") || blob.includes("sensor")) return "chip";
+  return "inventory";
+}
+
+function renderIconSlot(iconId: string, label: string): string {
+  return `
+    <span class="ui-icon-slot" aria-hidden="true" title="${attr(label)}">
+      <svg class="ui-icon" viewBox="0 0 24 24" fill="none">
+        <use href="/art/parts-icon-pack.svg#icon-${attr(iconId)}"></use>
+      </svg>
+    </span>
+  `;
+}
+
 function renderMetric(label: string, value: number): string {
   return `
     <article class="metric">
@@ -224,6 +249,13 @@ function renderTabBar(activeTab: TabId, tabs: readonly TabId[]): string {
     dashboard: "Dashboard",
     admin: "Admin",
   };
+  const icons: Record<TabId, string> = {
+    dashboard: "inventory",
+    scan: "scan",
+    inventory: "inventory",
+    activity: "activity",
+    admin: "batch",
+  };
 
   return `
     <nav class="tab-bar" role="tablist" aria-label="Primary navigation">
@@ -239,7 +271,12 @@ function renderTabBar(activeTab: TabId, tabs: readonly TabId[]): string {
           data-action="change-tab"
           data-tab="${tab}"
         >
-          ${labels[tab]}
+          <span class="tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <use href="/art/parts-icon-pack.svg#icon-${icons[tab]}"></use>
+            </svg>
+          </span>
+          <span class="tab-label">${labels[tab]}</span>
         </button>
       `).join("")}
     </nav>
@@ -564,8 +601,11 @@ function renderBulkLabelForm(
               data-action="select-bulk-label-part"
               data-part-id="${attr(partType.id)}"
             >
-              <strong>${escapeHtml(partType.canonicalName)}</strong>
-              <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+              ${renderIconSlot(iconIdForPart(partType.canonicalName, partType.categoryPath), partType.canonicalName)}
+              <span class="picker-copy">
+                <strong>${escapeHtml(partType.canonicalName)}</strong>
+                <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+              </span>
             </button>
           `).join("") : `<p class="muted-copy">No matching part types yet.</p>`}
         </div>
@@ -800,8 +840,11 @@ function renderPartTypeField(
             data-action="select-existing-part"
             data-part-id="${attr(partType.id)}"
           >
-            <strong>${escapeHtml(partType.canonicalName)}</strong>
-            <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+            ${renderIconSlot(iconIdForPart(partType.canonicalName, partType.categoryPath), partType.canonicalName)}
+            <span class="picker-copy">
+              <strong>${escapeHtml(partType.canonicalName)}</strong>
+              <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
+            </span>
           </button>
         `).join("") : `<p class="muted-copy">${trimmedQuery ? `No matches for "${escapeHtml(trimmedQuery)}".` : "No part types yet."} Use the button below to add one.</p>`}
       </div>
@@ -1485,8 +1528,11 @@ function renderInventoryTab(state: RewriteUiState): string {
                 <li class="inventory-row-wrap ${isStocked ? "stocked" : "empty"} ${isExpanded ? "expanded" : ""}">
                   <button type="button" class="inventory-row" data-action="toggle-inventory-expand" data-part-type-id="${attr(row.id)}" aria-expanded="${String(isExpanded)}">
                     <div class="inventory-row-name">
-                      <strong>${escapeHtml(row.canonicalName)}</strong>
-                      ${subPath ? `<span>${escapeHtml(subPath)}</span>` : ""}
+                      ${renderIconSlot(iconIdForPart(row.canonicalName, row.categoryPath), row.canonicalName)}
+                      <span class="inventory-row-copy">
+                        <strong>${escapeHtml(row.canonicalName)}</strong>
+                        ${subPath ? `<span>${escapeHtml(subPath)}</span>` : ""}
+                      </span>
                     </div>
                     <div class="inventory-row-quantity">
                       <span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span><span class="qty-unit">${escapeHtml(row.unit.symbol)}${row.entityCount > 0 ? ` · ${row.entityCount} QR${row.entityCount === 1 ? "" : "s"}` : ""}</span>
