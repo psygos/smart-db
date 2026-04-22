@@ -24,38 +24,38 @@ import { buildTreePickerView } from "./tree-picker";
 export function renderApp(state: RewriteUiState): string {
   if (state.authState.status === "checking") {
     return `
-      <div class="shell">
-        <p class="eyebrow">Smart DB</p>
-        <p class="muted-copy">Checking session...</p>
+      <div class="shell shell-auth">
+        <div class="auth-wait">
+          <p class="eyebrow">Smart DB</p>
+          <h1>Checking session</h1>
+          <p class="muted-copy">Restoring your inventory workspace.</p>
+        </div>
       </div>
     `;
   }
 
   if (state.authState.status !== "authenticated") {
     return `
-      <div class="shell">
-        <header class="hero">
-          <div>
-            <p class="eyebrow">Smart DB</p>
-            <h1>Sign In With Makerspace SSO</h1>
-            <p class="lede">
-              Smart DB authenticates through your Makerspace identity provider
-              and keeps inventory credentials out of the browser.
-            </p>
-          </div>
-          <div class="status-card">
-            <div class="pill warn">Authentication Required</div>
-            <p>
-              You will be redirected to Zitadel and returned here with a secure
-              session.
-            </p>
-          </div>
-        </header>
-
-        ${state.authState.error ? `<p class="banner error">${escapeHtml(state.authState.error)}</p>` : ""}
-        ${renderToasts(state.toasts)}
-
-        <section class="panel">
+      <div class="shell shell-auth">
+        <section class="auth-card">
+          <header class="auth-hero">
+            <div>
+              <p class="eyebrow">Smart DB</p>
+              <h1>Sign In With Makerspace SSO</h1>
+              <p class="lede">
+                Smart DB authenticates through your Makerspace identity provider
+                and keeps inventory credentials out of the browser.
+              </p>
+            </div>
+            <div class="status-card">
+              <div class="pill warn">Authentication Required</div>
+              <p>
+                You will be redirected to Zitadel and returned here with a secure
+                session.
+              </p>
+            </div>
+          </header>
+          <div class="auth-divider"></div>
           ${renderPanelTitle(
             "Makerspace Login",
             "Use your Makerspace SSO account. Smart DB uses a server-side session cookie instead of storing bearer tokens in the browser.",
@@ -70,6 +70,8 @@ export function renderApp(state: RewriteUiState): string {
             </a>
           </div>
         </section>
+        ${state.authState.error ? `<p class="banner error">${escapeHtml(state.authState.error)}</p>` : ""}
+        ${renderToasts(state.toasts)}
       </div>
     `;
   }
@@ -79,37 +81,49 @@ export function renderApp(state: RewriteUiState): string {
   const partDbSync = isAdmin ? getPartDbSyncPill(state.partDbSyncStatus) : null;
 
   return `
-    <div class="shell">
-      <header class="header-bar">
-        <strong class="header-brand">Smart DB</strong>
+    <div class="shell app-shell">
+      <header class="app-masthead">
+        <div class="app-brand">
+          <p class="eyebrow">Smart DB</p>
+          <div class="app-brand-row">
+            <strong class="header-brand">Smart DB</strong>
+            <span class="app-brand-tag">makerspace inventory</span>
+          </div>
+        </div>
         <div class="header-status">
           <span class="header-user">${escapeHtml(state.authState.session.username)}</span>
           ${partDbHealth ? `<div class="pill ${partDbHealth.tone}">${escapeHtml(partDbHealth.label)}</div>` : ""}
           ${partDbSync ? `<div class="pill ${partDbSync.tone}">${escapeHtml(partDbSync.label)}</div>` : ""}
         </div>
-        <button
-          type="button"
-          data-action="toggle-theme"
-          class="theme-toggle"
-          aria-label="${state.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}"
-          aria-pressed="${state.theme === "dark" ? "true" : "false"}"
-        >${state.theme === "dark" ? "◑ light" : "◐ dark"}</button>
-        <button
-          type="button"
-          data-action="logout"
-          ${disabled(state.pendingAction === "logout")}
-        >
-          ${state.pendingAction === "logout" ? "..." : "Logout"}
-        </button>
+        <div class="header-actions">
+          <button
+            type="button"
+            data-action="toggle-theme"
+            class="theme-toggle"
+            aria-label="${state.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}"
+            aria-pressed="${state.theme === "dark" ? "true" : "false"}"
+          >${state.theme === "dark" ? "Light" : "Dark"}</button>
+          <button
+            type="button"
+            data-action="logout"
+            ${disabled(state.pendingAction === "logout")}
+          >
+            ${state.pendingAction === "logout" ? "..." : "Logout"}
+          </button>
+        </div>
       </header>
+
+      ${renderShellSummary(state)}
 
       ${renderToasts(state.toasts)}
 
-      ${!state.isOnline ? `<p class="banner error">You appear to be offline.</p>` : ""}
-      ${state.sessionExpiringSoon ? `<p class="banner error">Session expires soon.</p>` : ""}
-      ${state.refreshError ? `<p class="banner error">${escapeHtml(state.refreshError)}</p>` : ""}
+      <div class="global-banners">
+        ${!state.isOnline ? `<p class="banner error">You appear to be offline.</p>` : ""}
+        ${state.sessionExpiringSoon ? `<p class="banner error">Session expires soon.</p>` : ""}
+        ${state.refreshError ? `<p class="banner error">${escapeHtml(state.refreshError)}</p>` : ""}
+      </div>
 
-      <main class="layout">
+      <main class="layout app-layout app-layout-${state.activeTab}">
         ${state.activeTab === "scan" ? renderScanTab(state) : ""}
         ${state.activeTab === "inventory" ? renderInventoryTab(state) : ""}
         ${state.activeTab === "activity" ? renderActivityTab(state) : ""}
@@ -131,12 +145,40 @@ function renderPanelTitle(title: string, copy: string): string {
   `;
 }
 
+function renderWorkspaceHeader(title: string, copy: string, kicker: string): string {
+  return `
+    <header class="workspace-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(kicker)}</p>
+        <h2>${escapeHtml(title)}</h2>
+      </div>
+      <p class="workspace-copy">${escapeHtml(copy)}</p>
+    </header>
+  `;
+}
+
 function renderMetric(label: string, value: number): string {
   return `
     <article class="metric">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </article>
+  `;
+}
+
+function renderShellSummary(state: RewriteUiState): string {
+  if (state.dashboard === null) {
+    return "";
+  }
+
+  return `
+    <section class="shell-summary" aria-label="Inventory overview">
+      ${renderMetric("Part types", state.dashboard.partTypeCount)}
+      ${renderMetric("Instances", state.dashboard.instanceCount)}
+      ${renderMetric("Bulk bins", state.dashboard.bulkStockCount)}
+      ${renderMetric("Provisional", state.dashboard.provisionalCount)}
+      ${renderMetric("Unassigned QRs", state.dashboard.unassignedQrCount)}
+    </section>
   `;
 }
 
@@ -158,10 +200,26 @@ function renderToasts(toasts: readonly ToastRecord[]): string {
   `;
 }
 
+function renderScanEmptyState(state: RewriteUiState): string {
+  return `
+    <div class="result-card result-card-empty">
+      <p class="eyebrow">Ready</p>
+      <h3>${escapeHtml(state.scanMode.kind === "bulk" ? "Build a bulk queue" : "Open a label or QR code")}</h3>
+      <p>
+        ${escapeHtml(
+          state.scanMode.kind === "bulk"
+            ? "Scan printed or assigned labels to build a stable batch action queue."
+            : "Start with a printed Smart DB sticker, or type a code to look it up manually.",
+        )}
+      </p>
+    </div>
+  `;
+}
+
 function renderTabBar(activeTab: TabId, tabs: readonly TabId[]): string {
   const labels: Record<TabId, string> = {
     scan: "Scan",
-    inventory: "Assets",
+    inventory: "Stock",
     activity: "Activity",
     dashboard: "Dashboard",
     admin: "Admin",
@@ -224,11 +282,39 @@ function renderScanTab(state: RewriteUiState): string {
       ? quantityInputStep(state.scanResult.entity.partType.unit.isInteger)
       : quantityInputStep(selectedMeasurementUnit.isInteger);
 
+  const detailMarkup = state.scanMode.kind === "oneByOne"
+    ? state.scanResult?.mode === "unknown"
+      ? `
+        <div class="result-card">
+          <h3>${escapeHtml(state.scanResult.code)} is unknown to Smart DB</h3>
+          <p>
+            Register this barcode to start tracking it. Future scans will
+            automatically increment the quantity on hand.
+          </p>
+          <button type="button" data-action="register-unknown" data-code="${attr(state.scanResult.code)}" ${disabled(state.pendingAction !== null)} style="margin-top:0.75rem;">
+            Register this barcode
+          </button>
+          <small style="display:block;margin-top:0.5rem">${escapeHtml(state.scanResult.partDb.message)}</small>
+        </div>
+      `
+      : state.scanResult?.mode === "label"
+        ? renderLabelCard(state, labelOptions, assignIssues)
+        : state.scanResult?.mode === "interact"
+          ? renderInteractCard(state, eventIssues, bulkQuantityStep, bulkUnitSymbol)
+          : renderScanEmptyState(state)
+    : renderBulkQueueCard(state, bulkLabelOptions, bulkAssignIssues);
+
   return `
-    <section id="panel-scan" role="tabpanel" aria-labelledby="tab-scan" class="panel">
-      ${renderPanelTitle("Scan", "Scan a sticker to assign it, update it, or look up what it belongs to.")}
-      ${renderScanner(state, state.cameraLookupCode !== null, cameraBlockedReason)}
-      <form class="scan-form" data-form="scan">
+    <section id="panel-scan" role="tabpanel" aria-labelledby="tab-scan" class="panel panel-workspace panel-scan">
+      ${renderWorkspaceHeader(
+        "Scan Workspace",
+        "One-by-one intake, bulk actions, and lifecycle updates in a single durable flow.",
+        "Scan",
+      )}
+      <div class="scan-workspace">
+        <div class="scan-stage">
+          ${renderScanner(state, state.cameraLookupCode !== null, cameraBlockedReason)}
+          <form class="scan-form" data-form="scan">
         <label class="sr-only" for="scan-code-input">Scan or type a QR / barcode</label>
         <input
           id="scan-code-input"
@@ -241,38 +327,35 @@ function renderScanTab(state: RewriteUiState): string {
         <button type="submit" ${disabled(state.pendingAction !== null)}>
           ${state.pendingAction === "scan" ? "Opening..." : state.scanMode.kind === "bulk" ? "Add" : "Open"}
         </button>
-      </form>
+          </form>
 
-      <div class="scan-mode-bar">
-        <button
-          type="button"
-          class="scan-mode-btn ${state.scanMode.kind === "oneByOne" ? "active" : ""}"
-          data-action="set-scan-mode-kind"
-          data-scan-mode-kind="oneByOne"
-        >
-          <span class="scan-mode-icon">◇</span>
-          One-by-one
-        </button>
-        <button
-          type="button"
-          class="scan-mode-btn ${state.scanMode.kind === "bulk" ? "active" : ""}"
-          data-action="set-scan-mode-kind"
-          data-scan-mode-kind="bulk"
-        >
-          <span class="scan-mode-icon">≡</span>
-          Bulk
-        </button>
-      </div>
+          <div class="scan-mode-bar">
+            <button
+              type="button"
+              class="scan-mode-btn ${state.scanMode.kind === "oneByOne" ? "active" : ""}"
+              data-action="set-scan-mode-kind"
+              data-scan-mode-kind="oneByOne"
+            >
+              One-by-one
+            </button>
+            <button
+              type="button"
+              class="scan-mode-btn ${state.scanMode.kind === "bulk" ? "active" : ""}"
+              data-action="set-scan-mode-kind"
+              data-scan-mode-kind="bulk"
+            >
+              Bulk
+            </button>
+          </div>
 
-      ${state.scanMode.kind === "oneByOne" ? `
-        <div class="scan-mode-bar">
+          ${state.scanMode.kind === "oneByOne" ? `
+            <div class="scan-mode-bar">
           <button
             type="button"
             class="scan-mode-btn ${state.scanMode.behavior === "viewOnly" ? "active" : ""}"
             data-action="set-scan-behavior"
             data-scan-behavior="viewOnly"
           >
-            <span class="scan-mode-icon">◇</span>
             View only
           </button>
           <button
@@ -281,19 +364,17 @@ function renderScanTab(state: RewriteUiState): string {
             data-action="set-scan-behavior"
             data-scan-behavior="increment"
           >
-            <span class="scan-mode-icon">+1</span>
             Auto-count
           </button>
         </div>
-      ` : `
-        <div class="scan-mode-bar">
+          ` : `
+            <div class="scan-mode-bar">
           <button
             type="button"
             class="scan-mode-btn ${state.bulkQueue.action === "label" ? "active" : ""}"
             data-action="set-bulk-action"
             data-bulk-action="label"
           >
-            <span class="scan-mode-icon">#</span>
             Bulk label
           </button>
           <button
@@ -302,7 +383,6 @@ function renderScanTab(state: RewriteUiState): string {
             data-action="set-bulk-action"
             data-bulk-action="move"
           >
-            <span class="scan-mode-icon">→</span>
             Bulk move
           </button>
           <button
@@ -311,41 +391,25 @@ function renderScanTab(state: RewriteUiState): string {
             data-action="set-bulk-action"
             data-bulk-action="delete"
           >
-            <span class="scan-mode-icon">↶</span>
             Bulk reverse
           </button>
         </div>
-      `}
+          `}
+        </div>
 
-      <div aria-live="polite">
-        ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "unknown" ? `
-          <div class="result-card">
-            <h3>${escapeHtml(state.scanResult.code)} is unknown to Smart DB</h3>
-            <p>
-              Register this barcode to start tracking it. Future scans will
-              automatically increment the quantity on hand.
-            </p>
-            <button type="button" data-action="register-unknown" data-code="${attr(state.scanResult.code)}" ${disabled(state.pendingAction !== null)} style="margin-top:0.75rem;">
-              Register this barcode
+        <div class="scan-detail" aria-live="polite">
+          ${detailMarkup}
+          ${state.scanMode.kind === "oneByOne" && state.scanResult && !state.cameraLookupCode ? `
+            <button
+              type="button"
+              class="scan-next-bottom"
+              data-action="scan-next"
+              ${disabled(state.pendingAction !== null)}
+            >
+              Scan next item
             </button>
-            <small style="display:block;margin-top:0.5rem">${escapeHtml(state.scanResult.partDb.message)}</small>
-          </div>
-        ` : ""}
-
-        ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "label" ? renderLabelCard(state, labelOptions, assignIssues) : ""}
-        ${state.scanMode.kind === "oneByOne" && state.scanResult?.mode === "interact" ? renderInteractCard(state, eventIssues, bulkQuantityStep, bulkUnitSymbol) : ""}
-        ${state.scanMode.kind === "bulk" ? renderBulkQueueCard(state, bulkLabelOptions, bulkAssignIssues) : ""}
-
-        ${state.scanMode.kind === "oneByOne" && state.scanResult && !state.cameraLookupCode ? `
-          <button
-            type="button"
-            class="scan-next-bottom"
-            data-action="scan-next"
-            ${disabled(state.pendingAction !== null)}
-          >
-            Scan next item
-          </button>
-        ` : ""}
+          ` : ""}
+        </div>
       </div>
     </section>
   `;
@@ -1380,8 +1444,26 @@ function renderInventoryTab(state: RewriteUiState): string {
     groups.set(top, existing);
   }
 
+  const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0);
+  const totalEntities = rows.reduce((sum, row) => sum + row.entityCount, 0);
+
   return `
-    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
+    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory">
+      ${renderWorkspaceHeader("Stock Ledger", "Grouped inventory, on-hand counts, and drill-in by part type.", "Stock")}
+      <div class="workspace-stats">
+        <article class="mini-stat">
+          <span>Visible types</span>
+          <strong>${rows.length}</strong>
+        </article>
+        <article class="mini-stat">
+          <span>Total QRs</span>
+          <strong>${totalEntities}</strong>
+        </article>
+        <article class="mini-stat">
+          <span>On hand</span>
+          <strong>${escapeHtml(formatQuantity(totalOnHand))}</strong>
+        </article>
+      </div>
       <div class="stock-controls">
         <input type="search" aria-label="Filter inventory" name="inventory.query" value="${attr(state.inventoryUi.query)}" placeholder="Search..." />
         <label class="inventory-toggle">
@@ -1468,7 +1550,7 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
 
   if (!row) {
     return `
-      <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
+      <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory">
         <div class="part-detail">
           <button type="button" class="part-detail-back" data-action="close-part-detail">
             <span aria-hidden="true">‹</span> Back to Assets
@@ -1498,7 +1580,7 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
   const locations = Array.from(byLocation.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   return `
-    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel">
+    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory">
       <div class="part-detail">
         <button type="button" class="part-detail-back" data-action="close-part-detail">
           <span aria-hidden="true">‹</span> Back to Assets
@@ -1557,14 +1639,37 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
 }
 
 function renderDashboardTab(state: RewriteUiState): string {
+  const sync = state.partDbSyncStatus;
+
   return `
-    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="panel">
-      <section class="metrics">
+    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="panel panel-workspace panel-dashboard">
+      ${renderWorkspaceHeader("Overview", "Operational counts and sync health at a glance.", "Dashboard")}
+      <section class="metrics metrics-cards">
         ${renderMetric("Part types", state.dashboard?.partTypeCount ?? 0)}
         ${renderMetric("Instances", state.dashboard?.instanceCount ?? 0)}
         ${renderMetric("Bulk bins", state.dashboard?.bulkStockCount ?? 0)}
         ${renderMetric("Provisional", state.dashboard?.provisionalCount ?? 0)}
         ${renderMetric("Unassigned QRs", state.dashboard?.unassignedQrCount ?? 0)}
+      </section>
+      <section class="dashboard-rail">
+        <article class="dashboard-card">
+          <p class="eyebrow">Part-DB</p>
+          <h3>Sync posture</h3>
+          <div class="dashboard-card-lines">
+            <span>Queued</span><strong>${sync?.pending ?? 0}</strong>
+            <span>In flight</span><strong>${sync?.inFlight ?? 0}</strong>
+            <span>Failures</span><strong>${sync?.failedLast24h ?? 0}</strong>
+          </div>
+        </article>
+        <article class="dashboard-card">
+          <p class="eyebrow">Recent</p>
+          <h3>Operator rhythm</h3>
+          <p class="muted-copy">
+            ${state.dashboard?.recentEvents.length
+              ? `${state.dashboard.recentEvents.length} recent event${state.dashboard.recentEvents.length === 1 ? "" : "s"} recorded.`
+              : "No recent activity yet."}
+          </p>
+        </article>
       </section>
     </section>
   `;
@@ -1573,11 +1678,8 @@ function renderDashboardTab(state: RewriteUiState): string {
 function renderActivityTab(state: RewriteUiState): string {
   const events = state.dashboard?.recentEvents ?? [];
   return `
-    <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" class="panel">
-      <header class="activity-header">
-        <p class="eyebrow">Activity</p>
-        <h2>Recent events</h2>
-      </header>
+    <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" class="panel panel-workspace panel-activity">
+      ${renderWorkspaceHeader("Recent Activity", "Audit history, corrections, and session-level scan context.", "Activity")}
       ${events.length === 0 && state.scanHistory.length === 0 ? `<p class="activity-empty">No activity yet. Events appear here as you scan and update inventory.</p>` : ""}
       ${events.length > 0 ? `
         <ul class="activity-list">
@@ -1659,7 +1761,9 @@ function renderAdminTab(state: RewriteUiState): string {
   const isDownloadingLabels = state.downloadingBatchId === state.latestBatch?.id;
 
   return `
-    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin">
+    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin" class="panel panel-workspace panel-admin-shell">
+      ${renderWorkspaceHeader("Admin Tools", "Queue health, label batches, and catalog corrections.", "Admin")}
+      <div class="admin-grid">
       <section class="panel">
         ${renderPanelTitle("Part-DB sync", "SmartDB remains writable while sync catches up in the background.")}
         <div class="sync-status-grid">
@@ -1735,7 +1839,7 @@ function renderAdminTab(state: RewriteUiState): string {
           <button type="button" data-action="merge-parts" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "merge" ? "Merging..." : "Merge provisional type"}</button>
         </div>
       </section>
-
+      </div>
     </section>
   `;
 }
