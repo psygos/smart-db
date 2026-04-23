@@ -83,8 +83,15 @@ jobs:
 
       - name: Health check — gateway
         run: |
-          curl -skf https://10.42.200.4/health || \
-            (echo "Gateway unreachable" && exit 1)
+          for i in $(seq 1 30); do
+            if curl -skf https://10.42.200.4/health > /dev/null 2>&1; then
+              echo "Gateway healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Gateway unreachable after 30s"
+          exit 1
 
       - name: Rollback on failure
         if: failure()
