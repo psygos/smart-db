@@ -165,6 +165,9 @@ async function flush() {
 describe("RewriteAppController", () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="root"></div>';
+    if (typeof window !== "undefined" && window.history) {
+      window.history.replaceState(null, "", "/");
+    }
     vi.clearAllMocks();
     cameraMocks.start.mockResolvedValue({ ok: true });
     cameraMocks.attach.mockResolvedValue({ ok: true });

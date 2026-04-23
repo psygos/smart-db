@@ -85,6 +85,7 @@ import {
   findSharedTypeConflictCandidates,
   hasInProgressScanWork,
 } from "./view-helpers";
+import { patchFromUrl, urlFromState, urlsEqual, type UrlPatch } from "./routing";
 
 interface FocusSnapshot {
   readonly key: string;
@@ -184,6 +185,9 @@ export class RewriteAppController {
   private toastTimers = new Map<string, number>();
   private pollTimer: number | null = null;
   private sessionTimer: number | null = null;
+  private routingInstalled = false;
+  private applyingFromHistory = false;
+  private lastSyncedUrl: string | null = null;
 
   constructor(private readonly root: HTMLElement) {}
 
@@ -229,6 +233,12 @@ export class RewriteAppController {
     this.root.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("online", this.handleOnline);
     window.addEventListener("offline", this.handleOffline);
+    if (typeof window !== "undefined") {
+      window.addEventListener("popstate", this.handlePopState);
+      this.routingInstalled = true;
+      this.lastSyncedUrl = window.location.pathname;
+      this.hydrateStateFromUrlBeforeBoot();
+    }
 
     this.applyThemeToDOM(this.state.theme);
     this.render();
@@ -267,6 +277,10 @@ export class RewriteAppController {
     this.root.removeEventListener("keydown", this.handleKeyDown);
     window.removeEventListener("online", this.handleOnline);
     window.removeEventListener("offline", this.handleOffline);
+    if (this.routingInstalled && typeof window !== "undefined") {
+      window.removeEventListener("popstate", this.handlePopState);
+      this.routingInstalled = false;
+    }
   }
 
   private readonly handleOnline = () => {
@@ -276,6 +290,80 @@ export class RewriteAppController {
   private readonly handleOffline = () => {
     this.patch({ isOnline: false });
   };
+
+  private readonly handlePopState = () => {
+    if (this.state.authState.status !== "authenticated") return;
+    if (typeof window === "undefined") return;
+    const patch = patchFromUrl(window.location.pathname);
+    if (!patch) return;
+    this.applyingFromHistory = true;
+    try {
+      this.applyUrlPatch(patch);
+      this.lastSyncedUrl = window.location.pathname;
+    } finally {
+      this.applyingFromHistory = false;
+    }
+  };
+
+  private applyUrlPatch(patch: UrlPatch): void {
+    const nextInventoryUi = (patch.browsePath.length > 0 || patch.detailPartTypeId || patch.activeTab === "inventory")
+      ? {
+          ...this.state.inventoryUi,
+          browsePath: patch.browsePath,
+          detailPartTypeId: patch.detailPartTypeId,
+        }
+      : this.state.inventoryUi;
+
+    this.patch({
+      activeTab: patch.activeTab,
+      inventoryUi: nextInventoryUi,
+    });
+  }
+
+  private hydrateFromUrl(): void {
+    if (typeof window === "undefined") return;
+    const patch = patchFromUrl(window.location.pathname);
+    if (!patch) return;
+    this.applyingFromHistory = true;
+    try {
+      this.applyUrlPatch(patch);
+      this.lastSyncedUrl = window.location.pathname;
+    } finally {
+      this.applyingFromHistory = false;
+    }
+  }
+
+  private hydrateStateFromUrlBeforeBoot(): void {
+    if (typeof window === "undefined") return;
+    const patch = patchFromUrl(window.location.pathname);
+    if (!patch) return;
+    this.state = {
+      ...this.state,
+      activeTab: patch.activeTab,
+      inventoryUi: {
+        ...this.state.inventoryUi,
+        browsePath: patch.browsePath,
+        detailPartTypeId: patch.detailPartTypeId,
+      },
+    };
+    this.lastSyncedUrl = window.location.pathname;
+  }
+
+  private syncUrl(): void {
+    if (this.applyingFromHistory) return;
+    if (typeof window === "undefined") return;
+    if (this.state.authState.status !== "authenticated") return;
+    const next = urlFromState(this.state);
+    if (this.lastSyncedUrl !== null && urlsEqual(next, this.lastSyncedUrl)) {
+      return;
+    }
+    if (urlsEqual(next, window.location.pathname)) {
+      this.lastSyncedUrl = window.location.pathname;
+      return;
+    }
+    window.history.pushState(null, "", next);
+    this.lastSyncedUrl = next;
+  }
 
   private readonly handleClick = (event: Event) => {
     const target = event.target;
@@ -1244,6 +1332,7 @@ export class RewriteAppController {
         this.addToast(authError, "error");
       }
       await this.loadAuthenticatedData(session);
+      this.hydrateFromUrl();
       this.startBackgroundTimers();
     } catch (caught) {
       if (signal.aborted) {
@@ -3602,6 +3691,7 @@ export class RewriteAppController {
 
     this.restoreFocus(focusSnapshot);
     this.autofocusScanInput(focusSnapshot);
+    this.syncUrl();
   }
 
   private autofocusScanInput(previousFocus: FocusSnapshot | null): void {
