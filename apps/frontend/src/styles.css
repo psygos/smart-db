@@ -597,10 +597,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .part-art,
 .part-hero {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   display: block;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 0;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -608,7 +608,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .part-hero img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -616,19 +616,19 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   width: 2.5rem;
   height: 2.5rem;
   min-width: 2.5rem;
-  border-radius: 0.95rem;
+  border-radius: 0;
 }
 
 .part-art-inventory {
   width: 2.75rem;
   height: 2.75rem;
   min-width: 2.75rem;
-  border-radius: 1rem;
+  border-radius: 0;
 }
 
 .part-hero {
   width: 100%;
-  border-radius: 1rem;
+  border-radius: 0;
 }
 
 .part-hero-detail {
