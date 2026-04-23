@@ -4228,9 +4228,14 @@ html.dark .location-group {
   gap: 1.05rem;
 }
 
+.panel-scan[data-scan-mode="idle"] .scan-pane-process {
+  display: none;
+}
+
 .panel-scan {
   --scanner-height: clamp(15rem, 40dvh, 31rem);
   --scanner-column: clamp(20rem, 38vw, 32rem);
+  --scanner-idle-width: min(100%, 45rem);
 }
 
 .panel-scan[data-scan-mode="bulk"] {
@@ -4820,6 +4825,15 @@ html.dark .tab-bar {
   .scan-layout {
     grid-template-columns: minmax(0, var(--scanner-column)) minmax(0, 1fr);
     gap: clamp(1.15rem, 2vw, 1.8rem);
+  }
+
+  .panel-scan[data-scan-mode="idle"] .scan-layout {
+    grid-template-columns: var(--scanner-idle-width);
+    justify-content: center;
+  }
+
+  .panel-scan[data-scan-mode="idle"] .scan-pane-scanner {
+    position: static;
   }
 
   .part-detail-header {
