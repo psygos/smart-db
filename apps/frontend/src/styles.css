@@ -4769,6 +4769,28 @@ html.dark .tab-bar {
     right: 13%;
   }
 
+  .result-card .label-suggestion-picker,
+  .scan-edit-panel .label-suggestion-picker {
+    max-height: min(13.5rem, 30dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 0.2rem;
+    scroll-padding-block: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .result-card .label-suggestion-picker:has(button:nth-child(n + 4)),
+  .scan-edit-panel .label-suggestion-picker:has(button:nth-child(n + 4)) {
+    padding-bottom: 0.5rem;
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 1.15rem), transparent);
+    mask-image: linear-gradient(180deg, #000 calc(100% - 1.15rem), transparent);
+  }
+
+  .result-card .label-suggestion-picker button,
+  .scan-edit-panel .label-suggestion-picker button {
+    min-height: 60px;
+  }
+
   .stock-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     padding: 0.75rem;

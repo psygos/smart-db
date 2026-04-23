@@ -657,6 +657,12 @@ function renderBulkLabelForm(
   const selectedPartType =
     labelOptions.find((partType) => partType.id === form.existingPartTypeId) ??
     state.catalogSuggestions.find((partType) => partType.id === form.existingPartTypeId);
+  const pickerOptions = selectedPartType
+    ? [
+      selectedPartType,
+      ...labelOptions.filter((partType) => partType.id !== selectedPartType.id),
+    ]
+    : labelOptions;
 
   return `
     <form class="form-grid bulk-action-form" data-form="bulk-label">
@@ -671,8 +677,8 @@ function renderBulkLabelForm(
         </label>
         ${state.bulkQueue.labelSearch.error ? `<p class="banner error wide">${escapeHtml(state.bulkQueue.labelSearch.error)}</p>` : ""}
         ${assignIssues.existingPartTypeId ? `<p class="field-error wide">${escapeHtml(assignIssues.existingPartTypeId)}</p>` : ""}
-        <div class="wide picker" role="radiogroup" aria-label="Existing part types">
-          ${labelOptions.length > 0 ? labelOptions.map((partType) => `
+        <div class="wide picker label-suggestion-picker bulk-label-suggestion-picker" role="radiogroup" aria-label="Existing part types">
+          ${pickerOptions.length > 0 ? pickerOptions.map((partType) => `
             <button
               type="button"
               role="radio"
@@ -913,11 +919,16 @@ function renderPartTypeField(
   labelOptions: readonly PartType[],
   assignIssues: ReturnType<typeof getAssignFormIssues>,
 ): string {
-  const ranked = rankPartTypeMatches(labelOptions, state.labelSearch.query);
-  const shown = ranked.slice(0, 48);
-
   const resolveSelected = collectPartTypeCandidates(state, labelOptions);
   const selected = resolveSelected.find((pt) => pt.id === state.assignForm.existingPartTypeId) ?? null;
+  const ranked = rankPartTypeMatches(labelOptions, state.labelSearch.query);
+  const pickerOptions = selected
+    ? [
+      selected,
+      ...ranked.filter((partType) => partType.id !== selected.id),
+    ]
+    : ranked;
+  const shown = pickerOptions.slice(0, 48);
   const isCreating = state.assignForm.partTypeMode === "new";
   const createToggleLabel = isCreating ? "− Cancel new part type" : "+ New part type";
   const createToggleAction = isCreating ? "existing" : "new";
@@ -939,7 +950,7 @@ function renderPartTypeField(
     ` : ""}
 
     ${!isCreating ? `
-      <div class="wide picker" role="radiogroup" aria-label="Existing part types">
+      <div class="wide picker label-suggestion-picker" role="radiogroup" aria-label="Existing part types">
         ${shown.length > 0 ? shown.map((partType) => `
           <button
             type="button"
@@ -957,7 +968,7 @@ function renderPartTypeField(
           </button>
         `).join("") : `<p class="muted-copy">${trimmedQuery ? `No matches for "${escapeHtml(trimmedQuery)}".` : "No part types yet."} Use the button below to add one.</p>`}
       </div>
-      ${ranked.length > shown.length ? `<p class="muted-copy wide result-limit-note">Showing ${shown.length} of ${ranked.length} matches — refine your search to narrow down.</p>` : ""}
+      ${pickerOptions.length > shown.length ? `<p class="muted-copy wide result-limit-note">Showing ${shown.length} of ${pickerOptions.length} matches — refine your search to narrow down.</p>` : ""}
       ${selected && !selected.countable ? `
         <p class="muted-copy wide">Measured part types are always bulk items.</p>
       ` : ""}
@@ -1481,6 +1492,13 @@ function renderScanEditReassignForm(
       }
       return !partType.countable || partType.unit.isInteger;
     });
+  const selectedReplacement = compatibleReplacementTypes.find((partType) => partType.id === form.replacementPartTypeId);
+  const replacementOptions = selectedReplacement
+    ? [
+      selectedReplacement,
+      ...compatibleReplacementTypes.filter((partType) => partType.id !== selectedReplacement.id),
+    ]
+    : compatibleReplacementTypes;
 
   return `
     <form class="form-grid" data-form="scan-edit-reassign">
@@ -1489,8 +1507,8 @@ function renderScanEditReassignForm(
         <input name="scanEditSearch.query" value="${attr(form.search.query)}" placeholder="Search existing type" />
       </label>
       ${form.search.error ? `<p class="banner error wide">${escapeHtml(form.search.error)}</p>` : ""}
-      <div class="wide picker" role="radiogroup" aria-label="Replacement part type">
-        ${compatibleReplacementTypes.map((partType) => `
+      <div class="wide picker label-suggestion-picker replacement-suggestion-picker" role="radiogroup" aria-label="Replacement part type">
+        ${replacementOptions.map((partType) => `
           <button type="button" role="radio" aria-checked="${String(form.replacementPartTypeId === partType.id)}" class="${form.replacementPartTypeId === partType.id ? "selected" : ""}" data-action="select-scan-edit-part" data-part-id="${attr(partType.id)}">
             ${renderPartTileArt(partType, "picker")}
             <span class="picker-copy">
