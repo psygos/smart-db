@@ -24,8 +24,8 @@ import { buildTreePickerView } from "./tree-picker";
 export function renderApp(state: RewriteUiState): string {
   if (state.authState.status === "checking") {
     return `
-      <div class="shell shell-auth">
-        <div class="auth-wait">
+      <div class="shell shell-auth" data-art-zone="auth">
+        <div class="auth-wait" data-motion-surface="auth-wait">
           <p class="eyebrow">Smart DB</p>
           <h1>Checking session</h1>
           <p class="muted-copy">Restoring your inventory workspace.</p>
@@ -36,12 +36,12 @@ export function renderApp(state: RewriteUiState): string {
 
   if (state.authState.status !== "authenticated") {
     return `
-      <div class="shell shell-auth">
+      <div class="shell shell-auth" data-art-zone="auth">
         <div class="auth-corner auth-corner-tl" aria-hidden="true"></div>
         <div class="auth-corner auth-corner-tr" aria-hidden="true"></div>
         <div class="auth-corner auth-corner-bl" aria-hidden="true"></div>
         <div class="auth-corner auth-corner-br" aria-hidden="true"></div>
-        <section class="auth-masthead">
+        <section class="auth-masthead" data-motion-surface="auth-masthead">
           <h1 class="display-title">SMART DB</h1>
           <p class="display-sub">MAKERSPACE&nbsp;·&nbsp;INVENTORY</p>
           <div class="auth-meta">
@@ -63,8 +63,8 @@ export function renderApp(state: RewriteUiState): string {
   const isAdmin = hasSmartDbRole(state.authState.session.roles, smartDbRoles.admin);
 
   return `
-    <div class="shell app-shell">
-      <header class="app-masthead">
+    <div class="shell app-shell" data-art-zone="app-shell">
+      <header class="app-masthead" data-motion-surface="masthead">
         <div class="app-masthead-row">
           <div class="app-masthead-brand">
             <strong class="header-brand">SMART DB</strong>
@@ -106,7 +106,7 @@ export function renderApp(state: RewriteUiState): string {
         ${state.refreshError ? `<p class="banner error">${escapeHtml(state.refreshError)}</p>` : ""}
       </div>
 
-      <main class="layout app-layout app-layout-${state.activeTab}">
+      <main class="layout app-layout app-layout-${state.activeTab}" data-motion-surface="workspace">
         ${state.activeTab === "scan" ? renderScanTab(state) : ""}
         ${state.activeTab === "inventory" ? renderInventoryTab(state) : ""}
         ${state.activeTab === "activity" ? renderActivityTab(state) : ""}
@@ -147,6 +147,10 @@ function renderIconPaths(iconId: string): string {
   switch (iconId) {
     case "scan":
       return `<path d="M7 4H5a1 1 0 0 0-1 1v2M17 4h2a1 1 0 0 1 1 1v2M7 20H5a1 1 0 0 1-1-1v-2M17 20h2a1 1 0 0 0 1-1v-2M7 12h10"/>`;
+    case "qr":
+      return `<rect x="5" y="5" width="5" height="5" rx="1"/><rect x="14" y="5" width="5" height="5" rx="1"/><rect x="5" y="14" width="5" height="5" rx="1"/><path d="M14 14h2v2h-2zM18 14h1v5h-5v-1M14 18h2"/>`;
+    case "sync":
+      return `<path d="M4 12a8 8 0 0 1 13.5-5.8L20 9"/><path d="M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-13.5 5.8L4 15"/><path d="M4 20v-5h5"/>`;
     case "inventory":
       return `<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M4 10h16M8 6v12"/>`;
     case "activity":
@@ -279,7 +283,7 @@ function renderToasts(toasts: readonly ToastRecord[]): string {
 function renderScanEmptyState(state: RewriteUiState): string {
   const iconId = state.scanMode.kind === "bulk" ? "batch" : "qr";
   return `
-    <div class="result-card result-card-empty">
+    <div class="result-card result-card-empty" data-motion-surface="scan-empty">
       <div class="result-card-headline">
         ${renderIconSlot(iconId, state.scanMode.kind === "bulk" ? "Bulk queue" : "QR code")}
         <div>
@@ -372,7 +376,7 @@ function renderScanTab(state: RewriteUiState): string {
   const detailMarkup = state.scanMode.kind === "oneByOne"
     ? state.scanResult?.mode === "unknown"
       ? `
-        <div class="result-card result-card-unknown">
+        <div class="result-card result-card-unknown" data-motion-surface="scan-result" data-scan-result-mode="unknown">
           <header class="result-card-head">
             <h3>Scan Result</h3>
           </header>
@@ -410,9 +414,12 @@ function renderScanTab(state: RewriteUiState): string {
   const hasResult = state.scanMode.kind === "oneByOne" && Boolean(state.scanResult);
 
   const scannerBlock = `
-    <div class="scan-viewfinder ${cameraLive ? "is-live" : ""}">
+    <div class="scan-viewfinder ${cameraLive ? "is-live" : ""}" data-art-zone="scan-workbench" data-motion-surface="scan-viewfinder">
       ${hasCamera ? renderScanner(state, state.cameraLookupCode !== null, cameraBlockedReason) : ""}
       ${!cameraLive ? `
+        <span class="scan-trace-line trace-a" aria-hidden="true"></span>
+        <span class="scan-trace-line trace-b" aria-hidden="true"></span>
+        <span class="scan-trace-line trace-c" aria-hidden="true"></span>
         <span class="scan-viewfinder-corner tl" aria-hidden="true"></span>
         <span class="scan-viewfinder-corner tr" aria-hidden="true"></span>
         <span class="scan-viewfinder-corner bl" aria-hidden="true"></span>
@@ -576,7 +583,7 @@ function renderBulkQueueCard(
     `<button type="button" role="tab" aria-selected="${String(state.bulkQueue.action === mode)}" class="queue-mode-tab ${state.bulkQueue.action === mode ? "is-active" : ""}" data-action="set-bulk-action" data-bulk-action="${mode}">${escapeHtml(label)}</button>`;
 
   return `
-    <div class="result-card result-card-queue">
+    <div class="result-card result-card-queue" data-motion-surface="bulk-queue" data-bulk-action="${attr(state.bulkQueue.action)}">
       <header class="queue-head">
         <h3>${escapeHtml(actionHeading)}</h3>
         <button type="button" class="queue-clear" data-action="bulk-queue-clear" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)}>Clear</button>
@@ -593,7 +600,7 @@ function renderBulkQueueCard(
       ` : `
         <ul class="queue-list">
           ${state.bulkQueue.rows.map((row) => `
-            <li class="queue-row">
+            <li class="queue-row" data-queue-code="${attr(row.code)}" data-row-kind="${row.kind}">
               <div class="queue-row-main">
                 <span class="queue-row-code">${escapeHtml(row.code)}</span>
                 <span class="queue-row-meta">${row.kind === "unlabeled"
@@ -652,7 +659,7 @@ function renderBulkLabelForm(
     state.catalogSuggestions.find((partType) => partType.id === form.existingPartTypeId);
 
   return `
-    <form class="form-grid" data-form="bulk-label" style="margin-top:1rem">
+    <form class="form-grid bulk-action-form" data-form="bulk-label">
       <div class="wide mode-toggle" role="radiogroup" aria-label="Bulk label type mode">
         <button type="button" role="radio" class="${form.partTypeMode === "existing" ? "selected" : ""}" aria-checked="${String(form.partTypeMode === "existing")}" data-action="set-bulk-label-mode" data-assign-mode="existing">Use existing type</button>
         <button type="button" role="radio" class="${form.partTypeMode === "new" ? "selected" : ""}" aria-checked="${String(form.partTypeMode === "new")}" data-action="set-bulk-label-mode" data-assign-mode="new">Create new type</button>
@@ -777,7 +784,7 @@ function renderFromCard(locations: string[]): string {
 function renderBulkMoveForm(state: RewriteUiState): string {
   const sourceLocations = deriveSourceLocations(state);
   return `
-    <form class="form-grid" data-form="bulk-move" style="margin-top:1rem">
+    <form class="form-grid bulk-action-form" data-form="bulk-move">
       <div class="location-card-pair wide">
         ${renderFromCard(sourceLocations)}
         <div class="location-card location-card-to">
@@ -801,7 +808,7 @@ function renderBulkMoveForm(state: RewriteUiState): string {
 function renderBulkDeleteForm(state: RewriteUiState): string {
   const sourceLocations = deriveSourceLocations(state);
   return `
-    <form class="form-grid" data-form="bulk-delete" style="margin-top:1rem">
+    <form class="form-grid bulk-action-form" data-form="bulk-delete">
       <p class="reverse-helper wide">Reverses fresh ingests only. The correction audit row survives, so this is never data loss.</p>
       ${renderFromCard(sourceLocations)}
       <label class="wide">
@@ -827,7 +834,7 @@ function renderLabelCard(
       : null;
   const entityLocked = existingSelected !== null && existingSelected !== undefined && !existingSelected.countable;
   return `
-    <div class="result-card has-corner-switch">
+    <div class="result-card has-corner-switch result-card-assign" data-motion-surface="scan-result" data-scan-result-mode="label">
       ${renderEntityKindSwitch(state, entityLocked)}
       <h3>Assign ${escapeHtml(state.scanResult?.mode === "label" ? state.scanResult.qrCode.code : "")}</h3>
       ${state.lastAssignment ? `
@@ -950,7 +957,7 @@ function renderPartTypeField(
           </button>
         `).join("") : `<p class="muted-copy">${trimmedQuery ? `No matches for "${escapeHtml(trimmedQuery)}".` : "No part types yet."} Use the button below to add one.</p>`}
       </div>
-      ${ranked.length > shown.length ? `<p class="muted-copy wide" style="font-size:0.75rem">Showing ${shown.length} of ${ranked.length} matches — refine your search to narrow down.</p>` : ""}
+      ${ranked.length > shown.length ? `<p class="muted-copy wide result-limit-note">Showing ${shown.length} of ${ranked.length} matches — refine your search to narrow down.</p>` : ""}
       ${selected && !selected.countable ? `
         <p class="muted-copy wide">Measured part types are always bulk items.</p>
       ` : ""}
@@ -1006,7 +1013,7 @@ function renderNewPartTypePanel(
 ): string {
   const unit = measurementUnitCatalog.find((u) => u.symbol === state.assignForm.unitSymbol) ?? measurementUnitCatalog[0];
   return `
-    <div class="path-create-panel wide" role="region" aria-label="New part type">
+    <div class="path-create-panel path-create-panel-part wide" role="region" aria-label="New part type" data-art-zone="new-part-type">
       <p class="path-create-title">New part type</p>
       <label class="wide">
         Canonical name
@@ -1098,7 +1105,7 @@ function renderInteractCard(
                 : "is-muted";
 
   return `
-    <div class="result-card result-card-interact">
+    <div class="result-card result-card-interact" data-motion-surface="scan-result" data-scan-result-mode="${entity.targetType}">
       <header class="result-card-head">
         <h3>${isBulkEntity ? "Bulk Bin" : "Item"}</h3>
         <span class="status-pill ${statusPillClass}">${escapeHtml(entity.state.replace(/_/g, " ").toUpperCase())}</span>
@@ -1119,7 +1126,7 @@ function renderInteractCard(
         </div>
       ` : `<p>Current state: <strong>${escapeHtml(state.scanResult.entity.state)}</strong></p>`}
       ${renderCurrentBorrow(state)}
-      <p class="muted-copy" style="font-size:0.78rem">Part-DB sync: ${escapeHtml(state.scanResult.entity.partDbSyncStatus)}</p>
+      <p class="muted-copy partdb-sync-note">Part-DB sync: ${escapeHtml(state.scanResult.entity.partDbSyncStatus)}</p>
       ${renderScanQuickChips(state)}
       ${(() => {
         const actions = state.scanResult.availableActions;
@@ -1145,7 +1152,7 @@ function renderInteractCard(
             <label>
               Units to move
               <input type="number" min="0" step="${bulkQuantityStep}" inputmode="decimal" name="event.splitQuantity" value="${attr(state.eventForm.splitQuantity)}" placeholder="All (${escapeHtml(state.scanResult.entity.quantity ?? 0)})" />
-              <small style="margin-top:0.2rem;text-transform:none;letter-spacing:0;font-family:var(--font-sans)">Leave empty to move the entire bin.</small>
+              <small class="field-help">Leave empty to move the entire bin.</small>
               ${eventIssues.splitQuantity ? `<span class="field-error">${escapeHtml(eventIssues.splitQuantity)}</span>` : ""}
             </label>
           ` : ""}
@@ -1210,17 +1217,17 @@ function renderScanEditEntry(state: RewriteUiState): string {
 
   const reverseButton = canReverse
     ? `<button type="button" data-action="scan-edit-open-reverse" ${disabled(pending)}>Reverse ingest</button>`
-    : `<p class="muted-copy" style="margin:0.25rem 0">Reverse ingest is only possible for fresh, untouched assignments.</p>`;
+    : `<p class="muted-copy correction-note">Reverse ingest is only possible for fresh, untouched assignments.</p>`;
   const sharedButton = canEditShared
     ? `<button type="button" data-action="scan-edit-open-shared" ${disabled(pending)}>Rename shared part type</button>`
     : "";
 
   return `
-    <div class="scan-edit-entry" style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.35rem">
+    <div class="scan-edit-entry">
       <button type="button" class="disclosure primary" data-action="scan-edit-open" ${disabled(pending)}>Relabel</button>
       <details class="more-corrections">
-        <summary style="cursor:pointer;font-size:0.85rem">More corrections</summary>
-        <div class="more-corrections-body" style="display:flex;flex-direction:column;gap:0.35rem;margin-top:0.35rem">
+        <summary>More corrections</summary>
+        <div class="more-corrections-body">
           ${reverseButton}
           ${sharedButton}
         </div>
@@ -1244,7 +1251,7 @@ function renderLocationTreePicker(
       (entry) =>
         `<button type="button" class="disclosure" data-action="${attr(pickAction)}" data-location="${attr(entry.pathUpToHere)}">${escapeHtml(entry.segment)}</button>`,
     ),
-  ].join(`<span aria-hidden="true" style="margin:0 0.25rem">/</span>`);
+  ].join(`<span class="tree-breadcrumb-sep" aria-hidden="true">/</span>`);
 
   const children = view.children.length === 0
     ? ""
@@ -1265,7 +1272,7 @@ function renderLocationTreePicker(
 
   return `
     <div class="tree-picker wide" aria-label="Location tree">
-      <div class="tree-breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;margin-bottom:0.35rem">${breadcrumbButtons}</div>
+      <div class="tree-breadcrumb">${breadcrumbButtons}</div>
       ${children}
     </div>
   `;
@@ -1286,7 +1293,7 @@ function renderCategoryTreePicker(
       (entry) =>
         `<button type="button" class="disclosure" data-action="${attr(pickAction)}" data-category="${attr(entry.pathUpToHere)}">${escapeHtml(entry.segment)}</button>`,
     ),
-  ].join(`<span aria-hidden="true" style="margin:0 0.25rem">/</span>`);
+  ].join(`<span class="tree-breadcrumb-sep" aria-hidden="true">/</span>`);
 
   const children = view.children.length === 0
     ? ""
@@ -1307,7 +1314,7 @@ function renderCategoryTreePicker(
 
   return `
     <div class="tree-picker wide" aria-label="Category tree">
-      <div class="tree-breadcrumb" style="display:flex;flex-wrap:wrap;align-items:center;margin-bottom:0.35rem">${breadcrumbButtons}</div>
+      <div class="tree-breadcrumb">${breadcrumbButtons}</div>
       ${children}
     </div>
   `;
@@ -1323,13 +1330,13 @@ function renderCurrentBorrow(state: RewriteUiState): string {
     return "";
   }
   const overdue = borrow.isOverdue
-    ? `<span class="pill overdue" style="margin-left:0.5rem">Overdue</span>`
+    ? `<span class="pill overdue borrow-overdue">Overdue</span>`
     : "";
   const due = borrow.dueAt
     ? ` · due ${escapeHtml(formatTimestamp(borrow.dueAt))}`
     : "";
   return `
-    <p class="borrow-status" style="margin-top:0.25rem">
+    <p class="borrow-status">
       Borrowed by <strong>${escapeHtml(borrow.borrower)}</strong> since ${escapeHtml(formatTimestamp(borrow.borrowedAt))}${due}${overdue}
     </p>
   `;
@@ -1383,19 +1390,19 @@ function renderScanLocations(state: RewriteUiState): string {
     return "";
   }
   if (locations.status === "loading") {
-    return `<p class="muted-copy" style="margin-top:0.5rem">Loading other locations...</p>`;
+    return `<p class="muted-copy scan-location-note">Loading other locations...</p>`;
   }
   if (locations.status === "error") {
-    return `<p class="banner error" style="margin-top:0.5rem">${escapeHtml(locations.message)}</p>`;
+    return `<p class="banner error scan-location-note">${escapeHtml(locations.message)}</p>`;
   }
   const { bulkStocks, instances } = locations.data;
   const total = bulkStocks.length + instances.length;
   if (total <= 1) {
-    return `<p class="muted-copy" style="margin-top:0.5rem">No other ${escapeHtml(state.scanResult.entity.partType.canonicalName)} on record.</p>`;
+    return `<p class="muted-copy scan-location-note">No other ${escapeHtml(state.scanResult.entity.partType.canonicalName)} on record.</p>`;
   }
 
   return `
-    <section class="scan-locations" aria-label="Other locations for this part" style="margin-top:0.75rem">
+    <section class="scan-locations" aria-label="Other locations for this part">
       <p class="muted-copy">At ${total} places:</p>
       <ul class="inventory-detail-list">
         ${bulkStocks.map((bulk) => `
@@ -1446,7 +1453,7 @@ function renderScanEditPanel(state: RewriteUiState): string {
       ${edit.form.action === "reverseIngest" ? renderScanEditReverseForm(state, edit.form) : ""}
 
       ${edit.history.length > 0 || edit.historyError ? `
-        <div class="event-list" style="margin-top:1rem">
+        <div class="event-list scan-edit-history">
           ${edit.historyError ? `<p class="banner error">${escapeHtml(edit.historyError)}</p>` : ""}
           ${edit.history.map((event) => `
             <article>
@@ -1578,13 +1585,13 @@ function renderInventoryReverseToolbar(state: RewriteUiState, partTypeId: string
   }
   const count = selection.targets.length;
   return `
-    <form class="form-grid inventory-reverse-toolbar" data-form="inventory-reverse" style="margin-top:0.75rem;border-top:1px solid var(--rule, #ccc);padding-top:0.75rem">
+    <form class="form-grid inventory-reverse-toolbar" data-form="inventory-reverse">
       <p class="banner error wide">Reversing sends each selected QR back to printed. The correction audit row survives.</p>
       <label class="wide">
         Reason
         <textarea name="inventoryReverse.reason" placeholder="Why is this being reversed?">${escapeHtml(selection.reason)}</textarea>
       </label>
-      <div class="inventory-reverse-actions" style="display:flex;gap:0.5rem;align-items:center">
+      <div class="inventory-reverse-actions">
         <button type="submit" ${disabled(state.pendingAction !== null || selection.reason.trim().length === 0)}>
           ${state.pendingAction === "correct" ? "Reversing..." : `Reverse ${count} ingest${count === 1 ? "" : "s"}`}
         </button>
@@ -1850,7 +1857,7 @@ function renderInventoryTab(state: RewriteUiState): string {
   const hasContent = filteredRows.length > 0;
 
   return `
-    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-inventory">
+    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-inventory" data-motion-surface="stock">
       <header class="panel-head">
         <h2>Stock</h2>
       </header>
@@ -1895,7 +1902,7 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
 
   if (!row) {
     return `
-      <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory">
+      <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory" data-motion-surface="stock-detail">
         <div class="part-detail">
           <button type="button" class="part-detail-back" data-action="close-part-detail">
             <span aria-hidden="true">‹</span> Back to Assets
@@ -1925,7 +1932,7 @@ function renderPartTypeDetail(state: RewriteUiState, partTypeId: string): string
   const locations = Array.from(byLocation.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
   return `
-    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory">
+    <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-workspace panel-inventory" data-motion-surface="stock-detail">
       <div class="part-detail">
         <button type="button" class="part-detail-back" data-action="close-part-detail">
           <span aria-hidden="true">‹</span> Back to Assets
@@ -1999,7 +2006,7 @@ function renderDashboardTab(state: RewriteUiState): string {
   const healthLabel = health?.connected ? "OK" : health?.configured ? "checking" : "off";
 
   return `
-    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="panel-dashboard">
+    <section id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" class="panel-dashboard" data-motion-surface="dashboard">
       <section class="dash-grid" aria-label="Inventory counts">
         ${renderDashTile("Part types", state.dashboard?.partTypeCount ?? 0)}
         ${renderDashTile("Instances", state.dashboard?.instanceCount ?? 0)}
@@ -2008,7 +2015,7 @@ function renderDashboardTab(state: RewriteUiState): string {
         ${renderDashTile("Unassigned QRs", state.dashboard?.unassignedQrCount ?? 0)}
         ${renderDashTile("Checked out", state.dashboard?.recentEvents.length ?? 0)}
       </section>
-      <section class="dash-health" aria-labelledby="dash-health-heading">
+      <section class="dash-health" aria-labelledby="dash-health-heading" data-motion-surface="sync-panel">
         <h3 id="dash-health-heading" class="dash-health-title">Part-DB Health</h3>
         <dl class="dash-health-list">
           <div class="dash-health-row">
@@ -2044,7 +2051,7 @@ function renderDashTile(label: string, value: number): string {
 function renderActivityTab(state: RewriteUiState): string {
   const events = state.dashboard?.recentEvents ?? [];
   return `
-    <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" class="panel panel-activity">
+    <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" class="panel panel-activity" data-motion-surface="activity">
       <header class="panel-head">
         <h2>Activity</h2>
       </header>
@@ -2146,7 +2153,7 @@ function renderAdminTab(state: RewriteUiState): string {
   const partDbLinked = state.partDbStatus?.connected ?? false;
 
   return `
-    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin" class="panel panel-admin">
+    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin" class="panel panel-admin" data-motion-surface="admin">
       <header class="panel-head">
         <h2>Assets</h2>
       </header>
@@ -2200,7 +2207,7 @@ function renderAdminTab(state: RewriteUiState): string {
       </ul>
 
       <div class="admin-grid">
-      <section class="panel" id="admin-sync">
+      <section class="panel" id="admin-sync" data-motion-surface="sync-panel">
         ${renderPanelTitle("Part-DB sync", "SmartDB remains writable while sync catches up in the background.", "sync")}
         <div class="sync-status-grid">
           <div class="sync-status-card"><strong>Queued</strong><span>${state.partDbSyncStatus?.pending ?? 0}</span></div>

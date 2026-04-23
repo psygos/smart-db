@@ -86,6 +86,7 @@ import {
   hasInProgressScanWork,
 } from "./view-helpers";
 import { patchFromUrl, urlFromState, urlsEqual, type UrlPatch } from "./routing";
+import { runPostRenderMotion, type MotionSnapshot } from "./motion";
 
 interface FocusSnapshot {
   readonly key: string;
@@ -188,6 +189,7 @@ export class RewriteAppController {
   private routingInstalled = false;
   private applyingFromHistory = false;
   private lastSyncedUrl: string | null = null;
+  private motionSnapshot: MotionSnapshot | null = null;
 
   constructor(private readonly root: HTMLElement) {}
 
@@ -3705,6 +3707,7 @@ export class RewriteAppController {
     this.autofocusScanInput(focusSnapshot);
     this.autofocusStockSearch(focusSnapshot);
     this.syncUrl();
+    this.motionSnapshot = runPostRenderMotion(this.root, this.motionSnapshot, this.state);
   }
 
   private autofocusScanInput(previousFocus: FocusSnapshot | null): void {

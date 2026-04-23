@@ -13,6 +13,7 @@
     "@fontsource/ibm-plex-mono": "^5.0.0",
     "@fontsource/ibm-plex-sans": "^5.0.0",
     "@smart-db/contracts": "workspace:*",
+    "animejs": "^4.3.6",
     "barcode-detector": "^3.0.3",
     "jsqr": "^1.4.0",
     "xstate": "^5.30.0",

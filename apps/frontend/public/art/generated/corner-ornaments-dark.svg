@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="720" viewBox="0 0 720 720" fill="none">
+  <title>Smart DB corner ornaments dark</title>
+  <desc>Subtle midnight blueprint line art ornaments for the Smart DB dark theme.</desc>
+  <g stroke="#8fa9d8" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" opacity="0.17">
+    <path d="M36 118V36h82M52 118V52h66M36 602v82h82M52 602v66h66M684 118V36h-82M668 118V52h-66M684 602v82h-82M668 602v66h-66"/>
+    <path d="M92 154h82l32-32h64M108 170h74l32-32h42M66 218h58l24 24h72"/>
+    <path d="M626 154h-82l-32-32h-64M610 170h-74l-32-32h-42M654 218h-58l-24 24h-72"/>
+    <path d="M92 566h82l32 32h64M108 550h74l32 32h42M66 502h58l24-24h72"/>
+    <path d="M626 566h-82l-32 32h-64M610 550h-74l-32 32h-42M654 502h-58l-24-24h-72"/>
+    <g transform="translate(66 274)">
+      <rect x="14" y="18" width="62" height="42" rx="5"/>
+      <path d="M26 18V8M40 18V8M54 18V8M68 18V8M26 70V60M40 70V60M54 70V60M68 70V60"/>
+      <path d="M26 32h30M26 45h18"/>
+      <circle cx="61" cy="44" r="4"/>
+    </g>
+    <g transform="translate(574 282)">
+      <circle cx="42" cy="42" r="29"/>
+      <circle cx="42" cy="42" r="12"/>
+      <path d="M22 22l40 40M62 22L22 62"/>
+    </g>
+    <g transform="translate(82 438)">
+      <path d="M0 24h28l11-18 16 36 16-36 11 18h30"/>
+    </g>
+    <g transform="translate(548 438)">
+      <rect x="12" y="8" width="48" height="70"/>
+      <ellipse cx="36" cy="43" rx="15" ry="34"/>
+      <path d="M12 22h48M12 64h48"/>
+    </g>
+  </g>
+  <g stroke="#d59a54" stroke-width="1.1" stroke-linecap="round" opacity="0.28">
+    <path d="M355 42v46M332 65h46M355 632v46M332 655h46"/>
+    <path d="M42 355h46M65 332v46M632 355h46M655 332v46"/>
+  </g>
+</svg>
