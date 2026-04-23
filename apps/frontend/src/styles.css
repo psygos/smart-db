@@ -922,6 +922,35 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .activity-icon.tone-info { background: var(--blue-bg); color: var(--blue); }
 .activity-icon.tone-warn { background: var(--amber-bg); color: var(--amber); }
 .activity-icon.tone-bad { background: var(--red-bg); color: var(--red); }
+.activity-icon.tone-correction { background: var(--dim); color: var(--ink-2); }
+
+.correction-item .activity-item-body {
+  gap: 0.3rem;
+}
+
+.correction-actor {
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
+.correction-link {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0.2rem 0;
+  min-height: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.correction-link:hover {
+  color: var(--ink);
+}
 
 .activity-item-header {
   display: flex;
@@ -2976,6 +3005,87 @@ html.dark body {
   text-align: right;
 }
 
+/* bulk move / reverse — FROM / TO location cards (panels 10, 11) */
+.location-card-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.location-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 0;
+}
+.location-card .location-card-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.location-card .location-card-value {
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.location-card .location-card-input {
+  margin: 0;
+  padding: 0;
+}
+.location-card .location-card-input input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+.location-card .location-card-input input:focus {
+  outline: 0;
+  box-shadow: none;
+}
+.reverse-helper {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  background: var(--dim);
+  border: 1px solid var(--border);
+  border-left: 3px solid #c47214;
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  margin: 0 0 0.25rem;
+}
+button.primary-uppercase {
+  min-height: 52px;
+  border-radius: 10px;
+  background: var(--blue);
+  color: #fff;
+  border: 0;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: none;
+  margin-top: 0.35rem;
+}
+button.primary-uppercase:disabled {
+  background: #a7a8c0;
+  color: #fff;
+  opacity: 0.7;
+}
+
 /* bulk queue card — panels 9, 10, 11 */
 .result-card-queue {
   display: flex;
@@ -3011,6 +3121,34 @@ html.dark body {
 .result-card-queue .queue-clear:hover:not(:disabled) {
   color: var(--ink);
   background: var(--dim);
+}
+.result-card-queue .queue-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+  padding: 0.25rem;
+  background: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 0.6rem;
+}
+.result-card-queue .queue-mode-tab {
+  background: transparent;
+  border: 0;
+  padding: 0.55rem 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.result-card-queue .queue-mode-tab.is-active {
+  background: var(--surface);
+  color: var(--blue);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 0 0 1px var(--border) inset;
 }
 .result-card-queue .queue-count {
   font-family: var(--mono);

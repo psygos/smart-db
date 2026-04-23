@@ -529,12 +529,20 @@ function renderBulkQueueCard(
       : "Reverse Ingest";
   const countSubtitle = `${summary.uniqueLabelCount} unique item${summary.uniqueLabelCount === 1 ? "" : "s"} · ${summary.totalScanCount} scan${summary.totalScanCount === 1 ? "" : "s"}`;
 
+  const modeTab = (mode: "label" | "move" | "delete", label: string) =>
+    `<button type="button" role="tab" aria-selected="${String(state.bulkQueue.action === mode)}" class="queue-mode-tab ${state.bulkQueue.action === mode ? "is-active" : ""}" data-action="set-bulk-action" data-bulk-action="${mode}">${escapeHtml(label)}</button>`;
+
   return `
     <div class="result-card result-card-queue">
       <header class="queue-head">
         <h3>${escapeHtml(actionHeading)}</h3>
         <button type="button" class="queue-clear" data-action="bulk-queue-clear" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)}>Clear</button>
       </header>
+      <div class="queue-mode-tabs" role="tablist" aria-label="Queue action">
+        ${modeTab("label", "Label")}
+        ${modeTab("move", "Move")}
+        ${modeTab("delete", "Reverse")}
+      </div>
       <p class="queue-count">${escapeHtml(countSubtitle)}</p>
       ${state.bulkQueue.failure ? `<p class="banner error">${escapeHtml(state.bulkQueue.failure.message)}</p>` : ""}
       ${state.bulkQueue.rows.length === 0 ? `
@@ -704,34 +712,61 @@ function renderBulkLabelForm(
   `;
 }
 
+function deriveSourceLocations(state: RewriteUiState): string[] {
+  const locs = new Set<string>();
+  for (const row of state.bulkQueue.rows) {
+    if (row.kind !== "unlabeled" && row.location) locs.add(row.location);
+  }
+  return Array.from(locs);
+}
+
+function renderFromCard(locations: string[]): string {
+  if (locations.length === 0) return "";
+  const single = locations.length === 1;
+  return `
+    <div class="location-card location-card-from">
+      <span class="location-card-label">From</span>
+      <span class="location-card-value">${escapeHtml(single ? (locations[0] ?? "") : `${locations.length} locations`)}</span>
+    </div>
+  `;
+}
+
 function renderBulkMoveForm(state: RewriteUiState): string {
+  const sourceLocations = deriveSourceLocations(state);
   return `
     <form class="form-grid" data-form="bulk-move" style="margin-top:1rem">
-      <label class="wide">
-        Destination location
-        <input name="bulkMove.location" value="${attr(state.bulkQueue.moveForm.location)}" placeholder="Shelf B" />
-      </label>
+      <div class="location-card-pair wide">
+        ${renderFromCard(sourceLocations)}
+        <div class="location-card location-card-to">
+          <span class="location-card-label">To</span>
+          <label class="location-card-input">
+            <input name="bulkMove.location" value="${attr(state.bulkQueue.moveForm.location)}" placeholder="Destination location" />
+          </label>
+        </div>
+      </div>
       <label class="wide">
         Notes
         <textarea name="bulkMove.notes">${escapeHtml(state.bulkQueue.moveForm.notes)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.moveForm.location.trim().length === 0)}>
-        ${state.pendingAction === "bulk" ? "Moving..." : `Move ${state.bulkQueue.summary.uniqueLabelCount} labels`}
+      <button type="submit" class="primary-uppercase wide" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.moveForm.location.trim().length === 0)}>
+        ${state.pendingAction === "bulk" ? "Moving..." : `Move ${state.bulkQueue.summary.uniqueLabelCount} items`}
       </button>
     </form>
   `;
 }
 
 function renderBulkDeleteForm(state: RewriteUiState): string {
+  const sourceLocations = deriveSourceLocations(state);
   return `
     <form class="form-grid" data-form="bulk-delete" style="margin-top:1rem">
-      <p class="banner error wide">Reverses fresh ingests only. The correction audit row survives, so this is never data loss.</p>
+      <p class="reverse-helper wide">Reverses fresh ingests only. The correction audit row survives, so this is never data loss.</p>
+      ${renderFromCard(sourceLocations)}
       <label class="wide">
         Reason
         <textarea name="bulkDelete.reason">${escapeHtml(state.bulkQueue.deleteForm.reason)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
-        ${state.pendingAction === "bulk" ? "Reversing..." : `Reverse ${state.bulkQueue.summary.uniqueLabelCount} ingests`}
+      <button type="submit" class="primary-uppercase wide" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
+        ${state.pendingAction === "bulk" ? "Reversing..." : `Reverse ingest ${state.bulkQueue.summary.uniqueLabelCount} items`}
       </button>
     </form>
   `;
@@ -1862,13 +1897,18 @@ function renderCorrectionLog(state: RewriteUiState): string {
               ? before.qrCode
               : null;
         return `
-          <li class="activity-item">
-            <div class="activity-item-header">
-              <span class="activity-action">${escapeHtml(correctionLabel(event.correctionKind))} by ${escapeHtml(event.actor)}</span>
-              <span class="activity-time">${escapeHtml(formatTimestamp(event.createdAt))}</span>
+          <li class="activity-item correction-item">
+            <span class="activity-icon tone-correction" aria-hidden="true">↺</span>
+            <div class="activity-item-body">
+              <div class="activity-item-header">
+                <span class="activity-action">${escapeHtml(correctionLabel(event.correctionKind))}</span>
+                <span class="activity-time">${escapeHtml(formatTimestamp(event.createdAt))}</span>
+              </div>
+              ${qrCode ? `<span class="activity-item-name"><code class="activity-code">${escapeHtml(qrCode)}</code></span>` : ""}
+              <span class="activity-detail">${escapeHtml(event.reason)}</span>
+              <span class="correction-actor">by ${escapeHtml(event.actor)}</span>
+              ${qrCode ? `<button type="button" class="correction-link" data-action="open-correction-on-scan" data-qr-code="${attr(qrCode)}">Open on scan →</button>` : ""}
             </div>
-            <span class="activity-detail">${escapeHtml(event.reason)}</span>
-            ${qrCode ? `<button type="button" class="disclosure" data-action="open-correction-on-scan" data-qr-code="${attr(qrCode)}" style="margin-top:0.25rem;font-size:0.8rem">Open ${escapeHtml(qrCode)} on scan</button>` : ""}
           </li>
         `;
       }).join("")}
@@ -1878,7 +1918,6 @@ function renderCorrectionLog(state: RewriteUiState): string {
 
 function renderAdminTab(state: RewriteUiState): string {
   const syncEnabled = state.partDbSyncStatus?.enabled ?? false;
-  const mergeOptions = state.mergeSearch.results.length > 0 ? state.mergeSearch.results : state.catalogSuggestions;
   const isDownloadingLabels = state.downloadingBatchId === state.latestBatch?.id;
 
   const categoryAgg = new Map<string, { types: number; onHand: number; unit: string }>();
@@ -1946,35 +1985,10 @@ function renderAdminTab(state: RewriteUiState): string {
             <span class="admin-shortcut-chev" aria-hidden="true">›</span>
           </a>
         </li>
-        <li>
-          <a class="admin-shortcut" href="#admin-merge">
-            <span class="admin-shortcut-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6 3v5a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v5"/>
-                <path d="M18 3v5"/>
-                <path d="M15 6l3-3 3 3"/>
-              </svg>
-            </span>
-            <span class="admin-shortcut-label">Merge Provisional Types</span>
-            <span class="admin-shortcut-chev" aria-hidden="true">›</span>
-          </a>
-        </li>
-        <li>
-          <a class="admin-shortcut" href="#admin-settings">
-            <span class="admin-shortcut-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
-              </svg>
-            </span>
-            <span class="admin-shortcut-label">System Settings</span>
-            <span class="admin-shortcut-chev" aria-hidden="true">›</span>
-          </a>
-        </li>
       </ul>
 
-      <div class="admin-grid" id="admin-sync">
-      <section class="panel">
+      <div class="admin-grid">
+      <section class="panel" id="admin-sync">
         ${renderPanelTitle("Part-DB sync", "SmartDB remains writable while sync catches up in the background.", "sync")}
         <div class="sync-status-grid">
           <div class="sync-status-card"><strong>Queued</strong><span>${state.partDbSyncStatus?.pending ?? 0}</span></div>
@@ -2022,33 +2036,6 @@ function renderAdminTab(state: RewriteUiState): string {
         </form>
       </section>
 
-      <section class="panel" id="admin-merge">
-        ${renderPanelTitle("Canonicalize provisional types", "A provisional type is one a scanner created on the fly because the catalog didn't have it yet. This tool is where you merge near-duplicates into the canonical row or approve a provisional as canonical.", "merge")}
-        <div class="stack">
-          <label>
-            Provisional source
-            <select name="merge.sourceId">
-              <option value="">Select provisional type</option>
-              ${state.provisionalPartTypes.map((partType) => `<option value="${attr(partType.id)}"${selected(state.mergeSourceId === partType.id)}>${escapeHtml(`${partType.canonicalName} · ${formatCategoryPath(partType.categoryPath)}`)}</option>`).join("")}
-            </select>
-          </label>
-          ${state.mergeSourceId ? `<button type="button" data-action="approve-part" data-part-id="${attr(state.mergeSourceId)}" ${disabled(state.pendingAction !== null)}>Keep As-Is</button>` : ""}
-          <label>
-            Find canonical destination
-            <input name="mergeSearch.query" value="${attr(state.mergeSearch.query)}" placeholder="Search existing type" />
-          </label>
-          ${state.mergeSearch.error ? `<p class="banner error">${escapeHtml(state.mergeSearch.error)}</p>` : ""}
-          <div class="picker" role="radiogroup" aria-label="Canonical destination">
-            ${mergeOptions.map((partType) => `
-              <button type="button" role="radio" aria-checked="${String(state.mergeDestinationId === partType.id)}" class="${state.mergeDestinationId === partType.id ? "selected" : ""}" data-action="select-merge-destination" data-part-id="${attr(partType.id)}">
-                <strong>${escapeHtml(partType.canonicalName)}</strong>
-                <span>${escapeHtml(formatCategoryPath(partType.categoryPath))}</span>
-              </button>
-            `).join("")}
-          </div>
-          <button type="button" data-action="merge-parts" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "merge" ? "Merging..." : "Merge provisional type"}</button>
-        </div>
-      </section>
       </div>
     </section>
   `;
