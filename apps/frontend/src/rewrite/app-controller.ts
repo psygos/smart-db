@@ -379,7 +379,7 @@ export class RewriteAppController {
 
   private readonly handleClick = (event: Event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) {
+    if (!(target instanceof Element)) {
       return;
     }
 

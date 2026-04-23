@@ -319,6 +319,37 @@ describe("RewriteAppController", () => {
     controller.dispose();
   });
 
+  it("handles tab clicks that originate on SVG icon elements", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const stockIconPath = document.querySelector<SVGElement>('[data-tab="inventory"] svg *');
+    stockIconPath!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(document.getElementById("panel-inventory")).not.toBeNull();
+    expect(window.location.pathname).toBe("/stock");
+
+    const scanIconPath = document.querySelector<SVGElement>('[data-tab="scan"] svg *');
+    scanIconPath!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(document.getElementById("panel-scan")).not.toBeNull();
+    expect(window.location.pathname).toBe("/scan");
+    controller.dispose();
+  });
+
   it("rejects invalid batch input before calling the API", async () => {
     const { startRewriteApp } = await import("./app-controller");
     apiMock.getSession.mockResolvedValueOnce({
