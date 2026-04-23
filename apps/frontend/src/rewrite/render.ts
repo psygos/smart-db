@@ -1706,7 +1706,17 @@ function renderStockItemRow(row: InventoryRow, eyebrowPath: readonly string[]): 
   `;
 }
 
-function renderStockCategoryCard(segment: string, rows: readonly InventoryRow[], withGlyph: boolean): string {
+function encodePath(path: readonly string[]): string {
+  return path.map(encodeURIComponent).join("/");
+}
+
+function renderStockCategoryCard(
+  segment: string,
+  rows: readonly InventoryRow[],
+  path: readonly string[],
+  withGlyph: boolean,
+  isExpanded: boolean,
+): string {
   const types = rows.length;
   const qrs = rows.reduce((sum, r) => sum + r.entityCount, 0);
   const onHand = rows.reduce((sum, r) => sum + r.onHand, 0);
@@ -1715,48 +1725,83 @@ function renderStockCategoryCard(segment: string, rows: readonly InventoryRow[],
     ? `${formatQuantity(onHand)} ${[...units][0]}`
     : `${types} type${types === 1 ? "" : "s"}`;
   return `
-    <li class="stock-card-wrap${withGlyph ? " has-glyph" : ""}">
-      <button
-        type="button"
-        class="stock-card"
-        data-action="stock-drill"
-        data-category-segment="${attr(segment)}"
-        aria-label="Open ${attr(segment)}"
-      >
-        ${withGlyph ? stockCategoryGlyph(segment) : ""}
-        <span class="stock-card-copy">
-          <strong class="stock-card-title">${escapeHtml(segment)}</strong>
-          <span class="stock-card-meta">
-            <span>${types} type${types === 1 ? "" : "s"}</span>
-            <span class="stock-card-meta-sep" aria-hidden="true">·</span>
-            <span>${qrs} QR${qrs === 1 ? "" : "s"}</span>
-            <span class="stock-card-meta-sep" aria-hidden="true">·</span>
-            <span>${escapeHtml(onHandLabel)}</span>
-          </span>
+    <button
+      type="button"
+      class="stock-card${isExpanded ? " is-open" : ""}"
+      data-action="stock-toggle"
+      data-category-path="${attr(encodePath(path))}"
+      aria-expanded="${String(isExpanded)}"
+      aria-label="${isExpanded ? "Collapse" : "Expand"} ${attr(segment)}"
+    >
+      ${withGlyph ? stockCategoryGlyph(segment) : ""}
+      <span class="stock-card-copy">
+        <strong class="stock-card-title">${escapeHtml(segment)}</strong>
+        <span class="stock-card-meta">
+          <span>${types} type${types === 1 ? "" : "s"}</span>
+          <span class="stock-card-meta-sep" aria-hidden="true">·</span>
+          <span>${qrs} QR${qrs === 1 ? "" : "s"}</span>
+          <span class="stock-card-meta-sep" aria-hidden="true">·</span>
+          <span>${escapeHtml(onHandLabel)}</span>
         </span>
-        <span class="stock-card-chev" aria-hidden="true">›</span>
-      </button>
-    </li>
+      </span>
+      <span class="stock-card-chev" aria-hidden="true">›</span>
+    </button>
   `;
 }
 
-function renderStockBreadcrumb(browsePath: readonly string[]): string {
-  const segments = [
-    { label: "Stock", depth: 0 },
-    ...browsePath.map((seg, i) => ({ label: seg, depth: i + 1 })),
-  ];
-  const last = segments.length - 1;
+function renderStockAccordionLevel(
+  rows: readonly InventoryRow[],
+  path: readonly string[],
+  browsePath: readonly string[],
+): string {
+  const groups = new Map<string, InventoryRow[]>();
+  const directItems: InventoryRow[] = [];
+  for (const row of rows) {
+    const next = row.categoryPath[path.length];
+    if (next === undefined || next === "") {
+      directItems.push(row);
+    } else {
+      const arr = groups.get(next) ?? [];
+      arr.push(row);
+      groups.set(next, arr);
+    }
+  }
+
+  const sorted = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const withGlyph = path.length === 0;
+  const nextDepth = path.length;
+
+  const groupsHtml = sorted.map(([segment, groupRows]) => {
+    const thisPath = [...path, segment];
+    const isExpanded = browsePath.length > nextDepth && browsePath[nextDepth] === segment;
+    const childrenHtml = isExpanded
+      ? `<div class="stock-accordion-children">${renderStockAccordionLevel(groupRows, thisPath, browsePath)}</div>`
+      : "";
+    return `
+      <li class="stock-accordion-item${isExpanded ? " is-open" : ""}">
+        ${renderStockCategoryCard(segment, groupRows, thisPath, withGlyph, isExpanded)}
+        ${childrenHtml}
+      </li>
+    `;
+  }).join("");
+
+  const directItemsHtml = directItems.length === 0 ? "" : `
+    <li class="stock-accordion-items">
+      <ul class="inventory-list">
+        ${directItems
+          .slice()
+          .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName))
+          .map((row) => renderStockItemRow(row, []))
+          .join("")}
+      </ul>
+    </li>
+  `;
+
   return `
-    <nav class="stock-breadcrumb" aria-label="Category path">
-      ${segments.map((seg, i) => {
-        const isCurrent = i === last;
-        const separator = i === 0 ? "" : `<span class="stock-breadcrumb-sep" aria-hidden="true">›</span>`;
-        if (isCurrent) {
-          return `${separator}<span class="stock-breadcrumb-seg is-current" aria-current="page">${escapeHtml(seg.label)}</span>`;
-        }
-        return `${separator}<button type="button" class="stock-breadcrumb-seg" data-action="stock-breadcrumb" data-depth="${seg.depth}">${escapeHtml(seg.label)}</button>`;
-      }).join("")}
-    </nav>
+    <ul class="stock-accordion stock-accordion-depth-${nextDepth}">
+      ${groupsHtml}
+      ${directItemsHtml}
+    </ul>
   `;
 }
 
@@ -1783,59 +1828,18 @@ function renderInventoryTab(state: RewriteUiState): string {
     return matchesAllTokens(blob, tokens);
   };
 
-  const isUnderBrowsePath = (row: InventoryRow): boolean => {
-    if (row.categoryPath.length < browsePath.length) return false;
-    for (let i = 0; i < browsePath.length; i++) {
-      if (row.categoryPath[i] !== browsePath[i]) return false;
-    }
-    return true;
-  };
+  const filteredRows = state.inventorySummary.filter(matchesFilters);
 
-  const scopedRows = state.inventorySummary
-    .filter(matchesFilters)
-    .filter((row) => isSearching || isUnderBrowsePath(row));
+  const totalOnHand = filteredRows.reduce((sum, row) => sum + row.onHand, 0);
+  const totalEntities = filteredRows.reduce((sum, row) => sum + row.entityCount, 0);
 
-  const totalOnHand = scopedRows.reduce((sum, row) => sum + row.onHand, 0);
-  const totalEntities = scopedRows.reduce((sum, row) => sum + row.entityCount, 0);
-
-  const childGroups = new Map<string, InventoryRow[]>();
-  const directItems: InventoryRow[] = [];
-  if (!isSearching) {
-    for (const row of scopedRows) {
-      const next = row.categoryPath[browsePath.length];
-      if (next === undefined || next === "") {
-        directItems.push(row);
-      } else {
-        const arr = childGroups.get(next) ?? [];
-        arr.push(row);
-        childGroups.set(next, arr);
-      }
-    }
-  }
-
-  const sortedChildren = Array.from(childGroups.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]));
-
-  const withGlyph = browsePath.length === 0;
-  const childCardsHtml = sortedChildren.length === 0 ? "" : `
-    <ul class="stock-card-list">
-      ${sortedChildren.map(([segment, rows]) => renderStockCategoryCard(segment, rows, withGlyph)).join("")}
-    </ul>
-  `;
-
-  const directItemsHtml = directItems.length === 0 ? "" : `
-    <ul class="inventory-list">
-      ${directItems
-        .slice()
-        .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName))
-        .map((row) => renderStockItemRow(row, []))
-        .join("")}
-    </ul>
-  `;
+  const accordionHtml = !isSearching
+    ? renderStockAccordionLevel(filteredRows, [], browsePath)
+    : "";
 
   const searchResultsHtml = !isSearching ? "" : `
     <ul class="inventory-list">
-      ${scopedRows
+      ${filteredRows
         .slice()
         .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName))
         .map((row) => renderStockItemRow(row, row.categoryPath))
@@ -1845,26 +1849,19 @@ function renderInventoryTab(state: RewriteUiState): string {
 
   const emptyCopy = isSearching
     ? "No inventory entries match your search."
-    : "Nothing in this category yet.";
+    : "Nothing in stock yet.";
 
-  const hasContent = isSearching
-    ? scopedRows.length > 0
-    : (sortedChildren.length > 0 || directItems.length > 0);
-
-  const currentTitle = isSearching || browsePath.length === 0
-    ? "Stock"
-    : (browsePath[browsePath.length - 1] ?? "Stock");
+  const hasContent = filteredRows.length > 0;
 
   return `
     <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-inventory">
-      ${isSearching || browsePath.length === 0 ? "" : renderStockBreadcrumb(browsePath)}
       <header class="panel-head">
-        <h2>${escapeHtml(currentTitle)}</h2>
+        <h2>Stock</h2>
       </header>
       <div class="stock-summary">
         <div class="stock-summary-cell">
           <span class="stock-summary-label">Types</span>
-          <strong class="stock-summary-value">${scopedRows.length}</strong>
+          <strong class="stock-summary-value">${filteredRows.length}</strong>
         </div>
         <div class="stock-summary-cell">
           <span class="stock-summary-label">QRs</span>
@@ -1886,7 +1883,7 @@ function renderInventoryTab(state: RewriteUiState): string {
         ? `<p class="muted-copy">${emptyCopy}</p>`
         : isSearching
           ? searchResultsHtml
-          : `${childCardsHtml}${directItemsHtml}`}
+          : accordionHtml}
     </section>
   `;
 }

@@ -633,23 +633,17 @@ export class RewriteAppController {
           inventoryUi: { ...this.state.inventoryUi, detailPartTypeId: null },
         });
         break;
-      case "stock-drill": {
-        const segment = actionEl.dataset.categorySegment;
-        if (segment) {
-          this.patch({
-            inventoryUi: {
-              ...this.state.inventoryUi,
-              browsePath: [...this.state.inventoryUi.browsePath, segment],
-            },
-          });
-        }
-        break;
-      }
-      case "stock-breadcrumb": {
-        const depth = Number(actionEl.dataset.depth ?? "0");
-        const nextPath = Number.isFinite(depth) && depth >= 0
-          ? this.state.inventoryUi.browsePath.slice(0, depth)
-          : [];
+      case "stock-toggle": {
+        const encoded = actionEl.dataset.categoryPath ?? "";
+        const target = encoded === ""
+          ? []
+          : encoded.split("/").map((seg) => {
+              try { return decodeURIComponent(seg); } catch { return seg; }
+            });
+        const current = this.state.inventoryUi.browsePath;
+        const isSamePath = target.length === current.length
+          && target.every((seg, i) => seg === current[i]);
+        const nextPath = isSamePath ? target.slice(0, -1) : target;
         this.patch({
           inventoryUi: { ...this.state.inventoryUi, browsePath: nextPath },
         });
@@ -3691,6 +3685,7 @@ export class RewriteAppController {
 
     this.restoreFocus(focusSnapshot);
     this.autofocusScanInput(focusSnapshot);
+    this.autofocusStockSearch(focusSnapshot);
     this.syncUrl();
   }
 
@@ -3707,6 +3702,18 @@ export class RewriteAppController {
     }
     input.focus();
     input.select();
+  }
+
+  private autofocusStockSearch(previousFocus: FocusSnapshot | null): void {
+    if (previousFocus) return;
+    if (this.state.activeTab !== "inventory") return;
+    if (this.state.inventoryUi.detailPartTypeId) return;
+    if (typeof window === "undefined") return;
+    if (typeof window.matchMedia !== "function") return;
+    if (!window.matchMedia("(min-width: 900px)").matches) return;
+    const input = this.root.querySelector<HTMLInputElement>('input[name="inventory.query"]');
+    if (!input || document.activeElement === input) return;
+    input.focus();
   }
 
   private captureFocus(): FocusSnapshot | null {
