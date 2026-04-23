@@ -2959,3 +2959,174 @@ html.dark body {
   color: var(--ink);
   letter-spacing: 0.02em;
 }
+
+/* interact result cards — panels 7 & 8 */
+.result-card-interact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.1rem 1.1rem 1.25rem;
+}
+.result-card-interact .result-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+.result-card-interact .result-card-head h3 {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+}
+.result-card-interact .result-title {
+  font-family: var(--display);
+  font-size: 1.65rem;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.005em;
+  line-height: 1.1;
+}
+.result-card-interact .result-code {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.result-card-interact .meta-line {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  color: var(--ink-2);
+  margin: 0 0 0.25rem;
+}
+.result-card-interact .section-label,
+.result-card .section-label {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0.6rem 0 0.35rem;
+}
+.status-pill.is-available { background: #e3f3e5; color: #1f7a3a; border: 1px solid #c8e6c9; }
+.status-pill.is-checked-out { background: var(--blue-bg); color: var(--blue); border: 1px solid #d8e1f2; }
+.status-pill.is-warn { background: #fdeccd; color: #8a5a14; border: 1px solid #efd9a4; }
+.status-pill.is-muted { background: var(--dim); color: var(--ink-3); border: 1px solid var(--border); }
+
+/* unknown scan result — panel 4 */
+.result-card-unknown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.1rem 1.1rem 1.25rem;
+}
+.result-card-unknown .result-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+.result-card-unknown .result-card-head h3 {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+}
+.result-card-unknown .status-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+.result-card-unknown .status-pill.is-unknown {
+  background: #b43a3a;
+  color: #fff;
+}
+.result-card-unknown .result-code {
+  font-family: var(--display);
+  font-size: 1.9rem;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0.1rem 0 0;
+  letter-spacing: -0.005em;
+}
+.result-card-unknown .result-sub {
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  color: var(--ink-2);
+  margin: 0;
+}
+.result-card-unknown .result-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.25rem 0;
+}
+.result-card-unknown .result-meta-label {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+.result-card-unknown .result-body {
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  color: var(--ink-2);
+  margin: 0 0 0.25rem;
+}
+.result-card-unknown .result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+.result-card-unknown .btn-primary {
+  background: var(--blue);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  min-height: 48px;
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.result-card-unknown .btn-outline {
+  background: transparent;
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 10px;
+  min-height: 48px;
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.result-card-unknown .btn-scan-next {
+  color: var(--ink);
+  border-color: var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.result-card-unknown .result-footer {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  margin-top: 0.25rem;
+}

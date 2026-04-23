@@ -343,16 +343,27 @@ function renderScanTab(state: RewriteUiState): string {
   const detailMarkup = state.scanMode.kind === "oneByOne"
     ? state.scanResult?.mode === "unknown"
       ? `
-        <div class="result-card">
-          <h3>${escapeHtml(state.scanResult.code)} is unknown to Smart DB</h3>
-          <p>
-            Register this barcode to start tracking it. Future scans will
-            automatically increment the quantity on hand.
-          </p>
-          <button type="button" data-action="register-unknown" data-code="${attr(state.scanResult.code)}" ${disabled(state.pendingAction !== null)} style="margin-top:0.75rem;">
-            Register this barcode
-          </button>
-          <small style="display:block;margin-top:0.5rem">${escapeHtml(state.scanResult.partDb.message)}</small>
+        <div class="result-card result-card-unknown">
+          <header class="result-card-head">
+            <h3>Scan Result</h3>
+          </header>
+          <span class="status-pill is-unknown">UNKNOWN</span>
+          <p class="result-code">${escapeHtml(state.scanResult.code)}</p>
+          <p class="result-sub">Not found in Smart DB</p>
+          <div class="result-divider" aria-hidden="true"></div>
+          <p class="result-meta-label">WHAT NEXT?</p>
+          <p class="result-body">This QR code is not recognized.</p>
+          <div class="result-actions">
+            <button type="button" class="btn-primary" data-action="register-unknown" data-code="${attr(state.scanResult.code)}" ${disabled(state.pendingAction !== null)}>Assign to existing part</button>
+            <button type="button" class="btn-outline btn-scan-next" data-action="scan-next" ${disabled(state.pendingAction !== null)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M20 8V6a2 2 0 0 0-2-2h-2"/>
+                <path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/>
+              </svg>
+              Scan next
+            </button>
+          </div>
+          ${state.scanResult.partDb.message ? `<small class="result-footer">${escapeHtml(state.scanResult.partDb.message)}</small>` : ""}
         </div>
       `
       : state.scanResult?.mode === "label"
@@ -447,7 +458,7 @@ function renderScanTab(state: RewriteUiState): string {
 
       <div class="scan-detail" aria-live="polite">
         ${detailMarkup}
-        ${state.scanMode.kind === "oneByOne" && state.scanResult && !state.cameraLookupCode ? `
+        ${state.scanMode.kind === "oneByOne" && state.scanResult && state.scanResult.mode !== "unknown" && !state.cameraLookupCode ? `
           <button
             type="button"
             class="scan-next-bottom"
@@ -987,15 +998,36 @@ function renderInteractCard(
     return "";
   }
 
+  const entity = state.scanResult.entity;
+  const isBulkEntity = entity.targetType === "bulk";
+  const statusPillClass = entity.state === "available"
+    ? "is-available"
+    : entity.state === "checked_out"
+      ? "is-checked-out"
+      : entity.state === "damaged" || entity.state === "lost"
+        ? "is-warn"
+        : entity.state === "consumed"
+          ? "is-muted"
+          : entity.state === "good" || entity.state === "full"
+            ? "is-available"
+            : entity.state === "low"
+              ? "is-warn"
+              : entity.state === "empty"
+                ? "is-muted"
+                : "is-muted";
+
   return `
-    <div class="result-card">
-      <h3>${escapeHtml(state.scanResult.entity.partType.canonicalName)}</h3>
+    <div class="result-card result-card-interact">
+      <header class="result-card-head">
+        <h3>${isBulkEntity ? "Bulk Bin" : "Item"}</h3>
+        <span class="status-pill ${statusPillClass}">${escapeHtml(entity.state.replace(/_/g, " ").toUpperCase())}</span>
+      </header>
+      <p class="result-title">${escapeHtml(entity.partType.canonicalName)}</p>
+      <p class="result-code">${escapeHtml(entity.qrCode)}</p>
       <p class="meta-line">
-        <code>${escapeHtml(state.scanResult.entity.qrCode)}</code>
-        <span class="sep">·</span>
-        <span>${escapeHtml(state.scanResult.entity.targetType)}</span>
+        <span>${escapeHtml(isBulkEntity ? "bulk" : "instance")}</span>
         <span class="sep">in</span>
-        <span class="meta-loc">${escapeHtml(state.scanResult.entity.location)}</span>
+        <span class="meta-loc">${escapeHtml(entity.location)}</span>
       </p>
       ${state.scanResult.entity.targetType === "bulk" && state.scanResult.entity.quantity !== null ? `
         <div class="quantity-display">
@@ -1011,9 +1043,11 @@ function renderInteractCard(
         const actions = state.scanResult.availableActions;
         const primary = actions.filter((a) => a === "checked_out");
         const secondary = actions.filter((a) => a !== "checked_out");
+        if (primary.length === 0 && secondary.length === 0) return "";
         const renderBtn = (action: typeof actions[number]) =>
           `<button type="button" aria-pressed="${String(state.eventForm.event === action)}" class="${state.eventForm.event === action ? "selected" : ""}" data-action="select-event-action" data-event="${attr(action)}">${escapeHtml(actionLabel(action))}</button>`;
         return `
+          <p class="section-label">Actions</p>
           ${primary.length > 0 ? `<div class="action-buttons action-buttons-primary">${primary.map(renderBtn).join("")}</div>` : ""}
           ${secondary.length > 0 ? `<div class="action-buttons action-buttons-secondary">${secondary.map(renderBtn).join("")}</div>` : ""}
         `;
@@ -1064,15 +1098,18 @@ function renderInteractCard(
         </button>
       </form>
       ${renderScanLocations(state)}
-      <div class="event-list">
-        ${state.scanResult.recentEvents.map((stockEvent) => `
-          <article>
-            <strong>${escapeHtml(actionLabel(stockEvent.event))}</strong>
-            <span>${escapeHtml(stockEvent.actor)} · ${escapeHtml(formatTimestamp(stockEvent.createdAt))}</span>
-            <small>${escapeHtml(`${stockEvent.fromState ?? "none"} → ${stockEvent.toState ?? "none"}`)}</small>
-          </article>
-        `).join("")}
-      </div>
+      ${state.scanResult.recentEvents.length > 0 ? `
+        <p class="section-label">Recent history</p>
+        <div class="event-list">
+          ${state.scanResult.recentEvents.map((stockEvent) => `
+            <article>
+              <strong>${escapeHtml(actionLabel(stockEvent.event))}</strong>
+              <span>${escapeHtml(stockEvent.actor)} · ${escapeHtml(formatTimestamp(stockEvent.createdAt))}</span>
+              <small>${escapeHtml(`${stockEvent.fromState ?? "none"} → ${stockEvent.toState ?? "none"}`)}</small>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
       ${state.scanEdit.status === "closed"
         ? renderScanEditEntry(state)
         : renderScanEditPanel(state)}
