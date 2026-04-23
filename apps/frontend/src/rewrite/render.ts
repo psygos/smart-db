@@ -374,7 +374,7 @@ function renderScanTab(state: RewriteUiState): string {
     : renderBulkQueueCard(state, bulkLabelOptions, bulkAssignIssues);
 
   const isBulk = state.scanMode.kind === "bulk";
-  const isAutoCount = state.scanMode.behavior === "increment";
+  const isAutoCount = state.scanMode.kind === "oneByOne" && state.scanMode.behavior === "increment";
   const queueCount = state.bulkQueue.rows.length;
   const hasCamera = state.camera.supported;
   const cameraLive = Boolean(state.camera.activeStream);
@@ -2360,16 +2360,6 @@ function scanModeLabel(mode: string): string {
   }
 }
 
-function bulkActionHeading(action: "label" | "move" | "delete"): string {
-  switch (action) {
-    case "label":
-      return "Bulk label queue";
-    case "move":
-      return "Bulk move queue";
-    case "delete":
-      return "Bulk reverse queue";
-  }
-}
 
 function emptyBulkQueueCopy(action: "label" | "move" | "delete"): string {
   switch (action) {

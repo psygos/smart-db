@@ -286,7 +286,7 @@ describe("RewriteAppController", () => {
     const controller = startRewriteApp(document.getElementById("root")!);
     await flush();
 
-    expect(document.body.textContent).toContain("Continue With SSO");
+    expect(document.body.textContent).toContain("Continue with Ashoka SSO");
     controller.dispose();
   });
 
@@ -305,8 +305,8 @@ describe("RewriteAppController", () => {
     const controller = startRewriteApp(document.getElementById("root")!);
     await flush();
 
-    expect(document.body.textContent).toContain("lab-admin");
     expect(document.querySelector('[data-tab="admin"]')).not.toBeNull();
+    expect(document.querySelector('[data-action="logout"]')).not.toBeNull();
 
     (document.querySelector('[data-tab="dashboard"]') as HTMLButtonElement).click();
     await flush();
@@ -623,7 +623,7 @@ describe("RewriteAppController", () => {
     logoutButton!.click();
     await flush();
 
-    expect(document.body.textContent).toContain("lab-admin");
+    expect(document.querySelector('[data-action="logout"]')).not.toBeNull();
     expect(document.body.textContent).toContain("logout failed");
     controller.dispose();
   });
@@ -709,14 +709,14 @@ describe("RewriteAppController", () => {
       .find((button) => button.dataset.scanModeKind === "bulk")!
       .click();
     await flush();
-    expect(document.body.textContent).toContain("Bulk label queue");
+    expect(document.body.textContent).toContain("Label Queue");
 
     (Array.from(document.querySelectorAll('[data-action="set-bulk-action"]')) as HTMLButtonElement[])
       .find((button) => button.dataset.bulkAction === "move")!
       .click();
     await flush();
 
-    expect(document.body.textContent).toContain("Bulk move queue");
+    expect(document.body.textContent).toContain("Move Queue");
     controller.dispose();
   });
 
@@ -893,7 +893,7 @@ describe("RewriteAppController", () => {
     await flush();
 
     expect(document.body.textContent).toContain("Bulk delete only supports fresh ingests");
-    expect(document.body.textContent).toContain("0 unique labels");
+    expect(document.body.textContent).toContain("0 unique items");
     expect(apiMock.bulkReverseIngest).not.toHaveBeenCalled();
     controller.dispose();
   });
