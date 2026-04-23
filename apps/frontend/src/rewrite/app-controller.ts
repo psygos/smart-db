@@ -545,6 +545,28 @@ export class RewriteAppController {
           inventoryUi: { ...this.state.inventoryUi, detailPartTypeId: null },
         });
         break;
+      case "stock-drill": {
+        const segment = actionEl.dataset.categorySegment;
+        if (segment) {
+          this.patch({
+            inventoryUi: {
+              ...this.state.inventoryUi,
+              browsePath: [...this.state.inventoryUi.browsePath, segment],
+            },
+          });
+        }
+        break;
+      }
+      case "stock-breadcrumb": {
+        const depth = Number(actionEl.dataset.depth ?? "0");
+        const nextPath = Number.isFinite(depth) && depth >= 0
+          ? this.state.inventoryUi.browsePath.slice(0, depth)
+          : [];
+        this.patch({
+          inventoryUi: { ...this.state.inventoryUi, browsePath: nextPath },
+        });
+        break;
+      }
       case "download-labels":
         void this.handleDownloadLatestBatchLabels();
         break;

@@ -73,6 +73,7 @@ export interface ScanHistoryEntry {
 export interface InventoryUiState {
   readonly query: string;
   readonly showEmpty: boolean;
+  readonly browsePath: readonly string[];
   readonly expandedId: string | null;
   readonly expandedItems: ReadonlyMap<string, PartTypeItemsResponse>;
   readonly expandedErrors: ReadonlyMap<string, string>;
@@ -360,6 +361,7 @@ export const defaultBulkQueueState: BulkQueueUiState = {
 export const defaultInventoryUiState: InventoryUiState = {
   query: "",
   showEmpty: false,
+  browsePath: [],
   expandedId: null,
   expandedItems: new Map(),
   expandedErrors: new Map(),

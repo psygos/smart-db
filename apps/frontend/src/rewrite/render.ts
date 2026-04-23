@@ -1590,13 +1590,94 @@ function renderInventoryReverseToolbar(state: RewriteUiState, partTypeId: string
   `;
 }
 
+type InventoryRow = RewriteUiState["inventorySummary"][number];
+
+function renderStockItemRow(row: InventoryRow, eyebrowPath: readonly string[]): string {
+  const isStocked = row.bins > 0 || row.instanceCount > 0;
+  const eyebrow = eyebrowPath.join(" › ");
+  return `
+    <li class="inventory-row-wrap ${isStocked ? "stocked" : "empty"}">
+      <button type="button" class="inventory-row" data-action="open-part-detail" data-part-type-id="${attr(row.id)}" aria-label="Open ${attr(row.canonicalName)} details">
+        <div class="inventory-row-name">
+          ${renderPartTileArt(row, "inventory")}
+          <span class="inventory-row-copy">
+            <strong>${escapeHtml(row.canonicalName)}</strong>
+            ${eyebrow ? `<span>${escapeHtml(eyebrow)}</span>` : ""}
+          </span>
+        </div>
+        <div class="inventory-row-quantity">
+          <span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span>
+          <span class="qty-unit">${escapeHtml(row.unit.symbol)}${row.entityCount > 0 ? ` · ${row.entityCount} QR${row.entityCount === 1 ? "" : "s"}` : ""}</span>
+        </div>
+        <span class="inventory-row-chev" aria-hidden="true">›</span>
+      </button>
+    </li>
+  `;
+}
+
+function renderStockCategoryCard(segment: string, rows: readonly InventoryRow[]): string {
+  const types = rows.length;
+  const qrs = rows.reduce((sum, r) => sum + r.entityCount, 0);
+  const onHand = rows.reduce((sum, r) => sum + r.onHand, 0);
+  const units = new Set(rows.map((r) => r.unit.symbol));
+  const onHandLabel = units.size === 1
+    ? `${formatQuantity(onHand)} ${[...units][0]}`
+    : `${types} type${types === 1 ? "" : "s"}`;
+  return `
+    <li class="stock-card-wrap">
+      <button
+        type="button"
+        class="stock-card"
+        data-action="stock-drill"
+        data-category-segment="${attr(segment)}"
+        aria-label="Open ${attr(segment)}"
+      >
+        <span class="stock-card-copy">
+          <strong class="stock-card-title">${escapeHtml(segment)}</strong>
+          <span class="stock-card-meta">
+            <span>${types} type${types === 1 ? "" : "s"}</span>
+            <span class="stock-card-meta-sep" aria-hidden="true">·</span>
+            <span>${qrs} QR${qrs === 1 ? "" : "s"}</span>
+            <span class="stock-card-meta-sep" aria-hidden="true">·</span>
+            <span>${escapeHtml(onHandLabel)}</span>
+          </span>
+        </span>
+        <span class="stock-card-chev" aria-hidden="true">›</span>
+      </button>
+    </li>
+  `;
+}
+
+function renderStockBreadcrumb(browsePath: readonly string[]): string {
+  const segments = [
+    { label: "Stock", depth: 0 },
+    ...browsePath.map((seg, i) => ({ label: seg, depth: i + 1 })),
+  ];
+  const last = segments.length - 1;
+  return `
+    <nav class="stock-breadcrumb" aria-label="Category path">
+      ${segments.map((seg, i) => {
+        const isCurrent = i === last;
+        const separator = i === 0 ? "" : `<span class="stock-breadcrumb-sep" aria-hidden="true">›</span>`;
+        if (isCurrent) {
+          return `${separator}<span class="stock-breadcrumb-seg is-current" aria-current="page">${escapeHtml(seg.label)}</span>`;
+        }
+        return `${separator}<button type="button" class="stock-breadcrumb-seg" data-action="stock-breadcrumb" data-depth="${seg.depth}">${escapeHtml(seg.label)}</button>`;
+      }).join("")}
+    </nav>
+  `;
+}
+
 function renderInventoryTab(state: RewriteUiState): string {
   if (state.inventoryUi.detailPartTypeId) {
     return renderPartTypeDetail(state, state.inventoryUi.detailPartTypeId);
   }
 
   const tokens = tokenizeQuery(state.inventoryUi.query);
-  const rows = state.inventorySummary.filter((row) => {
+  const isSearching = tokens.length > 0;
+  const browsePath = state.inventoryUi.browsePath;
+
+  const matchesFilters = (row: InventoryRow): boolean => {
     if (!state.inventoryUi.showEmpty && row.bins === 0 && row.instanceCount === 0) {
       return false;
     }
@@ -1608,28 +1689,89 @@ function renderInventoryTab(state: RewriteUiState): string {
       row.unit.name,
     ].join(" ");
     return matchesAllTokens(blob, tokens);
-  });
+  };
 
-  const groups = new Map<string, typeof rows>();
-  for (const row of rows) {
-    const top = row.categoryPath[0] ?? "Uncategorized";
-    const existing = groups.get(top) ?? [];
-    existing.push(row);
-    groups.set(top, existing);
+  const isUnderBrowsePath = (row: InventoryRow): boolean => {
+    if (row.categoryPath.length < browsePath.length) return false;
+    for (let i = 0; i < browsePath.length; i++) {
+      if (row.categoryPath[i] !== browsePath[i]) return false;
+    }
+    return true;
+  };
+
+  const scopedRows = state.inventorySummary
+    .filter(matchesFilters)
+    .filter((row) => isSearching || isUnderBrowsePath(row));
+
+  const totalOnHand = scopedRows.reduce((sum, row) => sum + row.onHand, 0);
+  const totalEntities = scopedRows.reduce((sum, row) => sum + row.entityCount, 0);
+
+  const childGroups = new Map<string, InventoryRow[]>();
+  const directItems: InventoryRow[] = [];
+  if (!isSearching) {
+    for (const row of scopedRows) {
+      const next = row.categoryPath[browsePath.length];
+      if (next === undefined || next === "") {
+        directItems.push(row);
+      } else {
+        const arr = childGroups.get(next) ?? [];
+        arr.push(row);
+        childGroups.set(next, arr);
+      }
+    }
   }
 
-  const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0);
-  const totalEntities = rows.reduce((sum, row) => sum + row.entityCount, 0);
+  const sortedChildren = Array.from(childGroups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  const childCardsHtml = sortedChildren.length === 0 ? "" : `
+    <ul class="stock-card-list">
+      ${sortedChildren.map(([segment, rows]) => renderStockCategoryCard(segment, rows)).join("")}
+    </ul>
+  `;
+
+  const directItemsHtml = directItems.length === 0 ? "" : `
+    <ul class="inventory-list">
+      ${directItems
+        .slice()
+        .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName))
+        .map((row) => renderStockItemRow(row, []))
+        .join("")}
+    </ul>
+  `;
+
+  const searchResultsHtml = !isSearching ? "" : `
+    <ul class="inventory-list">
+      ${scopedRows
+        .slice()
+        .sort((a, b) => a.canonicalName.localeCompare(b.canonicalName))
+        .map((row) => renderStockItemRow(row, row.categoryPath))
+        .join("")}
+    </ul>
+  `;
+
+  const emptyCopy = isSearching
+    ? "No inventory entries match your search."
+    : "Nothing in this category yet.";
+
+  const hasContent = isSearching
+    ? scopedRows.length > 0
+    : (sortedChildren.length > 0 || directItems.length > 0);
+
+  const currentTitle = isSearching || browsePath.length === 0
+    ? "Stock"
+    : (browsePath[browsePath.length - 1] ?? "Stock");
 
   return `
     <section id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" class="panel panel-inventory">
+      ${isSearching || browsePath.length === 0 ? "" : renderStockBreadcrumb(browsePath)}
       <header class="panel-head">
-        <h2>Stock</h2>
+        <h2>${escapeHtml(currentTitle)}</h2>
       </header>
       <div class="stock-summary">
         <div class="stock-summary-cell">
           <span class="stock-summary-label">Types</span>
-          <strong class="stock-summary-value">${rows.length}</strong>
+          <strong class="stock-summary-value">${scopedRows.length}</strong>
         </div>
         <div class="stock-summary-cell">
           <span class="stock-summary-label">QRs</span>
@@ -1647,35 +1789,11 @@ function renderInventoryTab(state: RewriteUiState): string {
           Show empty
         </label>
       </div>
-      ${rows.length === 0 ? `<p class="muted-copy">No inventory entries match your filter.</p>` : Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([top, items]) => `
-        <section class="inventory-group">
-          <h3 class="inventory-group-title"><span>${escapeHtml(top)}</span><span class="inventory-group-count">${items.length}</span></h3>
-          <ul class="inventory-list">
-            ${items.map((row) => {
-              const subPath = row.categoryPath.slice(1).join(" / ");
-              const isStocked = row.bins > 0 || row.instanceCount > 0;
-              return `
-                <li class="inventory-row-wrap ${isStocked ? "stocked" : "empty"}">
-                  <button type="button" class="inventory-row" data-action="open-part-detail" data-part-type-id="${attr(row.id)}" aria-label="Open ${attr(row.canonicalName)} details">
-                    <div class="inventory-row-name">
-                      ${renderPartTileArt(row, "inventory")}
-                      <span class="inventory-row-copy">
-                        <strong>${escapeHtml(row.canonicalName)}</strong>
-                        ${subPath ? `<span>${escapeHtml(subPath)}</span>` : ""}
-                      </span>
-                    </div>
-                    <div class="inventory-row-quantity">
-                      <span class="qty-value">${escapeHtml(formatQuantity(row.onHand))}</span>
-                      <span class="qty-unit">${escapeHtml(row.unit.symbol)}${row.entityCount > 0 ? ` · ${row.entityCount} QR${row.entityCount === 1 ? "" : "s"}` : ""}</span>
-                    </div>
-                    <span class="inventory-row-chev" aria-hidden="true">›</span>
-                  </button>
-                </li>
-              `;
-            }).join("")}
-          </ul>
-        </section>
-      `).join("")}
+      ${!hasContent
+        ? `<p class="muted-copy">${emptyCopy}</p>`
+        : isSearching
+          ? searchResultsHtml
+          : `${childCardsHtml}${directItemsHtml}`}
     </section>
   `;
 }
