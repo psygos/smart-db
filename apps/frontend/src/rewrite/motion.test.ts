@@ -251,6 +251,12 @@ describe("motion", () => {
       <form class="scan-input-row"></form>
       <button class="scan-queue-btn"></button>
       <div class="scan-mode-row"></div>
+      <div class="scan-detail">
+        <div class="result-card">
+          <header class="result-card-head"></header>
+          <p class="result-code">NOPE</p>
+        </div>
+      </div>
       <span class="scan-viewfinder-corner"></span>
       <span class="scan-trace-line"></span>
       <span class="queue-count"></span>
@@ -284,6 +290,30 @@ describe("motion", () => {
     expect(anime.animate.mock.calls.length).toBeGreaterThanOrEqual(6);
     expect(anime.spring).toHaveBeenCalled();
     expect(anime.stagger).toHaveBeenCalled();
+  });
+
+  it("uses targeted result motion instead of broad surface motion on scan-only changes", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `
+      <section data-motion-surface="scan"></section>
+      <div class="scan-detail">
+        <div class="result-card">
+          <header class="result-card-head"></header>
+          <p class="result-code">NOPE</p>
+        </div>
+      </div>
+    `;
+    const surface = root.querySelector("[data-motion-surface]");
+    const result = root.querySelector(".result-card");
+    const previous = buildMotionSnapshot(makeState());
+    const current = makeState({
+      scanResult: { mode: "unknown", code: "NOPE", partDb },
+    });
+
+    runPostRenderMotion(root, previous, current);
+
+    expect(anime.animate.mock.calls.some(([target]) => target === surface)).toBe(false);
+    expect(anime.animate.mock.calls.some(([target]) => target === result)).toBe(true);
   });
 
   it("tolerates missing matchMedia, empty targets, and animation failures", () => {

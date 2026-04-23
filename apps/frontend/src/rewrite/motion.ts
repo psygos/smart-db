@@ -123,6 +123,42 @@ function animateScannerCard(root: HTMLElement, previous: MotionSnapshot | null, 
   });
 }
 
+function animateScanResult(root: HTMLElement): void {
+  const result = root.querySelector(".scan-detail > .result-card, .scan-detail > .bulk-queue, .scan-detail-idle");
+  if (!result) return;
+
+  animateSafe(result, {
+    opacity: [0.88, 1],
+    scale: [0.982, 1.008, 1],
+    translateY: [12, -1, 0],
+    filter: ["blur(1.5px) saturate(0.94)", "blur(0px) saturate(1.02)", "blur(0px) saturate(1)"],
+    duration: 540,
+    ease: spring({ stiffness: 210, damping: 19, mass: 0.82 }),
+  });
+
+  animateSafe(result.querySelectorAll(`
+    .result-card-head,
+    .result-title,
+    .result-code,
+    .result-sub,
+    .status-pill,
+    .meta-line,
+    .quantity-display,
+    .section-label,
+    .event-actions,
+    .result-actions,
+    .queue-head,
+    .queue-row,
+    form
+  `), {
+    opacity: [0, 1],
+    translateY: [5, 0],
+    duration: 320,
+    delay: stagger(22),
+    ease: "outCubic",
+  });
+}
+
 function animateQueuePulse(root: HTMLElement): void {
   animateSafe(root.querySelectorAll(".queue-row-stepper .stepper-value, .queue-count"), {
     scale: [1, 1.08, 1],
@@ -166,11 +202,14 @@ export function runPostRenderMotion(
   delete root.dataset.motionReduced;
 
   const firstRender = previous === null;
-  if (firstRender || previous.activeTab !== current.activeTab || previous.scanKey !== current.scanKey) {
+  if (firstRender || previous.activeTab !== current.activeTab) {
     animateSurface(root);
   }
   if (firstRender || previous.activeTab !== current.activeTab || previous.scannerKey !== current.scannerKey) {
     animateScannerCard(root, previous, current);
+  }
+  if (firstRender || previous.scanKey !== current.scanKey) {
+    animateScanResult(root);
   }
   if (firstRender || previous.scanKey !== current.scanKey) {
     animateScanTrace(root);

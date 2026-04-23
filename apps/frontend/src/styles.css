@@ -3022,6 +3022,7 @@ a { transition: color var(--t) var(--ease-in-out); }
   display: grid;
   gap: 0.75rem;
   align-content: start;
+  perspective: 900px;
 }
 
 .scan-detail-idle {
@@ -3084,6 +3085,8 @@ a { transition: color var(--t) var(--ease-in-out); }
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow-xs);
+  transform-origin: 50% 34%;
+  will-change: transform, opacity, filter;
 }
 
 .stock-controls,
@@ -4942,6 +4945,11 @@ html.dark .tab-bar {
   }
 
   .scan-viewfinder {
+    will-change: auto;
+  }
+
+  .scan-detail > .result-card,
+  .scan-detail > .bulk-queue {
     will-change: auto;
   }
 }
