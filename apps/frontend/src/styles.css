@@ -3926,7 +3926,11 @@ button.primary-cta:disabled {
   --rule: var(--border);
   --scan-plate-url: url("/art/generated/scan-workbench-light.png");
   --corner-ornaments-url: url("/art/generated/corner-ornaments-light.svg");
-  --scan-page-reference-url: url("/art/generated/scan-page-reference-light.png");
+  --scan-art-left-top-url: url("/art/generated/scan-art-left-top.png");
+  --scan-art-left-mid-url: url("/art/generated/scan-art-left-mid.png");
+  --scan-art-left-bottom-url: url("/art/generated/scan-art-left-bottom.png");
+  --scan-art-right-top-url: url("/art/generated/scan-art-right-top.png");
+  --scan-art-right-field-url: url("/art/generated/scan-art-right-field.png");
 
   --bg: #f6f1e7;
   --bg-ink: #ebe1cd;
@@ -4969,28 +4973,19 @@ html.dark .tab-bar {
   }
 }
 
-/* ── generated mockup alignment: exact scan page border art ───── */
+/* ── generated mockup alignment: transparent scan border art ──── */
 
 body {
   overflow-x: hidden;
-}
-
-body:has(.app-shell-scan) {
-  background-color: #fbfaf6;
-  background-image: none;
-}
-
-html.dark body:has(.app-shell-scan) {
-  background-color: #081321;
-  background-image:
-    linear-gradient(rgba(145, 175, 234, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(145, 175, 234, 0.03) 1px, transparent 1px);
 }
 
 .app-shell-scan {
   position: relative;
   isolation: isolate;
   gap: 0.45rem;
+  --scan-art-left-width: clamp(8.5rem, 15vw, 14.7rem);
+  --scan-art-right-width: clamp(11rem, 24vw, 23.75rem);
+  --scan-art-right-top-width: clamp(7rem, 13.5vw, 13.1rem);
 }
 
 .app-shell-scan::before {
@@ -4999,12 +4994,21 @@ html.dark body:has(.app-shell-scan) {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: var(--scan-page-reference-url);
+  background-image:
+    var(--scan-art-left-top-url),
+    var(--scan-art-left-mid-url),
+    var(--scan-art-left-bottom-url);
   background-repeat: no-repeat;
-  background-position: top center;
-  background-size: max(1558px, 100vw) auto;
+  background-position:
+    left top,
+    left clamp(11rem, 21vh, 14rem),
+    left bottom 6.6rem;
+  background-size:
+    var(--scan-art-left-width) auto,
+    calc(var(--scan-art-left-width) * 0.95) auto,
+    calc(var(--scan-art-left-width) * 0.95) auto;
+  opacity: 0.92;
   mix-blend-mode: multiply;
-  clip-path: polygon(0 0, 15.1% 0, 15.1% 100%, 0 100%);
 }
 
 .app-shell-scan::after,
@@ -5014,36 +5018,38 @@ html.dark body:has(.app-shell-scan) {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: var(--scan-page-reference-url);
   background-repeat: no-repeat;
-  background-position: top center;
-  background-size: max(1558px, 100vw) auto;
+  opacity: 0.88;
   mix-blend-mode: multiply;
 }
 
 .app-shell-scan::after {
-  clip-path: polygon(86.5% 0, 100% 0, 100% 27%, 86.5% 27%);
+  background-image: var(--scan-art-right-top-url);
+  background-position: right top;
+  background-size: var(--scan-art-right-top-width) auto;
 }
 
 .app-layout-scan::before {
-  clip-path: polygon(75.6% 18.6%, 100% 18.6%, 100% 90.8%, 75.6% 90.8%);
+  background-image: var(--scan-art-right-field-url);
+  background-position: right clamp(9.5rem, 22vh, 14.5rem);
+  background-size: var(--scan-art-right-width) auto;
 }
 
 html.dark .app-shell-scan::before {
-  opacity: 0.28;
-  filter: invert(1) hue-rotate(178deg) saturate(0.68) brightness(0.82);
+  opacity: 0.42;
+  filter: invert(1) hue-rotate(176deg) saturate(0.62) brightness(0.9);
   mix-blend-mode: screen;
 }
 
 html.dark .app-shell-scan::after,
 html.dark .app-layout-scan::before {
-  opacity: 0.28;
-  filter: invert(1) hue-rotate(178deg) saturate(0.68) brightness(0.82);
+  opacity: 0.38;
+  filter: invert(1) hue-rotate(176deg) saturate(0.62) brightness(0.9);
   mix-blend-mode: screen;
 }
 
 body:has(.app-shell-scan)::before {
-  opacity: 0;
+  opacity: 0.18;
 }
 
 .app-shell-scan > :not(.tab-bar) {
@@ -5177,23 +5183,28 @@ html.dark .panel-scan[data-scan-mode="idle"] .scan-viewfinder {
 }
 
 @media (max-width: 640px) {
-  .app-shell-scan::before,
-  .app-shell-scan::after,
-  .app-layout-scan::before {
-    background-size: max(980px, 170vw) auto;
-    opacity: 0.46;
+  .app-shell-scan {
+    --scan-art-left-width: clamp(5.8rem, 28vw, 8.4rem);
+    --scan-art-right-width: clamp(8.8rem, 40vw, 12.5rem);
+    --scan-art-right-top-width: clamp(5rem, 24vw, 7.4rem);
   }
 
   .app-shell-scan::before {
-    clip-path: polygon(0 0, 20% 0, 20% 100%, 0 100%);
+    background-position:
+      left -1.8rem top,
+      left -3.1rem top 10.8rem,
+      left -2.8rem bottom 5.8rem;
+    opacity: 0.42;
   }
 
   .app-shell-scan::after {
-    clip-path: polygon(84% 0, 100% 0, 100% 22%, 84% 22%);
+    background-position: right -1.8rem top;
+    opacity: 0.42;
   }
 
   .app-layout-scan::before {
-    clip-path: polygon(79% 18%, 100% 18%, 100% 82%, 79% 82%);
+    background-position: right -5.9rem top 11rem;
+    opacity: 0.36;
   }
 
   .app-shell-scan .app-masthead {
