@@ -6,13 +6,17 @@ import {
   bulkSplitRequestSchema,
   bulkReverseIngestRequestSchema,
   correctionHistoryQuerySchema,
+  correctionListQuerySchema,
   editPartTypeDefinitionRequestSchema,
+  knownCategoryRequestSchema,
+  knownLocationRequestSchema,
   mergePartTypesRequestSchema,
   parseWithSchema,
   partTypeArtBackfillResponseSchema,
   partTypeSearchQuerySchema,
   reassignEntityPartTypeRequestSchema,
   recordEventRequestSchema,
+  scanOptionsQuerySchema,
   registerQrBatchRequestSchema,
   reverseIngestAssignmentRequestSchema,
   scanRequestSchema,
@@ -68,13 +72,9 @@ export async function registerInventoryRoutes(
   );
 
   app.post("/api/locations", authenticated, async (request) => {
-    const body = request.body as { path?: unknown };
-    const path = typeof body?.path === "string" ? body.path.trim() : "";
-    if (!path) {
-      throw new Error("path is required");
-    }
-    inventoryService.createKnownLocation(path);
-    return { path };
+    const body = parseWithSchema(knownLocationRequestSchema, request.body, "known location request");
+    inventoryService.createKnownLocation(body.path);
+    return body;
   });
 
   app.get("/api/categories", authenticated, async () =>
@@ -82,13 +82,9 @@ export async function registerInventoryRoutes(
   );
 
   app.post("/api/categories", authenticated, async (request) => {
-    const body = request.body as { path?: unknown };
-    const path = typeof body?.path === "string" ? body.path.trim() : "";
-    if (!path) {
-      throw new Error("path is required");
-    }
-    inventoryService.createKnownCategory(path);
-    return { path };
+    const body = parseWithSchema(knownCategoryRequestSchema, request.body, "known category request");
+    inventoryService.createKnownCategory(body.path);
+    return body;
   });
 
   app.get("/api/part-types/:id/items", authenticated, async (request) => {
@@ -106,9 +102,8 @@ export async function registerInventoryRoutes(
   });
 
   app.get("/api/corrections", admin, async (request) => {
-    const rawQuery = request.query as Record<string, string | undefined> | undefined;
-    const limit = Number(rawQuery?.limit);
-    return inventoryService.listCorrectionEvents(Number.isFinite(limit) ? limit : 50);
+    const query = parseWithSchema(correctionListQuerySchema, request.query, "correction list query");
+    return inventoryService.listCorrectionEvents(query.limit);
   });
 
   app.post("/api/qr-batches", adminMutation, async (request) => {
@@ -139,15 +134,11 @@ export async function registerInventoryRoutes(
 
   app.post("/api/scan", authenticated, async (request) => {
     const command = parseWithSchema(scanRequestSchema, request.body, "scan request");
-    // Optional ?count=false disables auto-increment. ?amount=N sets increment amount (default 1).
-    const query = request.query as Record<string, string | undefined> | undefined;
-    const autoIncrement = query?.count !== "false";
-    const rawAmount = Number(query?.amount);
-    const incrementAmount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : 1;
+    const query = parseWithSchema(scanOptionsQuerySchema, request.query, "scan options query");
     return inventoryService.scanCode(
       command.code,
       request.authContext?.session.username ?? null,
-      { autoIncrement, incrementAmount },
+      { autoIncrement: query.count, incrementAmount: query.amount },
     );
   });
 

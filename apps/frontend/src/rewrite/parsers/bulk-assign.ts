@@ -1,4 +1,4 @@
-import type { BulkAssignQrsRequest, SharedAssignRequest } from "@smart-db/contracts";
+import type { AssignQrRequest, BulkAssignQrsRequest, SharedAssignRequest } from "@smart-db/contracts";
 import type { ParseIssue } from "@smart-db/contracts";
 import { Ok } from "@smart-db/contracts";
 import { parseAssignForm } from "./assign";
@@ -28,12 +28,31 @@ export function parseBulkAssignForm(input: unknown): ParseResult<BulkAssignComma
     return failParse("bulk.assign", issues);
   }
 
-  const { qrCode: _ignoredQrCode, ...assignment } = parsedAssignment.value;
-
   return Ok({
     qrs,
-    assignment: assignment as SharedAssignRequest,
+    assignment: toSharedAssignment(parsedAssignment.value),
   });
+}
+
+function toSharedAssignment(request: AssignQrRequest): SharedAssignRequest {
+  if (request.entityKind === "instance") {
+    return {
+      entityKind: "instance",
+      location: request.location,
+      notes: request.notes,
+      partType: request.partType,
+      initialStatus: request.initialStatus,
+    };
+  }
+
+  return {
+    entityKind: "bulk",
+    location: request.location,
+    notes: request.notes,
+    partType: request.partType,
+    initialQuantity: request.initialQuantity,
+    minimumQuantity: request.minimumQuantity,
+  };
 }
 
 function readUniqueQrCodes(value: unknown, issues: ParseIssue[]): string[] | null {

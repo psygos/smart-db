@@ -65,22 +65,22 @@ describe("App helpers", () => {
       entityKind: "instance",
       location: "Shelf B",
       notes: "new board",
-        partType: {
-          kind: "new",
-          canonicalName: "STM32 Nucleo",
-          category: "Microcontrollers",
-          aliases: [],
-          notes: null,
-          imageUrl: null,
-          countable: true,
-          unit: {
-            symbol: "pcs",
-            name: "Pieces",
-            isInteger: true,
-          },
+      partType: {
+        kind: "new",
+        canonicalName: "STM32 Nucleo",
+        category: "Microcontrollers",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+        unit: {
+          symbol: "pcs",
+          name: "Pieces",
+          isInteger: true,
         },
-        initialStatus: "available",
-      });
+      },
+      initialStatus: "available",
+    });
 
     expect(
       buildAssignRequest({
@@ -103,23 +103,23 @@ describe("App helpers", () => {
       entityKind: "bulk",
       location: "Bin 7",
       notes: "screws",
-        partType: {
-          kind: "new",
-          canonicalName: "M3 Screw",
-          category: "Fasteners",
-          aliases: [],
-          notes: null,
-          imageUrl: null,
-          countable: false,
-          unit: {
-            symbol: "g",
-            name: "Grams",
-            isInteger: false,
-          },
+      partType: {
+        kind: "new",
+        canonicalName: "M3 Screw",
+        category: "Fasteners",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
+        unit: {
+          symbol: "g",
+          name: "Grams",
+          isInteger: false,
         },
-        initialQuantity: 8.5,
-        minimumQuantity: 2.5,
-      });
+      },
+      initialQuantity: 8.5,
+      minimumQuantity: 2.5,
+    });
 
     expect(
       buildAssignRequest({

@@ -41,7 +41,7 @@ export type AssignFormState = {
 
 export type AssignFormIssues = Partial<
   Record<
-    "location" | "existingPartTypeId" | "canonicalName" | "category" | "initialQuantity" | "minimumQuantity",
+    "location" | "existingPartTypeId" | "canonicalName" | "category" | "countable" | "initialQuantity" | "minimumQuantity",
     string
   >
 >;
@@ -103,6 +103,14 @@ export function getAssignFormIssues(form: AssignFormState): AssignFormIssues {
 
   if (!form.canonicalName.trim()) {
     issues.canonicalName = "Name the new part type.";
+  }
+
+  if (form.entityKind === "instance" && !form.countable) {
+    issues.countable = "Physical instances require countable part types.";
+  }
+
+  if (form.entityKind === "bulk" && form.countable) {
+    issues.countable = "Bulk stock must use measured part types.";
   }
 
   const categoryPath = parseCategoryPathInput(form.category);
@@ -172,7 +180,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           aliases: [],
           notes: null,
           imageUrl: null,
-          countable: form.countable,
+          countable: true,
           unit: defaultMeasurementUnit,
         },
         initialStatus: form.initialStatus,
@@ -189,7 +197,7 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           aliases: [],
           notes: null,
           imageUrl: null,
-          countable: form.countable,
+          countable: false,
           unit: selectedUnit,
         },
         initialQuantity: initialQuantity ?? 0,

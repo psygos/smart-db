@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   applicationErrorResponseSchema,
+  authCallbackQuerySchema,
+  authLoginQuerySchema,
   assignQrRequestSchema,
   bulkAssignQrsRequestSchema,
   bulkAssignQrsResponseSchema,
@@ -13,11 +15,14 @@ import {
   configEnvironmentSchema,
   correctionEventSchema,
   correctionHistoryQuerySchema,
+  correctionListQuerySchema,
   describeCategoryPathParseError,
   defaultMeasurementUnit,
   editPartTypeDefinitionRequestSchema,
   editPartTypeDefinitionResponseSchema,
   getMeasurementUnitBySymbol,
+  knownCategoryRequestSchema,
+  knownLocationRequestSchema,
   latestQrBatchResponseSchema,
   loginRequestSchema,
   loginResponseSchema,
@@ -33,6 +38,7 @@ import {
   registerQrBatchRequestSchema,
   reverseIngestAssignmentRequestSchema,
   reverseIngestAssignmentResponseSchema,
+  scanOptionsQuerySchema,
   scanResponseSchema,
 } from "./index";
 
@@ -108,6 +114,35 @@ describe("schemas", () => {
       name: "Pieces",
       isInteger: true,
     });
+  });
+
+  it("parses route query and picker creation payloads at the boundary", () => {
+    expect(authLoginQuerySchema.parse({ returnTo: " /scan " })).toEqual({ returnTo: "/scan" });
+    expect(authCallbackQuerySchema.parse({ code: " code-1 ", state: " state-1 " })).toEqual({
+      code: "code-1",
+      state: "state-1",
+    });
+
+    expect(correctionListQuerySchema.parse({})).toEqual({ limit: 50 });
+    expect(correctionListQuerySchema.parse({ limit: "25" })).toEqual({ limit: 25 });
+    expect(() => correctionListQuerySchema.parse({ limit: "0" })).toThrow();
+    expect(() => correctionListQuerySchema.parse({ limit: "abc" })).toThrow();
+
+    expect(scanOptionsQuerySchema.parse({})).toEqual({ count: true, amount: 1 });
+    expect(scanOptionsQuerySchema.parse({ count: "false", amount: "2.5" })).toEqual({
+      count: false,
+      amount: 2.5,
+    });
+    expect(() => scanOptionsQuerySchema.parse({ amount: "-1" })).toThrow();
+
+    expect(knownLocationRequestSchema.parse({ path: " Electronics Lab / Shelf B2 " })).toEqual({
+      path: "Electronics Lab / Shelf B2",
+    });
+    expect(knownCategoryRequestSchema.parse({ path: " Electronics / Resistors " })).toEqual({
+      path: "Electronics / Resistors",
+    });
+    expect(() => knownCategoryRequestSchema.parse({ path: "Bad|Category" })).toThrow(/unsupported characters/i);
+    expect(() => knownLocationRequestSchema.parse({ path: " / " })).toThrow(/Location is required/i);
   });
 
   it("rejects out-of-bounds batch count and invalid prefix characters", () => {
@@ -238,14 +273,28 @@ describe("schemas", () => {
           category: "Fasteners",
           countable: true,
           unit: {
-            symbol: "g",
-            name: "Grams",
-            isInteger: false,
+            symbol: "pcs",
+            name: "Pieces",
+            isInteger: true,
           },
         },
         initialQuantity: 1,
       }),
-    ).toThrow(/integer unit/i);
+    ).toThrow(/measured part types/i);
+
+    expect(() =>
+      assignQrRequestSchema.parse({
+        qrCode: "QR-1005",
+        entityKind: "instance",
+        location: "Shelf A",
+        partType: {
+          kind: "new",
+          canonicalName: "Measured Instance",
+          category: "Fasteners",
+          countable: false,
+        },
+      }),
+    ).toThrow(/countable part types/i);
   });
 
   it("parses lifecycle events, merge requests, responses, and error envelopes", () => {

@@ -57,16 +57,15 @@ describe("transitions", () => {
   });
 
   it("returns the correct next bulk quantity for legal transitions", () => {
-    expect(getNextBulkQuantity(12, "moved")).toBe(12);
-    expect(getNextBulkQuantity(12, "restocked", { quantityDelta: 8 })).toBe(20);
-    expect(getNextBulkQuantity(12, "consumed", { quantityDelta: 5 })).toBe(7);
-    expect(getNextBulkQuantity(12, "stocktaken", { quantity: 4 })).toBe(4);
-    expect(getNextBulkQuantity(12, "adjusted", { quantityDelta: -2 })).toBe(10);
+    expect(getNextBulkQuantity(12, { event: "moved" })).toBe(12);
+    expect(getNextBulkQuantity(12, { event: "restocked", quantityDelta: 8 })).toBe(20);
+    expect(getNextBulkQuantity(12, { event: "consumed", quantityDelta: 5 })).toBe(7);
+    expect(getNextBulkQuantity(12, { event: "stocktaken", quantity: 4 })).toBe(4);
+    expect(getNextBulkQuantity(12, { event: "adjusted", quantityDelta: -2 })).toBe(10);
   });
 
   it("returns null for illegal bulk transitions", () => {
-    expect(getNextBulkQuantity(0, "consumed", { quantityDelta: 1 })).toBeNull();
-    expect(getNextBulkQuantity(4, "adjusted", { quantityDelta: -5 })).toBeNull();
-    expect(getNextBulkQuantity(4, "restocked")).toBeNull();
+    expect(getNextBulkQuantity(0, { event: "consumed", quantityDelta: 1 })).toBeNull();
+    expect(getNextBulkQuantity(4, { event: "adjusted", quantityDelta: -5 })).toBeNull();
   });
 });

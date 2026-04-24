@@ -147,10 +147,10 @@ export function parseAssignForm(input: unknown): ParseResult<AssignCommand> {
         });
       }
 
-      if (entityKind === "bulk" && parsedCountable && bulkUnit && !bulkUnit.isInteger) {
+      if (entityKind === "bulk" && parsedCountable) {
         issues.push({
-          path: "unitSymbol",
-          message: "Piece-counted bulk stock must use a whole-number unit such as pcs.",
+          path: "countable",
+          message: "Bulk stock must use measured part types.",
         });
       }
     }
@@ -220,14 +220,14 @@ export function parseAssignForm(input: unknown): ParseResult<AssignCommand> {
     notes: normalizedNotes,
     partType: {
       kind: "new",
-        canonicalName: canonicalName ?? "",
-        category: category ?? "",
-        aliases: [],
-        notes: null,
-        imageUrl: null,
-        countable: parsedCountable ?? false,
-        unit: bulkUnit ?? defaultMeasurementUnit,
-      },
+      canonicalName: canonicalName ?? "",
+      category: category ?? "",
+      aliases: [],
+      notes: null,
+      imageUrl: null,
+      countable: false,
+      unit: bulkUnit ?? defaultMeasurementUnit,
+    },
     initialQuantity: bulkInitialQuantity ?? 0,
     minimumQuantity: bulkMinimumQuantity,
   });

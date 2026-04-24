@@ -637,10 +637,15 @@ function renderBulkQueueCard(
   `;
 }
 
-function renderEntityKindSwitch(state: RewriteUiState, locked: boolean): string {
+function renderEntityKindSwitch(
+  state: RewriteUiState,
+  lockedKind: "instance" | "bulk" | null,
+): string {
   const isBulk = state.assignForm.entityKind === "bulk";
+  const instanceDisabled = lockedKind === "bulk";
+  const bulkDisabled = lockedKind === "instance";
   return `
-    <div class="entity-switch ${locked ? "locked" : ""}" role="radiogroup" aria-label="Inventory entry type" title="Countable items are tracked one piece at a time (e.g. an Arduino). Measured items are tracked by quantity (e.g. grams of PLA).">
+    <div class="entity-switch ${lockedKind ? "locked" : ""}" role="radiogroup" aria-label="Inventory entry type" title="Countable items are tracked one piece at a time (e.g. an Arduino). Measured items are tracked by quantity (e.g. grams of PLA).">
       <button
         type="button"
         role="radio"
@@ -648,7 +653,7 @@ function renderEntityKindSwitch(state: RewriteUiState, locked: boolean): string 
         class="entity-switch-option ${!isBulk ? "active" : ""}"
         data-action="set-entity-kind"
         data-entity-kind="instance"
-        ${locked ? "disabled" : ""}
+        ${instanceDisabled ? "disabled" : ""}
       >Countable</button>
       <button
         type="button"
@@ -657,6 +662,7 @@ function renderEntityKindSwitch(state: RewriteUiState, locked: boolean): string 
         class="entity-switch-option ${isBulk ? "active" : ""}"
         data-action="set-entity-kind"
         data-entity-kind="bulk"
+        ${bulkDisabled ? "disabled" : ""}
       >Measured</button>
     </div>
   `;
@@ -726,18 +732,6 @@ function renderBulkLabelForm(
           ${assignIssues.category ? `<span class="field-error">${escapeHtml(assignIssues.category)}</span>` : ""}
         </label>
       `}
-      ${form.partTypeMode === "existing" && selectedPartType?.countable ? `
-        <div class="wide mode-toggle" role="radiogroup" aria-label="Inventory entry">
-          <button type="button" role="radio" aria-checked="${String(form.entityKind === "instance")}" class="${form.entityKind === "instance" ? "selected" : ""}" data-action="set-bulk-label-entity-kind" data-entity-kind="instance">Tracked unit</button>
-          <button type="button" role="radio" aria-checked="${String(form.entityKind === "bulk")}" class="${form.entityKind === "bulk" ? "selected" : ""}" data-action="set-bulk-label-entity-kind" data-entity-kind="bulk">Bulk pool</button>
-        </div>
-      ` : ""}
-      ${form.partTypeMode === "new" && form.entityKind === "bulk" ? `
-        <div class="wide mode-toggle" role="radiogroup" aria-label="Part type kind">
-          <button type="button" role="radio" aria-checked="${String(form.countable)}" class="${form.countable ? "selected" : ""}" data-action="set-bulk-label-countability" data-countable="true">Piece-counted</button>
-          <button type="button" role="radio" aria-checked="${String(!form.countable)}" class="${!form.countable ? "selected" : ""}" data-action="set-bulk-label-countability" data-countable="false">Measured</button>
-        </div>
-      ` : ""}
       <label class="wide">
         Location
         <input name="bulkLabel.location" value="${attr(form.location)}" placeholder="Shelf A / Bin 7" />
@@ -759,7 +753,7 @@ function renderBulkLabelForm(
         <label>
           Unit of measure
           <select name="bulkLabel.unitSymbol">
-            ${measurementUnitCatalog.filter((unit) => (form.countable ? unit.isInteger : true)).map((unit) => `
+            ${measurementUnitCatalog.map((unit) => `
               <option value="${attr(unit.symbol)}"${selected(unit.symbol === form.unitSymbol)}>${escapeHtml(unit.name)} (${escapeHtml(unit.symbol)})</option>
             `).join("")}
           </select>
@@ -852,10 +846,10 @@ function renderLabelCard(
       ? (labelOptions.find((pt) => pt.id === state.assignForm.existingPartTypeId) ??
          state.catalogSuggestions.find((pt) => pt.id === state.assignForm.existingPartTypeId))
       : null;
-  const entityLocked = existingSelected !== null && existingSelected !== undefined && !existingSelected.countable;
+  const lockedKind = existingSelected ? (existingSelected.countable ? "instance" : "bulk") : null;
   return `
     <div class="result-card has-corner-switch result-card-assign" data-motion-surface="scan-result" data-scan-result-mode="label">
-      ${renderEntityKindSwitch(state, entityLocked)}
+      ${renderEntityKindSwitch(state, lockedKind)}
       <h3>Assign ${escapeHtml(state.scanResult?.mode === "label" ? state.scanResult.qrCode.code : "")}</h3>
       ${state.lastAssignment ? `
         <div class="assign-same-bar">
@@ -1048,14 +1042,10 @@ function renderNewPartTypePanel(
       ${renderPathPickerField(state, "category")}
       ${assignIssues.category ? `<span class="field-error wide">${escapeHtml(assignIssues.category)}</span>` : ""}
       ${state.assignForm.entityKind === "bulk" ? `
-        <div class="wide mode-toggle" role="radiogroup" aria-label="Part type kind">
-          <button type="button" role="radio" aria-checked="${String(state.assignForm.countable)}" class="${state.assignForm.countable ? "selected" : ""}" data-action="set-bulk-countability" data-countable="true">Piece-counted</button>
-          <button type="button" role="radio" aria-checked="${String(!state.assignForm.countable)}" class="${!state.assignForm.countable ? "selected" : ""}" data-action="set-bulk-countability" data-countable="false">Measured</button>
-        </div>
         <label class="wide">
           Unit of measure
           <select name="assign.unitSymbol">
-            ${measurementUnitCatalog.filter((u) => (state.assignForm.countable ? u.isInteger : true)).map((u) => `
+            ${measurementUnitCatalog.map((u) => `
               <option value="${attr(u.symbol)}"${selected(u.symbol === state.assignForm.unitSymbol)}>${escapeHtml(u.name)} (${escapeHtml(u.symbol)})</option>
             `).join("")}
           </select>

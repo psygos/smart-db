@@ -1,5 +1,11 @@
 import type { FastifyInstance, preHandlerAsyncHookHandler } from "fastify";
-import { ForbiddenError, logoutResponseSchema, parseWithSchema } from "@smart-db/contracts";
+import {
+  authCallbackQuerySchema,
+  authLoginQuerySchema,
+  ForbiddenError,
+  logoutResponseSchema,
+  parseWithSchema,
+} from "@smart-db/contracts";
 import { AuthService } from "../auth/auth-service.js";
 import {
   authRequestCookieName,
@@ -15,7 +21,7 @@ export async function registerAuthRoutes(
   requireAuth: preHandlerAsyncHookHandler,
 ): Promise<void> {
   app.get("/api/auth/login", async (request, reply) => {
-    const query = request.query as { returnTo?: string };
+    const query = parseWithSchema(authLoginQuerySchema, request.query, "auth login query");
     const result = await authService.startLogin(query.returnTo);
     reply.setCookie(
       authRequestCookieName,
@@ -26,9 +32,8 @@ export async function registerAuthRoutes(
   });
 
   app.get("/api/auth/callback", async (request, reply) => {
-    const query = request.query as { code?: string; state?: string };
-
     try {
+      const query = parseWithSchema(authCallbackQuerySchema, request.query, "auth callback query");
       const result = await authService.completeLogin(
         query,
         request.cookies[authRequestCookieName],

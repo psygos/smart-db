@@ -50,41 +50,39 @@ export function getAvailableBulkActions(quantity: number): BulkActionKind[] {
 
 export function getNextInstanceStatus(
   current: InstanceStatus,
-  event: string,
+  event: InstanceActionKind,
 ): InstanceStatus | null {
   const transitions = INSTANCE_TRANSITIONS[current];
-  const next = transitions[event as InstanceActionKind];
+  const next = transitions[event];
   return next ?? null;
 }
 
+export type BulkQuantityTransition =
+  | { event: "moved" }
+  | { event: "restocked"; quantityDelta: number }
+  | { event: "consumed"; quantityDelta: number }
+  | { event: "stocktaken"; quantity: number }
+  | { event: "adjusted"; quantityDelta: number };
+
 export function getNextBulkQuantity(
   current: number,
-  event: string,
-  input: {
-    quantityDelta?: number;
-    quantity?: number;
-  } = {},
+  transition: BulkQuantityTransition,
 ): number | null {
-  switch (event) {
+  switch (transition.event) {
     case "moved":
       return current;
     case "restocked":
-      return typeof input.quantityDelta === "number" ? current + input.quantityDelta : null;
+      return current + transition.quantityDelta;
     case "consumed":
-      if (typeof input.quantityDelta !== "number" || input.quantityDelta > current) {
+      if (transition.quantityDelta > current) {
         return null;
       }
-      return current - input.quantityDelta;
+      return current - transition.quantityDelta;
     case "stocktaken":
-      return typeof input.quantity === "number" ? input.quantity : null;
+      return transition.quantity;
     case "adjusted": {
-      if (typeof input.quantityDelta !== "number") {
-        return null;
-      }
-      const next = current + input.quantityDelta;
+      const next = current + transition.quantityDelta;
       return next >= 0 ? next : null;
     }
-    default:
-      return null;
   }
 }

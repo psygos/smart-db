@@ -863,7 +863,7 @@ describe("InventoryService", () => {
       }).state,
     ).toBe("available");
 
-    expect(
+    expect(() =>
       service.assignQr({
         qrCode: "QR-2002",
         actor: "labeler",
@@ -873,6 +873,27 @@ describe("InventoryService", () => {
         partType: {
           kind: "existing",
           existingPartTypeId: service.searchPartTypes("Sensor")[0]!.id,
+        },
+        initialQuantity: 10,
+        minimumQuantity: null,
+      }),
+    ).toThrowError(ConflictError);
+
+    expect(
+      service.assignQr({
+        qrCode: "QR-2002",
+        actor: "labeler",
+        entityKind: "bulk",
+        location: "Bin",
+        notes: null,
+        partType: {
+          kind: "new",
+          canonicalName: "Sensor Stock",
+          category: "Electronics",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: false,
         },
         initialQuantity: 10,
         minimumQuantity: null,
@@ -1083,7 +1104,7 @@ describe("InventoryService", () => {
     ).toThrowError(ConflictError);
   });
 
-  it("allows a countable part type to own both tracked units and pooled stock", () => {
+  it("keeps tracked units and pooled stock on compatible part types", () => {
     const { service } = makeService();
 
     service.registerQrBatch({
@@ -1118,8 +1139,13 @@ describe("InventoryService", () => {
       location: "Shelf A",
       notes: null,
       partType: {
-        kind: "existing",
-        existingPartTypeId: tracked.partType.id,
+        kind: "new",
+        canonicalName: "Arduino Uno R4 Stock",
+        category: "Microcontrollers",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: false,
       },
       initialQuantity: 12,
       minimumQuantity: 2,
@@ -1131,16 +1157,24 @@ describe("InventoryService", () => {
         expect.objectContaining({
           id: tracked.partType.id,
           countable: true,
-          bins: 1,
+          bins: 0,
           instanceCount: 1,
-          onHand: 13,
-          entityCount: 2,
+          onHand: 1,
+          entityCount: 1,
+        }),
+        expect.objectContaining({
+          id: pooled.partType.id,
+          countable: false,
+          bins: 1,
+          instanceCount: 0,
+          onHand: 12,
+          entityCount: 1,
         }),
       ]),
     );
 
     expect(pooled.targetType).toBe("bulk");
-    expect(pooled.partType.id).toBe(tracked.partType.id);
+    expect(pooled.partType.id).not.toBe(tracked.partType.id);
   });
 
   it("backfills part type art only for rows with matching asset files", () => {
@@ -1792,7 +1826,7 @@ describe("InventoryService", () => {
     await expect(service.scanCode("ab 12")).rejects.toThrowError(ConflictError);
   });
 
-  it("rejects piece-counted bulk pools when the part type unit is fractional", () => {
+  it("rejects countable part types as bulk stock", () => {
     const { db, service } = makeService();
     const now = new Date().toISOString();
     db.prepare(`
@@ -1802,17 +1836,17 @@ describe("InventoryService", () => {
         partdb_part_id, partdb_category_id, partdb_unit_id, partdb_sync_status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      "part-fractional-piece-pool",
-      "Fractional Piece Pool",
+      "part-countable-bulk",
+      "Countable Bulk",
       "Materials",
       JSON.stringify(["Materials"]),
       "[]",
       null,
       null,
       1,
-      "kg",
-      "Kilograms",
-      0,
+      "pcs",
+      "Pieces",
+      1,
       0,
       null,
       null,
@@ -1838,7 +1872,7 @@ describe("InventoryService", () => {
         notes: null,
         partType: {
           kind: "existing",
-          existingPartTypeId: "part-fractional-piece-pool",
+          existingPartTypeId: "part-countable-bulk",
         },
         initialQuantity: 2,
         minimumQuantity: 1,
@@ -2368,7 +2402,15 @@ describe("InventoryService", () => {
         entityKind: "bulk",
         location: "Shelf C",
         notes: null,
-        partType: { kind: "existing", existingPartTypeId: instance.partType.id },
+        partType: {
+          kind: "new",
+          canonicalName: "Borrow Bulk Stock",
+          category: "Misc",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: false,
+        },
         initialQuantity: 10,
         minimumQuantity: null,
       });
@@ -2386,11 +2428,12 @@ describe("InventoryService", () => {
          FROM bulk_stocks`,
       ).run();
 
-      const entities = service.listEntitiesForPartType(instance.partType.id);
-      expect(entities).toHaveLength(2);
-      const byKind = new Map(entities.map((e) => [e.sourceKind, e]));
-      expect(byKind.get("instance")!).toMatchObject({ id: instance.id, qrCode: "BR-7190", quantity: 1 });
-      expect(byKind.get("bulk")!).toMatchObject({ id: bulk.id, qrCode: "BR-7191", sourceKind: "bulk" });
+      const instanceEntities = service.listEntitiesForPartType(instance.partType.id);
+      const bulkEntities = service.listEntitiesForPartType(bulk.partType.id);
+      expect(instanceEntities).toHaveLength(1);
+      expect(bulkEntities).toHaveLength(1);
+      expect(instanceEntities[0]).toMatchObject({ id: instance.id, qrCode: "BR-7190", quantity: 1, sourceKind: "instance" });
+      expect(bulkEntities[0]).toMatchObject({ id: bulk.id, qrCode: "BR-7191", sourceKind: "bulk" });
     });
 
     it("reverses only one of two sibling instances, leaving the other intact and printing the QR", async () => {

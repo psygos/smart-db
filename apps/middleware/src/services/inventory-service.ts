@@ -6,6 +6,7 @@ import {
   type BulkAssignQrsCommand,
   type BulkAssignQrsResponse,
   categoryLeafFromPath,
+  categoryPathSchema,
   ConflictError,
   correctionEventSchema,
   defaultMeasurementUnit,
@@ -30,6 +31,7 @@ import {
   type AssignQrCommand,
   type BorrowCloseReason,
   type BulkLevel,
+  type BulkQuantityTransition,
   type DashboardSummary,
   type OpenBorrowSummary,
   type InventoryEntitySummary,
@@ -198,12 +200,18 @@ export class InventoryService {
       .all() as Array<{ path: string }>;
     const paths = new Set<string>();
     for (const row of partTypeRows) {
+      let rawPath: unknown;
       try {
-        const parsed = JSON.parse(row.category_path_json);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          paths.add(parsed.join(" / "));
-        }
-      } catch {}
+        rawPath = JSON.parse(row.category_path_json);
+      } catch (error) {
+        throw new InvariantError(
+          "Persisted part type category path could not be parsed.",
+          { categoryPathJson: row.category_path_json },
+          { cause: error },
+        );
+      }
+      const parsed = parsePersisted(categoryPathSchema, rawPath, "part type category path");
+      paths.add(parsed.join(" / "));
     }
     for (const row of standaloneRows) {
       paths.add(row.path);
@@ -1214,15 +1222,7 @@ export class InventoryService {
         ? requireChangedLocation(input.location, current.location, input.event)
         : input.location?.trim() || current.location;
 
-    const nextQuantity = getNextBulkQuantity(
-      current.quantity,
-      input.event,
-      "quantity" in input
-        ? { quantity: input.quantity }
-        : "quantityDelta" in input
-          ? { quantityDelta: input.quantityDelta }
-          : {},
-    );
+    const nextQuantity = getNextBulkQuantity(current.quantity, bulkQuantityTransitionFromCommand(input));
     if (nextQuantity === null) {
       throw new ConflictError(
         `Cannot perform '${input.event}' on bulk stock with quantity '${current.quantity}'.`,
@@ -3355,6 +3355,21 @@ function parsePersisted<T>(schema: { parse: (input: unknown) => T }, input: unkn
   }
 }
 
+function bulkQuantityTransitionFromCommand(
+  input: Extract<RecordEventCommand, { targetType: "bulk" }>,
+): BulkQuantityTransition {
+  switch (input.event) {
+    case "moved":
+      return { event: input.event };
+    case "restocked":
+    case "consumed":
+    case "adjusted":
+      return { event: input.event, quantityDelta: input.quantityDelta };
+    case "stocktaken":
+      return { event: input.event, quantity: input.quantity };
+  }
+}
+
 function enforcePartTypeCompatibility(
   entityKind: InventoryTargetKind,
   partType: PartType,
@@ -3365,10 +3380,9 @@ function enforcePartTypeCompatibility(
     });
   }
 
-  if (entityKind === "bulk" && partType.countable && !partType.unit.isInteger) {
-    throw new ConflictError("Piece-counted bulk stock requires a whole-number unit.", {
+  if (entityKind === "bulk" && partType.countable) {
+    throw new ConflictError("Countable part types cannot be assigned as bulk stock.", {
       partTypeId: partType.id,
-      unitSymbol: partType.unit.symbol,
     });
   }
 }

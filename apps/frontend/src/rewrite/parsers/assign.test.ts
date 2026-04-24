@@ -60,7 +60,7 @@ describe("parseAssignForm", () => {
     ]);
   });
 
-  it("allows a new countable part type to start as a bulk pool", () => {
+  it("parses a new measured part type as a bulk pool", () => {
     const result = parseAssignForm({
       qrCode: "QR-2001",
       entityKind: "bulk",
@@ -69,8 +69,8 @@ describe("parseAssignForm", () => {
       partTypeMode: "new",
       canonicalName: "Copper wire",
       category: "Materials / Wire",
-      countable: true,
-      unitSymbol: "pcs",
+      countable: false,
+      unitSymbol: "kg",
       initialQuantity: "12.5",
       minimumQuantity: "1",
     });
@@ -92,11 +92,11 @@ describe("parseAssignForm", () => {
         aliases: [],
         notes: null,
         imageUrl: null,
-        countable: true,
+        countable: false,
         unit: {
-          symbol: "pcs",
-          name: "Pieces",
-          isInteger: true,
+          symbol: "kg",
+          name: "Kilograms",
+          isInteger: false,
         },
       },
       initialQuantity: 12.5,
@@ -104,7 +104,7 @@ describe("parseAssignForm", () => {
     });
   });
 
-  it("rejects piece-counted bulk pools when the unit is fractional", () => {
+  it("rejects countable part types as bulk pools", () => {
     const result = parseAssignForm({
       qrCode: "QR-2002",
       entityKind: "bulk",
@@ -125,12 +125,12 @@ describe("parseAssignForm", () => {
     }
 
     expect(result.error.message).toBe(
-      "Could not parse assignment form: Piece-counted bulk stock must use a whole-number unit such as pcs.",
+      "Could not parse assignment form: Bulk stock must use measured part types.",
     );
     expect(result.error.issues).toEqual([
       {
-        path: "unitSymbol",
-        message: "Piece-counted bulk stock must use a whole-number unit such as pcs.",
+        path: "countable",
+        message: "Bulk stock must use measured part types.",
       },
     ]);
   });

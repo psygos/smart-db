@@ -76,7 +76,7 @@ export class AuthService {
   }
 
   async completeLogin(
-    query: { code?: string; state?: string },
+    query: { code?: string | undefined; state?: string | undefined },
     encodedAuthRequest: string | undefined,
   ): Promise<LoginCompletionResult> {
     const code = query.code?.trim();

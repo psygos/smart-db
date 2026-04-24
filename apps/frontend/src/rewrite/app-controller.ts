@@ -6,7 +6,6 @@ import {
   type BulkReverseIngestTarget,
   hasSmartDbRole,
   type CorrectionEvent,
-  getMeasurementUnitBySymbol,
   sanitizeScannedCode,
   smartDbRoles,
   type AuthSession,
@@ -470,11 +469,6 @@ export class RewriteAppController {
           this.setAssignEntityKind(actionEl.dataset.entityKind);
         }
         break;
-      case "set-bulk-countability":
-        if (actionEl.dataset.countable === "true" || actionEl.dataset.countable === "false") {
-          this.setBulkCountability(actionEl.dataset.countable === "true");
-        }
-        break;
       case "toggle-path-picker": {
         const kind = actionEl.dataset.kind;
         if (kind === "category" || kind === "location") {
@@ -756,16 +750,6 @@ export class RewriteAppController {
       case "set-bulk-label-mode":
         if (actionEl.dataset.assignMode === "existing" || actionEl.dataset.assignMode === "new") {
           this.setBulkLabelMode(actionEl.dataset.assignMode);
-        }
-        break;
-      case "set-bulk-label-entity-kind":
-        if (actionEl.dataset.entityKind === "instance" || actionEl.dataset.entityKind === "bulk") {
-          this.setBulkLabelEntityKind(actionEl.dataset.entityKind);
-        }
-        break;
-      case "set-bulk-label-countability":
-        if (actionEl.dataset.countable === "true" || actionEl.dataset.countable === "false") {
-          this.setBulkLabelCountability(actionEl.dataset.countable === "true");
         }
         break;
       case "select-bulk-label-part":
@@ -3298,21 +3282,7 @@ export class RewriteAppController {
       assignForm: {
         ...this.state.assignForm,
         entityKind: kind,
-        countable: kind === "instance" ? true : this.state.assignForm.countable,
-      },
-    });
-  }
-
-  private setBulkCountability(countable: boolean): void {
-    const nextUnit = countable && !getMeasurementUnitBySymbol(this.state.assignForm.unitSymbol)?.isInteger
-      ? "pcs"
-      : this.state.assignForm.unitSymbol;
-    this.patch({
-      assignForm: {
-        ...this.state.assignForm,
-        entityKind: "bulk",
-        countable,
-        unitSymbol: nextUnit,
+        countable: kind === "instance",
       },
     });
   }
@@ -3327,9 +3297,7 @@ export class RewriteAppController {
     this.patch({
       assignForm: {
         ...this.state.assignForm,
-        entityKind: selected.countable
-          ? this.state.assignForm.entityKind
-          : "bulk",
+        entityKind: selected.countable ? "instance" : "bulk",
         partTypeMode: "existing",
         existingPartTypeId: selected.id,
         canonicalName: "",
@@ -3358,7 +3326,7 @@ export class RewriteAppController {
         canonicalName: selected.canonicalName,
         category: formatCategoryPath(selected.categoryPath),
         countable: selected.countable,
-        entityKind: selected.countable ? this.state.assignForm.entityKind : "bulk",
+        entityKind: selected.countable ? "instance" : "bulk",
         unitSymbol: selected.unit.symbol,
       },
     });
@@ -3392,36 +3360,6 @@ export class RewriteAppController {
     });
   }
 
-  private setBulkLabelEntityKind(kind: "instance" | "bulk"): void {
-    this.patch({
-      bulkQueue: {
-        ...this.state.bulkQueue,
-        labelForm: {
-          ...this.state.bulkQueue.labelForm,
-          entityKind: kind,
-          countable: kind === "instance" ? true : this.state.bulkQueue.labelForm.countable,
-        },
-      },
-    });
-  }
-
-  private setBulkLabelCountability(countable: boolean): void {
-    const nextUnit = countable && !getMeasurementUnitBySymbol(this.state.bulkQueue.labelForm.unitSymbol)?.isInteger
-      ? "pcs"
-      : this.state.bulkQueue.labelForm.unitSymbol;
-    this.patch({
-      bulkQueue: {
-        ...this.state.bulkQueue,
-        labelForm: {
-          ...this.state.bulkQueue.labelForm,
-          entityKind: "bulk",
-          countable,
-          unitSymbol: nextUnit,
-        },
-      },
-    });
-  }
-
   private selectBulkLabelPartType(partId: string): void {
     const selected = this.state.bulkQueue.labelSearch.results.find((partType) => partType.id === partId) ??
       this.state.catalogSuggestions.find((partType) => partType.id === partId);
@@ -3434,9 +3372,7 @@ export class RewriteAppController {
         ...this.state.bulkQueue,
         labelForm: {
           ...this.state.bulkQueue.labelForm,
-          entityKind: selected.countable
-            ? this.state.bulkQueue.labelForm.entityKind
-            : "bulk",
+          entityKind: selected.countable ? "instance" : "bulk",
           partTypeMode: "existing",
           existingPartTypeId: selected.id,
           canonicalName: "",
@@ -3468,7 +3404,7 @@ export class RewriteAppController {
           canonicalName: selected.canonicalName,
           category: formatCategoryPath(selected.categoryPath),
           countable: selected.countable,
-          entityKind: selected.countable ? this.state.bulkQueue.labelForm.entityKind : "bulk",
+          entityKind: selected.countable ? "instance" : "bulk",
           unitSymbol: selected.unit.symbol,
         },
       },

@@ -489,7 +489,12 @@ describe("buildServer", () => {
     const service = {
       getDashboardSummary: vi.fn(() => dashboard),
       searchPartTypes: vi.fn(() => [partType]),
+      getKnownLocations: vi.fn(() => ["Electronics Lab / Shelf B2"]),
+      createKnownLocation: vi.fn(),
+      getKnownCategories: vi.fn(() => ["Electronics / Microcontrollers"]),
+      createKnownCategory: vi.fn(),
       getProvisionalPartTypes: vi.fn(() => [partType]),
+      listCorrectionEvents: vi.fn(() => [correctionEvent]),
       registerQrBatch: vi.fn(() => ({
         batch: {
           id: "batch-1",
@@ -562,6 +567,36 @@ describe("buildServer", () => {
     await expect(
       app.inject({
         method: "GET",
+        url: "/api/locations",
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "POST",
+        url: "/api/locations",
+        payload: { path: " Electronics Lab / Shelf B2 " },
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "GET",
+        url: "/api/categories",
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "POST",
+        url: "/api/categories",
+        payload: { path: " Electronics / Microcontrollers " },
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "GET",
         url: "/api/part-types/provisional",
         headers: sessionHeaders,
       }),
@@ -580,7 +615,7 @@ describe("buildServer", () => {
     await expect(
       app.inject({
         method: "POST",
-        url: "/api/scan",
+        url: "/api/scan?count=false&amount=2.5",
         payload: { code: "EAN-1234" },
         headers: sessionHeaders,
       }),
@@ -709,6 +744,13 @@ describe("buildServer", () => {
     ).resolves.toMatchObject({ statusCode: 200 });
     await expect(
       app.inject({
+        method: "GET",
+        url: "/api/corrections?limit=25",
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
         method: "POST",
         url: "/api/corrections/reassign-part-type",
         payload: {
@@ -779,10 +821,17 @@ describe("buildServer", () => {
     });
 
     expect(service.searchPartTypes).toHaveBeenCalledWith("arduino");
+    expect(service.createKnownLocation).toHaveBeenCalledWith("Electronics Lab / Shelf B2");
+    expect(service.createKnownCategory).toHaveBeenCalledWith("Electronics / Microcontrollers");
+    expect(service.scanCode).toHaveBeenCalledWith("EAN-1234", "labeler", {
+      autoIncrement: false,
+      incrementAmount: 2.5,
+    });
     expect(service.voidQrCode).toHaveBeenCalledWith("QR-1001", "labeler");
     expect(service.approvePartType).toHaveBeenCalledWith("part-1");
     expect(service.backfillPartTypeArt).toHaveBeenCalled();
     expect(service.getCorrectionHistory).toHaveBeenCalledWith("instance", "instance-1");
+    expect(service.listCorrectionEvents).toHaveBeenCalledWith(25);
     expect(service.bulkAssignQrs).toHaveBeenCalled();
     expect(service.bulkMoveEntities).toHaveBeenCalled();
     expect(service.reassignEntityPartType).toHaveBeenCalled();
@@ -799,7 +848,12 @@ describe("buildServer", () => {
         throw new Error("boom");
       }),
       searchPartTypes: vi.fn(() => []),
+      getKnownLocations: vi.fn(() => []),
+      createKnownLocation: vi.fn(),
+      getKnownCategories: vi.fn(() => []),
+      createKnownCategory: vi.fn(),
       getProvisionalPartTypes: vi.fn(() => []),
+      listCorrectionEvents: vi.fn(() => []),
       registerQrBatch: vi.fn(() => {
         throw new ConflictError("Batch already exists.");
       }),
@@ -839,6 +893,44 @@ describe("buildServer", () => {
         message: "Could not parse register QR batch request.",
         details: expect.objectContaining({
           context: "register QR batch request",
+        }),
+      },
+    });
+
+    const locationParseFailure = await app.inject({
+      method: "POST",
+      url: "/api/locations",
+      payload: {
+        path: " / ",
+      },
+      headers: sessionHeaders,
+    });
+    expect(locationParseFailure.statusCode).toBe(400);
+    expect(locationParseFailure.json()).toEqual({
+      error: {
+        code: "parse_input",
+        message: "Could not parse known location request.",
+        details: expect.objectContaining({
+          context: "known location request",
+        }),
+      },
+    });
+
+    const scanQueryParseFailure = await app.inject({
+      method: "POST",
+      url: "/api/scan?amount=bad",
+      payload: {
+        code: "EAN-1234",
+      },
+      headers: sessionHeaders,
+    });
+    expect(scanQueryParseFailure.statusCode).toBe(400);
+    expect(scanQueryParseFailure.json()).toEqual({
+      error: {
+        code: "parse_input",
+        message: "Could not parse scan options query.",
+        details: expect.objectContaining({
+          context: "scan options query",
         }),
       },
     });
