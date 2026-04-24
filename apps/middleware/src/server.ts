@@ -10,7 +10,7 @@ import {
 } from "@smart-db/contracts";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
-import Fastify, { type preHandlerAsyncHookHandler } from "fastify";
+import Fastify, { type FastifyInstance, type preHandlerAsyncHookHandler } from "fastify";
 import { config, type AppConfig } from "./config.js";
 import { AuthService } from "./auth/auth-service.js";
 import { SessionStore } from "./auth/session-store.js";
@@ -60,6 +60,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
             },
           },
   });
+
+  registerLenientJsonParser(app);
 
   await app.register(cookie);
   await app.register(cors, {
@@ -265,4 +267,28 @@ export async function buildServer(options: BuildServerOptions = {}) {
   });
 
   return app;
+}
+
+function registerLenientJsonParser(app: FastifyInstance): void {
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (_request, body, done) => {
+    const raw = (typeof body === "string" ? body : body.toString("utf8")).trim();
+    if (raw.length === 0) {
+      done(null, undefined);
+      return;
+    }
+
+    try {
+      done(null, JSON.parse(raw) as unknown);
+    } catch (cause) {
+      const error = new Error("Body is not valid JSON.") as Error & {
+        code: string;
+        statusCode: number;
+      };
+      error.code = "FST_ERR_CTP_INVALID_JSON_BODY";
+      error.statusCode = 400;
+      error.cause = cause;
+      done(error);
+    }
+  });
 }

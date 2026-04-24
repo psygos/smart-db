@@ -69,6 +69,27 @@ describe("AuthService", () => {
     });
   });
 
+  it("removes transient auth errors from the post-login return target", async () => {
+    const service = new AuthService(
+      {
+        authorizationUrl: vi.fn(async () => "https://auth.example.com/login"),
+        exchangeAuthorizationCode: vi.fn(),
+        logoutUrl: vi.fn(),
+      } as never,
+      new SessionStore(db),
+      {
+        frontendOrigin: "https://smartdb.example.com",
+        redirectUri: "https://smartdb.example.com/api/auth/callback",
+        sessionCookieSecret: "super-secret",
+      },
+    );
+
+    const result = await service.startLogin("https://smartdb.example.com/?tab=scan&authError=Sign-in+failed");
+    expect(decodeAuthRequest(result.authRequest, "super-secret")).toMatchObject({
+      returnTo: "https://smartdb.example.com/?tab=scan",
+    });
+  });
+
   it("rejects login start when the cookie secret is missing", async () => {
     const service = new AuthService(
       {

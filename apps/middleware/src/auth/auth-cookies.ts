@@ -54,7 +54,11 @@ export function normalizeReturnTo(candidate: string | null | undefined, frontend
 
   try {
     const url = new URL(candidate, frontendOrigin);
-    return url.origin === fallback.origin ? url.toString() : fallback.toString();
+    if (url.origin !== fallback.origin) {
+      return fallback.toString();
+    }
+    url.searchParams.delete("authError");
+    return url.toString();
   } catch {
     return fallback.toString();
   }
