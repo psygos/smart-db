@@ -3705,7 +3705,6 @@ export class RewriteAppController {
 
     this.restoreFocus(focusSnapshot);
     this.autofocusScanInput(focusSnapshot);
-    this.autofocusStockSearch(focusSnapshot);
     this.syncUrl();
     this.motionSnapshot = runPostRenderMotion(this.root, this.motionSnapshot, this.state);
   }
@@ -3723,18 +3722,6 @@ export class RewriteAppController {
     }
     input.focus();
     input.select();
-  }
-
-  private autofocusStockSearch(previousFocus: FocusSnapshot | null): void {
-    if (previousFocus) return;
-    if (this.state.activeTab !== "inventory") return;
-    if (this.state.inventoryUi.detailPartTypeId) return;
-    if (typeof window === "undefined") return;
-    if (typeof window.matchMedia !== "function") return;
-    if (!window.matchMedia("(min-width: 900px)").matches) return;
-    const input = this.root.querySelector<HTMLInputElement>('input[name="inventory.query"]');
-    if (!input || document.activeElement === input) return;
-    input.focus();
   }
 
   private captureFocus(): FocusSnapshot | null {
@@ -3761,7 +3748,11 @@ export class RewriteAppController {
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
       return;
     }
-    target.focus();
+    try {
+      target.focus({ preventScroll: true });
+    } catch {
+      target.focus();
+    }
     if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && snapshot.selectionStart !== null && snapshot.selectionEnd !== null) {
       try {
         target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);

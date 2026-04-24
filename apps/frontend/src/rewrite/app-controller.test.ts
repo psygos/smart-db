@@ -350,6 +350,56 @@ describe("RewriteAppController", () => {
     controller.dispose();
   });
 
+  it("does not steal focus back to stock search while browsing stock cards", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    apiMock.getInventorySummary.mockResolvedValueOnce([
+      {
+        id: "part-1",
+        canonicalName: "Arduino Uno R3",
+        categoryPath: ["Electronics", "Microcontrollers"],
+        unit: { symbol: "pcs", name: "Pieces", isInteger: true },
+        countable: true,
+        bins: 1,
+        instanceCount: 2,
+        onHand: 2,
+        entityCount: 2,
+        partDbSyncStatus: "never",
+      },
+    ]);
+    const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+    focusSpy.mockClear();
+
+    (document.querySelector('[data-tab="inventory"]') as HTMLButtonElement).click();
+    await flush();
+
+    const stockSearch = document.querySelector<HTMLInputElement>('input[name="inventory.query"]');
+    expect(stockSearch).not.toBeNull();
+    expect(focusSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(stockSearch);
+
+    const stockCard = document.querySelector<HTMLButtonElement>('[data-action="stock-toggle"][data-category-path="Electronics"]');
+    expect(stockCard).not.toBeNull();
+    focusSpy.mockClear();
+    stockCard!.click();
+    await flush();
+
+    expect(focusSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(stockSearch);
+    controller.dispose();
+  });
+
   it("rejects invalid batch input before calling the API", async () => {
     const { startRewriteApp } = await import("./app-controller");
     apiMock.getSession.mockResolvedValueOnce({
