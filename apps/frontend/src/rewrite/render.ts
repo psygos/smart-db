@@ -414,8 +414,8 @@ function renderScanTab(state: RewriteUiState): string {
   const hasResult = state.scanMode.kind === "oneByOne" && Boolean(state.scanResult);
 
   const scannerBlock = `
-    <div class="scan-viewfinder ${cameraLive ? "is-live" : ""}" data-art-zone="scan-idle-art" data-motion-surface="scan-viewfinder" data-camera-supported="${String(hasCamera)}">
-      ${!cameraLive ? renderScanIdleArt() : ""}
+    <div class="scan-viewfinder ${cameraLive ? "is-live" : ""}" data-art-zone="scan-idle-mark" data-motion-surface="scan-viewfinder" data-camera-supported="${String(hasCamera)}">
+      ${!cameraLive ? renderScanIdleMark() : ""}
       ${hasCamera ? renderScanner(state, state.cameraLookupCode !== null, cameraBlockedReason) : ""}
       ${!cameraLive ? `
         <span class="scan-trace-line trace-a" aria-hidden="true"></span>
@@ -440,10 +440,7 @@ function renderScanTab(state: RewriteUiState): string {
         autocomplete="off"
       />
       <button type="submit" class="scan-input-submit" aria-label="Submit code" ${disabled(state.pendingAction !== null)}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="9 10 4 15 9 20"/>
-          <path d="M20 4v7a4 4 0 0 1-4 4H4"/>
-        </svg>
+        Open
       </button>
     </form>
 
@@ -524,48 +521,17 @@ function renderScanTab(state: RewriteUiState): string {
   `;
 }
 
-function renderScanIdleArt(): string {
+function renderScanIdleMark(): string {
   return `
-    <svg class="scan-idle-art" viewBox="0 0 900 506" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id="scan-idle-plate-fade" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="currentColor" stop-opacity="0.1"/>
-          <stop offset="0.48" stop-color="currentColor" stop-opacity="0.02"/>
-          <stop offset="1" stop-color="currentColor" stop-opacity="0.12"/>
-        </linearGradient>
-      </defs>
-      <rect class="scan-idle-art-plate" x="0" y="0" width="900" height="506" rx="22" fill="url(#scan-idle-plate-fade)"/>
-      <g class="scan-idle-art-grid">
-        <path d="M90 0v506M180 0v506M270 0v506M360 0v506M450 0v506M540 0v506M630 0v506M720 0v506M810 0v506"/>
-        <path d="M0 56h900M0 112h900M0 168h900M0 224h900M0 280h900M0 336h900M0 392h900M0 448h900"/>
-      </g>
-      <g class="scan-idle-art-circuit">
-        <path d="M102 96h92l30 30h106M104 155h150l46 46h112M90 334h122l44-44h82M586 96h96l42 42h74M548 386h132l58-58h74"/>
-        <path d="M186 96v-34h82M254 155v-38M724 138v-52M680 386v46h74"/>
-        <circle cx="102" cy="96" r="5"/><circle cx="104" cy="155" r="4"/><circle cx="90" cy="334" r="5"/><circle cx="798" cy="138" r="5"/><circle cx="812" cy="328" r="4"/>
-      </g>
-      <g class="scan-idle-art-tools">
-        <path d="M118 376l92-92 28 28-92 92-42 14z"/>
-        <path d="M136 390l88-88"/>
-        <path d="M668 111l94 94M742 95l-90 90M646 145l54 54M694 98l53 53"/>
-        <path d="M657 93l109 109"/>
-      </g>
-      <g class="scan-idle-art-target">
-        <rect x="364" y="180" width="172" height="146" rx="18"/>
-        <rect x="384" y="200" width="132" height="106" rx="10"/>
-        <rect x="412" y="219" width="76" height="68" rx="8"/>
-        <g class="scan-idle-art-qr">
-          <rect x="426" y="232" width="12" height="12"/><rect x="444" y="232" width="12" height="12"/><rect x="474" y="232" width="12" height="12"/>
-          <rect x="426" y="250" width="12" height="12"/><rect x="456" y="250" width="12" height="12"/><rect x="486" y="250" width="12" height="12"/>
-          <rect x="438" y="268" width="12" height="12"/><rect x="468" y="268" width="12" height="12"/><rect x="486" y="268" width="12" height="12"/>
-        </g>
-        <path d="M388 326h124"/>
-      </g>
-      <g class="scan-idle-art-calibration">
-        <path d="M214 253h162M524 253h162M450 118v74M450 314v74"/>
-        <path d="M248 244v18M286 248v10M324 244v18M576 244v18M614 248v10M652 244v18"/>
-      </g>
-    </svg>
+    <div class="scan-idle-mark" aria-hidden="true">
+      <span class="scan-idle-device">
+        <span class="scan-idle-lens"></span>
+        <span class="scan-idle-code">
+          <span></span><span></span><span></span><span></span>
+        </span>
+      </span>
+      <span class="scan-idle-copy">Tap camera or type below</span>
+    </div>
   `;
 }
 

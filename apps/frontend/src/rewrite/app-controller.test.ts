@@ -407,7 +407,7 @@ describe("RewriteAppController", () => {
     controller.dispose();
   });
 
-  it("keeps the idle scanner artwork passive and uses a dedicated camera button", async () => {
+  it("keeps the idle scanner mark passive and uses a dedicated camera button", async () => {
     const { startRewriteApp } = await import("./app-controller");
     apiMock.getSession.mockResolvedValueOnce({
       subject: "user-1",
@@ -425,12 +425,18 @@ describe("RewriteAppController", () => {
     const viewfinder = document.querySelector<HTMLElement>(".scan-viewfinder");
     expect(viewfinder).not.toBeNull();
     expect(viewfinder!.dataset.action).toBeUndefined();
-    expect(viewfinder!.querySelector(".scan-idle-art")).not.toBeNull();
+    expect(viewfinder!.querySelector(".scan-idle-mark")).not.toBeNull();
+    expect(viewfinder!.querySelector(".scan-idle-mark svg")).toBeNull();
 
     const cameraButton = viewfinder!.querySelector<HTMLButtonElement>('[data-action="camera-start"]');
     expect(cameraButton).not.toBeNull();
     expect(cameraButton!.classList.contains("camera-start-btn")).toBe(true);
     expect(cameraButton!.textContent).toContain("Enable camera");
+
+    const submitButton = document.querySelector<HTMLButtonElement>(".scan-input-submit");
+    expect(submitButton).not.toBeNull();
+    expect(submitButton!.textContent?.trim()).toBe("Open");
+    expect(submitButton!.querySelector("svg")).toBeNull();
     controller.dispose();
   });
 
