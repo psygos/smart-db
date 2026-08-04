@@ -218,6 +218,7 @@ export class PartDbOperations {
           amount: operation.payload.patch.amount,
           storage_location: storageLocationIri,
           description: operation.payload.patch.description,
+          user_barcode: operation.payload.patch.userBarcode,
         });
         return updated.ok ? Ok({ iri: updated.value["@id"], body: updated.value }) : updated;
       }

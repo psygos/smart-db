@@ -7,5 +7,6 @@ export { parseEditPartTypeDefinitionForm, type EditPartTypeDefinitionCommand } f
 export { parseEventForm, type EventCommand } from "./event";
 export { parseMergeForm, type MergeCommand } from "./merge";
 export { parseReassignPartTypeForm, type ReassignPartTypeCommand } from "./reassign-part-type";
+export { parseReassignQrForm, type ReassignQrCommand } from "./reassign-qr";
 export { parseReverseIngestForm, type ReverseIngestCommand } from "./reverse-ingest";
 export { failParse, issue, isRecord, type ParseResult } from "./shared";

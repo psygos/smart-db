@@ -79,6 +79,21 @@ export function parseAssignForm(input: unknown): ParseResult<AssignCommand> {
     issues,
     "Choose a valid initial instance status.",
   );
+  let initialCheckout: Extract<AssignQrRequest, { entityKind: "instance" }>["initialCheckout"];
+  if (entityKind === "instance" && initialStatus === "checked_out") {
+    const assignee = readOptionalString(record, "checkoutAssignee", issues);
+    const dueAtInput = readOptionalString(record, "checkoutDueAt", issues);
+    let dueAt: string | null = null;
+    if (dueAtInput) {
+      const parsedDueAt = new Date(dueAtInput);
+      if (Number.isNaN(parsedDueAt.getTime()) || parsedDueAt.getTime() <= Date.now()) {
+        issues.push({ path: "checkoutDueAt", message: "Due date must be in the future." });
+      } else {
+        dueAt = parsedDueAt.toISOString();
+      }
+    }
+    initialCheckout = { assignee, dueAt };
+  }
 
   const bulkInitialQuantity = entityKind === "bulk"
     ? readRequiredNumber(
@@ -176,6 +191,7 @@ export function parseAssignForm(input: unknown): ParseResult<AssignCommand> {
           existingPartTypeId: existingPartTypeId ?? "",
         },
         initialStatus: initialStatus ?? "available",
+        ...(initialCheckout ? { initialCheckout } : {}),
       });
     }
 
@@ -210,6 +226,7 @@ export function parseAssignForm(input: unknown): ParseResult<AssignCommand> {
         unit: defaultMeasurementUnit,
       },
       initialStatus: initialStatus ?? "available",
+      ...(initialCheckout ? { initialCheckout } : {}),
     });
   }
 

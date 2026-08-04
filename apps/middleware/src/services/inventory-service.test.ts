@@ -1424,6 +1424,74 @@ describe("InventoryService", () => {
     expect(service.getCorrectionHistory("instance", wrong.id)).toHaveLength(1);
   });
 
+  it("replaces an entity QR without losing its identity or lifecycle history", async () => {
+    const { service } = makeService();
+
+    service.registerQrBatch({
+      actor: "lab-admin",
+      prefix: "QR",
+      startNumber: 6550,
+      count: 2,
+    });
+
+    const entity = service.assignQr({
+      qrCode: "QR-6550",
+      actor: "labeler",
+      entityKind: "instance",
+      location: "Shelf A",
+      notes: null,
+      partType: {
+        kind: "new",
+        canonicalName: "QR correction fixture",
+        category: "Fixtures",
+        aliases: [],
+        notes: null,
+        imageUrl: null,
+        countable: true,
+      },
+      initialStatus: "available",
+    });
+
+    service.recordEvent({
+      targetType: "instance",
+      targetId: entity.id,
+      actor: "lab-admin",
+      event: "moved",
+      location: "Shelf B",
+      notes: "Preserve this lifecycle event",
+      assignee: null,
+    });
+
+    const corrected = service.reassignEntityQr({
+      targetType: "instance",
+      targetId: entity.id,
+      fromQrCode: "QR-6550",
+      toQrCode: "QR-6551",
+      actor: "lab-admin",
+      reason: "Wrong label attached during intake",
+    });
+
+    expect(corrected.entity).toMatchObject({ id: entity.id, qrCode: "QR-6551", location: "Shelf B" });
+    expect(corrected.previousQrCode).toMatchObject({ code: "QR-6550", status: "printed" });
+    expect(corrected.replacementQrCode).toMatchObject({
+      code: "QR-6551",
+      status: "assigned",
+      assignedKind: "instance",
+      assignedId: entity.id,
+    });
+    expect(corrected.correctionEvent.correctionKind).toBe("entity_qr_reassigned");
+    expect(service.getCorrectionHistory("instance", entity.id)).toHaveLength(1);
+    await expect(service.scanCode("QR-6550")).resolves.toMatchObject({ mode: "label" });
+    const replacementScan = await service.scanCode("QR-6551");
+    expect(replacementScan).toMatchObject({
+      mode: "interact",
+      entity: { id: entity.id },
+    });
+    expect(replacementScan.mode === "interact" ? replacementScan.recentEvents : []).toEqual(
+      expect.arrayContaining([expect.objectContaining({ event: "moved" })]),
+    );
+  });
+
   it("edits a shared part type definition with optimistic concurrency and records a correction event", () => {
     const { service } = makeService();
 
@@ -2263,6 +2331,57 @@ describe("InventoryService", () => {
         actor: string;
       }>;
     }
+
+    it("creates a complete checkout during assignment without a second scan", async () => {
+      const { db, service } = makeService();
+      const dueAt = "2099-01-02T10:30:00.000Z";
+      service.registerQrBatch({ actor: "admin", prefix: "BR", startNumber: 7099, count: 1 });
+
+      const instance = service.assignQr({
+        qrCode: "BR-7099",
+        actor: "labeler",
+        entityKind: "instance",
+        location: "Tool crib",
+        notes: "Direct intake checkout",
+        partType: {
+          kind: "new",
+          canonicalName: "Borrow BR-7099",
+          category: "Fixtures",
+          aliases: [],
+          notes: null,
+          imageUrl: null,
+          countable: true,
+        },
+        initialStatus: "checked_out",
+        initialCheckout: { assignee: "maker-jo", dueAt },
+      });
+
+      expect(instance).toMatchObject({
+        state: "checked_out",
+        assignee: "maker-jo",
+      });
+      expect(listBorrows(db, instance.id)).toEqual([
+        expect.objectContaining({
+          borrower: "maker-jo",
+          dueAt,
+          returnedAt: null,
+          actor: "labeler",
+        }),
+      ]);
+
+      const scanned = await service.scanCode("BR-7099");
+      expect(scanned).toMatchObject({
+        mode: "interact",
+        currentBorrow: { borrower: "maker-jo", dueAt },
+        canReverseIngest: false,
+      });
+      if (scanned.mode === "interact") {
+        expect(scanned.recentEvents.map((event) => event.event)).toEqual([
+          "checked_out",
+          "labeled",
+        ]);
+      }
+    });
 
     it("opens a borrow record when an instance is checked out", () => {
       const { db, service } = makeService();

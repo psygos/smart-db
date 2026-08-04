@@ -63,6 +63,7 @@ export const instanceActionKinds = [
 export const bulkActionKinds = ["moved", "restocked", "consumed", "stocktaken", "adjusted"] as const;
 export const correctionKinds = [
   "entity_part_type_reassigned",
+  "entity_qr_reassigned",
   "part_type_definition_edited",
   "ingest_reversed",
 ] as const;
@@ -503,6 +504,13 @@ export const instanceAssignQrRequestSchema = z
     notes: nullableLooseString.default(null),
     partType: partTypeDraftSchema,
     initialStatus: instanceStatusSchema.default("available"),
+    initialCheckout: z
+      .object({
+        assignee: normalizedOptionalString,
+        dueAt: borrowDueDateSchema.nullable().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -894,6 +902,36 @@ export const reassignEntityPartTypeCommandSchema = z.intersection(
     path: ["toPartTypeId"],
   });
 
+const reassignEntityQrBaseSchema = z
+  .object({
+    targetType: inventoryTargetKindSchema,
+    targetId: identifierSchema,
+    fromQrCode: nonEmptyString,
+    toQrCode: nonEmptyString,
+    reason: nonEmptyString,
+  })
+  .strict();
+
+export const reassignEntityQrRequestSchema = reassignEntityQrBaseSchema
+  .refine(
+    (value) => value.fromQrCode.trim().toLowerCase() !== value.toQrCode.trim().toLowerCase(),
+    {
+      message: "Current and replacement QR codes must be different.",
+      path: ["toQrCode"],
+    },
+  );
+
+export const reassignEntityQrCommandSchema = reassignEntityQrBaseSchema
+  .extend({ actor: nonEmptyString })
+  .strict()
+  .refine(
+    (value) => value.fromQrCode.trim().toLowerCase() !== value.toQrCode.trim().toLowerCase(),
+    {
+      message: "Current and replacement QR codes must be different.",
+      path: ["toQrCode"],
+    },
+  );
+
 export const editPartTypeDefinitionRequestSchema = z
   .object({
     partTypeId: identifierSchema,
@@ -980,6 +1018,15 @@ export const knownCategoryRequestSchema = z
 export const reassignEntityPartTypeResponseSchema = z
   .object({
     entity: inventoryEntitySummarySchema,
+    correctionEvent: correctionEventSchema,
+  })
+  .strict();
+
+export const reassignEntityQrResponseSchema = z
+  .object({
+    entity: inventoryEntitySummarySchema,
+    previousQrCode: qrCodeSchema,
+    replacementQrCode: qrCodeSchema,
     correctionEvent: correctionEventSchema,
   })
   .strict();
@@ -1338,6 +1385,8 @@ export type RecordEventCommand = z.output<typeof recordEventCommandSchema>;
 export type CorrectionEvent = z.output<typeof correctionEventSchema>;
 export type ReassignEntityPartTypeRequest = z.output<typeof reassignEntityPartTypeRequestSchema>;
 export type ReassignEntityPartTypeCommand = z.output<typeof reassignEntityPartTypeCommandSchema>;
+export type ReassignEntityQrRequest = z.output<typeof reassignEntityQrRequestSchema>;
+export type ReassignEntityQrCommand = z.output<typeof reassignEntityQrCommandSchema>;
 export type EditPartTypeDefinitionRequest = z.output<typeof editPartTypeDefinitionRequestSchema>;
 export type EditPartTypeDefinitionCommand = z.output<typeof editPartTypeDefinitionCommandSchema>;
 export type ReverseIngestAssignmentRequest = z.output<typeof reverseIngestAssignmentRequestSchema>;
@@ -1347,6 +1396,7 @@ export type CorrectionListQuery = z.output<typeof correctionListQuerySchema>;
 export type KnownLocationRequest = z.output<typeof knownLocationRequestSchema>;
 export type KnownCategoryRequest = z.output<typeof knownCategoryRequestSchema>;
 export type ReassignEntityPartTypeResponse = z.output<typeof reassignEntityPartTypeResponseSchema>;
+export type ReassignEntityQrResponse = z.output<typeof reassignEntityQrResponseSchema>;
 export type EditPartTypeDefinitionResponse = z.output<typeof editPartTypeDefinitionResponseSchema>;
 export type ReverseIngestAssignmentResponse = z.output<typeof reverseIngestAssignmentResponseSchema>;
 export type BulkAssignQrsResponse = z.output<typeof bulkAssignQrsResponseSchema>;

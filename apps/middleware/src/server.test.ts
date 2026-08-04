@@ -15,6 +15,7 @@ import {
   type PartType,
   type QRCode,
   type ReassignEntityPartTypeResponse,
+  type ReassignEntityQrResponse,
   type ReverseIngestAssignmentResponse,
   type ScanResponse,
   type StockEvent,
@@ -104,6 +105,34 @@ const correctionEvent: CorrectionEvent = {
 const reassignResponse: ReassignEntityPartTypeResponse = {
   entity: entitySummary,
   correctionEvent,
+};
+
+const reassignQrResponse: ReassignEntityQrResponse = {
+  entity: { ...entitySummary, qrCode: "QR-1002" },
+  previousQrCode: {
+    code: "QR-1001",
+    batchId: "batch-1",
+    status: "printed",
+    assignedKind: null,
+    assignedId: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  replacementQrCode: {
+    code: "QR-1002",
+    batchId: "batch-1",
+    status: "assigned",
+    assignedKind: "instance",
+    assignedId: "instance-1",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  correctionEvent: {
+    ...correctionEvent,
+    correctionKind: "entity_qr_reassigned",
+    before: { qrCode: "QR-1001" },
+    after: { qrCode: "QR-1002" },
+  },
 };
 
 const editPartTypeResponse: EditPartTypeDefinitionResponse = {
@@ -598,6 +627,7 @@ describe("buildServer", () => {
       mergePartTypes: vi.fn(() => partType),
       getCorrectionHistory: vi.fn(() => [correctionEvent]),
       reassignEntityPartType: vi.fn(() => reassignResponse),
+      reassignEntityQr: vi.fn(() => reassignQrResponse),
       editPartTypeDefinition: vi.fn(() => editPartTypeResponse),
       reverseIngestAssignment: vi.fn(() => reverseIngestResponse),
       bulkReverseIngest: vi.fn(() => bulkReverseResponse),
@@ -833,6 +863,20 @@ describe("buildServer", () => {
     await expect(
       app.inject({
         method: "POST",
+        url: "/api/corrections/reassign-qr",
+        payload: {
+          targetType: "instance",
+          targetId: "instance-1",
+          fromQrCode: "QR-1001",
+          toQrCode: "QR-1002",
+          reason: "Wrong QR",
+        },
+        headers: sessionHeaders,
+      }),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    await expect(
+      app.inject({
+        method: "POST",
         url: "/api/corrections/edit-part-type",
         payload: {
           partTypeId: "part-1",
@@ -902,6 +946,14 @@ describe("buildServer", () => {
     expect(service.bulkAssignQrs).toHaveBeenCalled();
     expect(service.bulkMoveEntities).toHaveBeenCalled();
     expect(service.reassignEntityPartType).toHaveBeenCalled();
+    expect(service.reassignEntityQr).toHaveBeenCalledWith({
+      targetType: "instance",
+      targetId: "instance-1",
+      fromQrCode: "QR-1001",
+      toQrCode: "QR-1002",
+      reason: "Wrong QR",
+      actor: "labeler",
+    });
     expect(service.editPartTypeDefinition).toHaveBeenCalled();
     expect(service.reverseIngestAssignment).toHaveBeenCalled();
     expect(service.bulkReverseIngest).toHaveBeenCalled();

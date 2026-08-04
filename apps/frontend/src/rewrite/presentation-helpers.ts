@@ -35,13 +35,15 @@ export type AssignFormState = {
   countable: boolean;
   unitSymbol: string;
   initialStatus: InstanceStatus;
+  checkoutAssignee: string;
+  checkoutDueAt: string;
   initialQuantity: string;
   minimumQuantity: string;
 };
 
 export type AssignFormIssues = Partial<
   Record<
-    "location" | "existingPartTypeId" | "canonicalName" | "category" | "countable" | "initialQuantity" | "minimumQuantity",
+    "location" | "existingPartTypeId" | "canonicalName" | "category" | "countable" | "initialQuantity" | "minimumQuantity" | "checkoutDueAt",
     string
   >
 >;
@@ -90,6 +92,13 @@ export function getAssignFormIssues(form: AssignFormState): AssignFormIssues {
       } else if (unit?.isInteger && !Number.isInteger(minimumQuantity)) {
         issues.minimumQuantity = `${unit.symbol} quantities must be whole numbers.`;
       }
+    }
+  }
+
+  if (form.entityKind === "instance" && form.initialStatus === "checked_out" && form.checkoutDueAt.trim()) {
+    const dueAt = new Date(form.checkoutDueAt);
+    if (Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
+      issues.checkoutDueAt = "Due date must be in the future.";
     }
   }
 
@@ -152,6 +161,14 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
             existingPartTypeId,
           },
           initialStatus: form.initialStatus,
+          ...(form.initialStatus === "checked_out"
+            ? {
+                initialCheckout: {
+                  assignee: normalizeNullable(form.checkoutAssignee),
+                  dueAt: normalizeDueAt(form.checkoutDueAt),
+                },
+              }
+            : {}),
         }
       : {
           qrCode: form.qrCode,
@@ -184,6 +201,14 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
           unit: defaultMeasurementUnit,
         },
         initialStatus: form.initialStatus,
+        ...(form.initialStatus === "checked_out"
+          ? {
+              initialCheckout: {
+                assignee: normalizeNullable(form.checkoutAssignee),
+                dueAt: normalizeDueAt(form.checkoutDueAt),
+              },
+            }
+          : {}),
       }
     : {
         qrCode: form.qrCode,
@@ -203,6 +228,13 @@ export function buildAssignRequest(form: AssignFormState): AssignQrRequest {
         initialQuantity: initialQuantity ?? 0,
         minimumQuantity,
       };
+}
+
+function normalizeDueAt(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 export function getEventFormIssues(form: EventFormState): EventFormIssues {
@@ -583,7 +615,9 @@ function humanizeApiError(error: ApiClientError): string {
     case "integration":
       return integrationMessage(error.details, error.message);
     case "transport":
-      return "The request could not be completed. Check your connection and try again.";
+      return error.message;
+    case "http_error":
+      return error.message;
     default:
       return error.message;
   }

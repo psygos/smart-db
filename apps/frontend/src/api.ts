@@ -29,6 +29,8 @@ import {
   qrCodeSchema,
   reassignEntityPartTypeRequestSchema,
   reassignEntityPartTypeResponseSchema,
+  reassignEntityQrRequestSchema,
+  reassignEntityQrResponseSchema,
   recordEventRequestSchema,
   registerQrBatchRequestSchema,
   registerQrBatchResponseSchema,
@@ -61,6 +63,8 @@ import {
   type PartType,
   type ReassignEntityPartTypeRequest,
   type ReassignEntityPartTypeResponse,
+  type ReassignEntityQrRequest,
+  type ReassignEntityQrResponse,
   type RecordEventRequest,
   type RegisterQrBatchRequest,
   type RegisterQrBatchResponse,
@@ -82,8 +86,107 @@ export class ApiClientError extends Error {
   }
 }
 
+export type ApiTransportReason = "offline" | "timeout" | "aborted" | "unreachable";
+
+export class ApiTransportError extends ApiClientError {
+  constructor(
+    readonly reason: ApiTransportReason,
+    readonly endpoint: string,
+  ) {
+    super("transport", transportMessage(reason, endpoint), { reason, endpoint });
+    this.name = "ApiTransportError";
+  }
+}
+
 interface ApiRequestInit extends RequestInit {
   signal?: AbortSignal;
+}
+
+const requestTimeoutMs = 15_000;
+
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  const callerSignal = init?.signal ?? null;
+  const timeoutSignal = AbortSignal.timeout(requestTimeoutMs);
+  const combinedSignal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
+
+  try {
+    return await fetch(apiUrl(path), {
+      ...init,
+      signal: combinedSignal,
+    });
+  } catch (caught) {
+    throw classifyTransportError(path, caught, callerSignal, timeoutSignal);
+  }
+}
+
+function classifyTransportError(
+  path: string,
+  caught: unknown,
+  callerSignal: AbortSignal | null,
+  timeoutSignal: AbortSignal,
+): ApiTransportError {
+  if (callerSignal?.aborted) {
+    return new ApiTransportError("aborted", path);
+  }
+
+  if (timeoutSignal.aborted || errorName(caught) === "TimeoutError") {
+    return new ApiTransportError("timeout", path);
+  }
+
+  if (errorName(caught) === "AbortError") {
+    return new ApiTransportError("aborted", path);
+  }
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return new ApiTransportError("offline", path);
+  }
+
+  return new ApiTransportError("unreachable", path);
+}
+
+function errorName(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || !("name" in value)) {
+    return null;
+  }
+
+  return typeof value.name === "string" ? value.name : null;
+}
+
+function transportMessage(reason: ApiTransportReason, endpoint: string): string {
+  const action = requestAction(endpoint);
+  switch (reason) {
+    case "offline":
+      return `Cannot ${action} right now because this device is offline. Reconnect to the lab network and try again.`;
+    case "timeout":
+      return `Smart DB took too long to ${action}. Check the lab network and try again.`;
+    case "aborted":
+      return "The request was cancelled.";
+    case "unreachable":
+      return `Cannot ${action} because this device cannot reach the Smart DB host. Check the lab Wi-Fi and try again.`;
+  }
+}
+
+function requestAction(endpoint: string): string {
+  if (endpoint.startsWith("/api/scan")) return "scan";
+  if (endpoint === "/api/assignments") return "assign this item";
+  if (endpoint.startsWith("/api/corrections")) return "save this correction";
+  if (endpoint.startsWith("/api/partdb/sync")) return "update Part-DB sync";
+  if (endpoint.endsWith("/labels.pdf")) return "download the label PDF";
+  if (endpoint === "/api/auth/session") return "restore your session";
+  if (endpoint === "/api/auth/logout") return "sign out";
+  if (endpoint === "/api/qr-batches") return "create this QR batch";
+  if (endpoint.startsWith("/api/part-types/search")) return "search the parts catalog";
+  if (
+    endpoint === "/api/dashboard" ||
+    endpoint === "/api/inventory/summary" ||
+    endpoint === "/api/locations" ||
+    endpoint === "/api/categories"
+  ) {
+    return "refresh Smart DB data";
+  }
+  return "complete this request";
 }
 
 async function request<TSchema extends z.ZodTypeAny>(
@@ -91,11 +194,7 @@ async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   init?: ApiRequestInit,
 ): Promise<z.output<TSchema>> {
-  const timeoutSignal = AbortSignal.timeout(15_000);
-  const combinedSignal = init?.signal
-    ? AbortSignal.any([init.signal, timeoutSignal])
-    : timeoutSignal;
-  const { headers: initHeaders, signal: _ignoredSignal, body: initBody, ...restInit } = init ?? {};
+  const { headers: initHeaders, signal: requestSignal, body: initBody, ...restInit } = init ?? {};
   // Only declare the JSON content-type when we actually have a JSON body to
   // send. Fastify's default JSON parser rejects body-less requests that carry
   // a Content-Type: application/json header with FST_ERR_CTP_EMPTY_JSON_BODY
@@ -106,12 +205,12 @@ async function request<TSchema extends z.ZodTypeAny>(
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
     ...(initHeaders ?? {}),
   };
-  const response = await fetch(apiUrl(path), {
+  const response = await fetchApi(path, {
     ...restInit,
     ...(hasBody ? { body: initBody } : {}),
     credentials: "include",
     headers,
-    signal: combinedSignal,
+    ...(requestSignal ? { signal: requestSignal } : {}),
   });
 
   if (!response.ok) {
@@ -128,7 +227,11 @@ async function request<TSchema extends z.ZodTypeAny>(
       );
     }
 
-    throw new ApiClientError("transport", `Request failed with ${response.status}`);
+    throw new ApiClientError(
+      "http_error",
+      `Smart DB returned HTTP ${response.status}.`,
+      { endpoint: path, httpStatus: response.status },
+    );
   }
 
   return parseWithSchema(schema, await response.json(), `response for ${path}`);
@@ -369,6 +472,13 @@ export const api = {
       headers: idempotencyHeaders(),
     });
   },
+  reassignEntityQr(payload: ReassignEntityQrRequest): Promise<ReassignEntityQrResponse> {
+    return request(reassignEntityQrResponseSchema, "/api/corrections/reassign-qr", {
+      method: "POST",
+      body: JSON.stringify(parseWithSchema(reassignEntityQrRequestSchema, payload, "entity QR correction request")),
+      headers: idempotencyHeaders(),
+    });
+  },
   editPartTypeDefinition(payload: EditPartTypeDefinitionRequest): Promise<EditPartTypeDefinitionResponse> {
     return request(editPartTypeDefinitionResponseSchema, "/api/corrections/edit-part-type", {
       method: "POST",
@@ -411,7 +521,8 @@ export function qrBatchLabelsPdfUrl(batchId: string): string {
 }
 
 export async function downloadQrBatchLabelsPdf(batchId: string): Promise<void> {
-  const response = await fetch(apiUrl(`/api/qr-batches/${encodeURIComponent(batchId)}/labels.pdf`), {
+  const path = `/api/qr-batches/${encodeURIComponent(batchId)}/labels.pdf`;
+  const response = await fetchApi(path, {
     credentials: "include",
   });
 
@@ -429,7 +540,11 @@ export async function downloadQrBatchLabelsPdf(batchId: string): Promise<void> {
       );
     }
 
-    throw new ApiClientError("transport", `Request failed with ${response.status}`);
+    throw new ApiClientError(
+      "http_error",
+      `Smart DB returned HTTP ${response.status}.`,
+      { endpoint: path, httpStatus: response.status },
+    );
   }
 
   const blob = await response.blob();

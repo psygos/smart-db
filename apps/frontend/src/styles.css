@@ -66,6 +66,8 @@ html {
   scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom));
   scrollbar-gutter: stable;
   overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 body {
   margin: 0;
@@ -90,6 +92,27 @@ a { -webkit-tap-highlight-color: transparent; }
 ::selection { background: var(--blue-bg); }
 ::placeholder { color: var(--ink-3); opacity: 1; }
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.direct-checkout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--blue-bg);
+}
+.direct-checkout legend {
+  padding: 0 0.375rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+.direct-checkout p { grid-column: 1 / -1; }
+
+@media (max-width: 560px) {
+  .direct-checkout { grid-template-columns: 1fr; }
+}
 
 /* ── type ─ ─ ─ ─ ─ ─ ─ */
 
@@ -199,7 +222,7 @@ label { display: grid; gap: 0.25rem; font-size: 0.75rem; font-weight: 500; lette
 
 input, select, textarea {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
-  padding: 0.625rem 0.75rem; font-size: 1rem; min-height: 44px; transition: border-color 0.15s;
+  padding: 0.625rem 0.75rem; font-size: 16px; min-height: 44px; transition: border-color 0.15s;
   color: var(--ink-strong, var(--ink)); font-weight: 500;
 }
 input::placeholder, textarea::placeholder { color: var(--ink-3); font-weight: 400; }
@@ -1568,7 +1591,7 @@ html.theme-transition *::after {
   background: var(--bg);
   border: 1px solid var(--border-2);
   border-radius: var(--r-sm);
-  font-size: 0.875rem;
+  font-size: 16px;
 }
 .tree-list {
   display: grid;
@@ -2799,7 +2822,7 @@ html.dark .pwa-install-dismiss:hover:not(:disabled) {
   min-height: 46px;
   border-radius: 10px;
   font-family: var(--mono);
-  font-size: 0.95rem;
+  font-size: 16px;
 }
 
 .panel-admin .admin-grid .picker button::before,
@@ -3116,7 +3139,7 @@ html.dark .pwa-install-dismiss:hover:not(:disabled) {
   border-radius: 10px;
   background: var(--surface);
   border: 1px solid var(--border);
-  font-size: 0.95rem;
+  font-size: 16px;
   font-weight: 500;
   padding: 0.75rem 0.95rem;
 }
@@ -3866,7 +3889,7 @@ html.dark body {
   padding: 0;
   min-height: 0;
   font-family: var(--sans);
-  font-size: 0.95rem;
+  font-size: 16px;
   font-weight: 500;
   color: var(--ink);
 }
@@ -5929,7 +5952,8 @@ html.dark {
 }
 
 button,
-a {
+a,
+[role="button"] {
   touch-action: manipulation;
 }
 

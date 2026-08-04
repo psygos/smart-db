@@ -14,6 +14,7 @@ export type OperationName =
   | "correction.scan"
   | "correction.loadHistory"
   | "correction.reassignEntityPartType"
+  | "correction.reassignQr"
   | "correction.editPartTypeDefinition"
   | "correction.reverseIngest"
   | "inventory.loadSummary"
@@ -146,6 +147,7 @@ const parseOperationContexts: Record<OperationName, string> = {
   "correction.scan": "correction scan",
   "correction.loadHistory": "correction history",
   "correction.reassignEntityPartType": "entity correction",
+  "correction.reassignQr": "QR correction",
   "correction.editPartTypeDefinition": "shared part type edit",
   "correction.reverseIngest": "ingest reversal",
   "inventory.loadSummary": "inventory summary",

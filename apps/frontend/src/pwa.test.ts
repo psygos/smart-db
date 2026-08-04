@@ -8,6 +8,8 @@ import {
 } from "./pwa";
 
 const serviceWorkerTemplatePath = resolve(process.cwd(), "apps/frontend/service-worker.template.js");
+const stylesheetPath = resolve(process.cwd(), "apps/frontend/src/styles.css");
+const indexPath = resolve(process.cwd(), "apps/frontend/index.html");
 
 function windowStub(
   origin = "https://smartdb.example.com",
@@ -136,6 +138,28 @@ describe("registerPwa", () => {
     const template = readFileSync(serviceWorkerTemplatePath, "utf8");
 
     expect(template).toContain("await cache.match(request) ?? await caches.match(request)");
+  });
+});
+
+describe("mobile form controls", () => {
+  it("keeps every form-control override at or above iOS Safari's 16px zoom threshold", () => {
+    const stylesheet = readFileSync(stylesheetPath, "utf8");
+
+    expect(stylesheet).toMatch(/input, select, textarea \{[\s\S]*?font-size: 16px;/);
+    expect(stylesheet).toMatch(/\.path-search input\[type="search"\] \{[\s\S]*?font-size: 16px;/);
+    expect(stylesheet).toMatch(/\.panel-admin select,[\s\S]*?font-size: 16px;/);
+    expect(stylesheet).toMatch(/\.scan-input-row input \{[\s\S]*?font-size: 16px;/);
+    expect(stylesheet).toMatch(/\.location-card \.location-card-input input \{[\s\S]*?font-size: 16px;/);
+  });
+
+  it("stabilizes mobile text sizing and double-tap actions without disabling pinch zoom", () => {
+    const stylesheet = readFileSync(stylesheetPath, "utf8");
+    const index = readFileSync(indexPath, "utf8");
+
+    expect(stylesheet).toContain("-webkit-text-size-adjust: 100%");
+    expect(stylesheet).toContain("text-size-adjust: 100%");
+    expect(stylesheet).toContain("touch-action: manipulation");
+    expect(index).not.toMatch(/maximum-scale|user-scalable\s*=\s*no/i);
   });
 });
 

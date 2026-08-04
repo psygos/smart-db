@@ -31,6 +31,7 @@ const apiMock = vi.hoisted(() => ({
   getCorrectionHistory: vi.fn(),
   listCorrectionEvents: vi.fn(),
   reassignEntityPartType: vi.fn(),
+  reassignEntityQr: vi.fn(),
   editPartTypeDefinition: vi.fn(),
   reverseIngestAssignment: vi.fn(),
   recordEvent: vi.fn(),
@@ -225,6 +226,49 @@ describe("RewriteAppController", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       },
     });
+    apiMock.reassignEntityQr.mockResolvedValue({
+      entity: {
+        id: "instance-1",
+        targetType: "instance",
+        qrCode: "QR-9002",
+        partType,
+        location: "Shelf A",
+        state: "available",
+        assignee: null,
+        partDbSyncStatus: "never",
+        quantity: null,
+        minimumQuantity: null,
+      },
+      previousQrCode: {
+        code: "QR-9001",
+        batchId: "batch-1",
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      replacementQrCode: {
+        code: "QR-9002",
+        batchId: "batch-1",
+        status: "assigned",
+        assignedKind: "instance",
+        assignedId: "instance-1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      correctionEvent: {
+        id: "corr-qr",
+        targetType: "instance",
+        targetId: "instance-1",
+        correctionKind: "entity_qr_reassigned",
+        actor: "lab-admin",
+        reason: "Wrong QR",
+        before: { qrCode: "QR-9001" },
+        after: { qrCode: "QR-9002" },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
     apiMock.editPartTypeDefinition.mockResolvedValue({
       partType,
       correctionEvent: {
@@ -329,6 +373,35 @@ describe("RewriteAppController", () => {
 
     expect(document.body.textContent).toContain("Part types");
     expect(document.body.textContent).toContain("2");
+    controller.dispose();
+  });
+
+  it("clears the offline state and refreshes stale data when connectivity returns", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+    expect(apiMock.getDashboard).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new Event("offline"));
+    await flush();
+    expect(document.body.textContent).toContain("You appear to be offline.");
+
+    window.dispatchEvent(new Event("online"));
+    await flush();
+
+    expect(document.body.textContent).not.toContain("You appear to be offline.");
+    expect(document.body.textContent).toContain("Back online. Refreshing Smart DB data");
+    expect(apiMock.getDashboard).toHaveBeenCalledTimes(2);
     controller.dispose();
   });
 
@@ -641,6 +714,92 @@ describe("RewriteAppController", () => {
     controller.dispose();
   });
 
+  it("keeps a focused text field intact while typing and across unrelated renders", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    apiMock.scan.mockResolvedValueOnce({
+      mode: "label",
+      qrCode: {
+        code: "QR-FOCUS",
+        batchId: "batch-1",
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      suggestions: [partType],
+      partDb: { configured: false, connected: false, message: "not found" },
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('input[name="scanCode"]')!;
+    scanInput.value = "QR-FOCUS";
+    scanInput.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLFormElement>('form[data-form="scan"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    document.querySelector<HTMLButtonElement>('[data-action="set-assign-mode"][data-assign-mode="new"]')!.click();
+    await flush();
+
+    const nameInput = document.querySelector<HTMLInputElement>('input[name="assign.canonicalName"]')!;
+    nameInput.focus();
+    nameInput.value = "ESP32 DEVKIT";
+    nameInput.setSelectionRange(nameInput.value.length, nameInput.value.length);
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(document.querySelector('input[name="assign.canonicalName"]')).toBe(nameInput);
+    expect(document.activeElement).toBe(nameInput);
+    expect(nameInput.getAttribute("autocapitalize")).toBe("none");
+    expect(nameInput.getAttribute("autocorrect")).toBe("off");
+    expect(nameInput.getAttribute("spellcheck")).toBe("false");
+
+    window.dispatchEvent(new Event("offline"));
+
+    expect(document.querySelector('input[name="assign.canonicalName"]')).toBe(nameInput);
+    expect(document.activeElement).toBe(nameInput);
+    expect(nameInput.value).toBe("ESP32 DEVKIT");
+    expect(nameInput.selectionStart).toBe(nameInput.value.length);
+    controller.dispose();
+  });
+
+  it("autofocuses the scanner only once instead of reclaiming keyboard focus", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('#scan-code-input')!;
+    expect(document.activeElement).toBe(scanInput);
+    scanInput.blur();
+
+    document.querySelector<HTMLButtonElement>('[data-action="set-scan-mode-kind"][data-scan-mode-kind="bulk"]')!.click();
+    await flush();
+
+    expect(document.activeElement).not.toBe(document.querySelector('#scan-code-input'));
+    controller.dispose();
+  });
+
   it("requires a positive starting quantity for existing bulk ingest", async () => {
     const { startRewriteApp } = await import("./app-controller");
     apiMock.getSession.mockResolvedValueOnce({
@@ -717,6 +876,93 @@ describe("RewriteAppController", () => {
 
     expect(apiMock.assignQr).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Starting quantity must be greater than zero.");
+    controller.dispose();
+  });
+
+  it("checks out an instance as part of its initial assignment", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    apiMock.scan.mockResolvedValueOnce({
+      mode: "label",
+      qrCode: {
+        code: "QR-1002",
+        batchId: "batch-1",
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      suggestions: [partType],
+      partDb: { configured: false, connected: false, message: "not found" },
+    });
+    apiMock.assignQr.mockResolvedValueOnce({
+      id: "instance-2",
+      targetType: "instance",
+      qrCode: "QR-1002",
+      partType,
+      location: "Tool crib",
+      state: "checked_out",
+      assignee: "maker-jo",
+      partDbSyncStatus: "never",
+      quantity: null,
+      minimumQuantity: null,
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('input[name="scanCode"]')!;
+    scanInput.value = "QR-1002";
+    scanInput.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLFormElement>('form[data-form="scan"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    document.querySelector<HTMLButtonElement>('[data-action="select-existing-part"]')!.click();
+    await flush();
+
+    document.querySelector<HTMLButtonElement>('[data-action="toggle-path-picker"][data-kind="location"]')!.click();
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-action="pick-path-node"][data-kind="location"][data-path="Shelf A"]')!.click();
+    await flush();
+    const statusSelect = document.querySelector<HTMLSelectElement>('select[name="assign.initialStatus"]')!;
+    statusSelect.value = "checked_out";
+    statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    expect(document.body.textContent).toContain("Check out this item now");
+    const borrowerInput = document.querySelector<HTMLInputElement>('input[name="assign.checkoutAssignee"]')!;
+    borrowerInput.value = "maker-jo";
+    borrowerInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const dueInput = document.querySelector<HTMLInputElement>('input[name="assign.checkoutDueAt"]')!;
+    dueInput.value = "2099-01-02T10:30";
+    dueInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    document.querySelector<HTMLFormElement>('form[data-form="assign"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(apiMock.assignQr).toHaveBeenCalledWith({
+      qrCode: "QR-1002",
+      entityKind: "instance",
+      location: "Shelf A",
+      notes: null,
+      partType: { kind: "existing", existingPartTypeId: "part-1" },
+      initialStatus: "checked_out",
+      initialCheckout: {
+        assignee: "maker-jo",
+        dueAt: new Date("2099-01-02T10:30").toISOString(),
+      },
+    });
     controller.dispose();
   });
 
@@ -1295,12 +1541,11 @@ describe("RewriteAppController", () => {
     reason.dispatchEvent(new Event("input", { bubbles: true }));
     await flush();
 
-    expect(document.body.textContent).toContain("A matching part type already exists");
-
     document.querySelector<HTMLFormElement>('form[data-form="scan-edit-shared"]')!
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await flush();
 
+    expect(document.body.textContent).toContain("A matching part type already exists");
     expect(apiMock.editPartTypeDefinition).not.toHaveBeenCalled();
     controller.dispose();
   });
@@ -1420,6 +1665,116 @@ describe("RewriteAppController", () => {
     });
     expect(document.body.textContent).toContain("Item corrected to the replacement part type.");
     expect(document.querySelector('form[data-form="scan-edit-reassign"]')).toBeNull();
+    controller.dispose();
+  });
+
+  it("replaces a wrong QR from the admin Edit panel while keeping the item", async () => {
+    const { startRewriteApp } = await import("./app-controller");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    apiMock.getSession.mockResolvedValueOnce({
+      subject: "user-1",
+      username: "lab-admin",
+      name: "Lab Admin",
+      email: "lab@example.com",
+      roles: ["smartdb.admin"],
+      issuedAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: null,
+    });
+    const scanResult = {
+      mode: "interact" as const,
+      qrCode: {
+        code: "QR-9200",
+        batchId: "batch-1",
+        status: "assigned" as const,
+        assignedKind: "instance" as const,
+        assignedId: "instance-9200",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      entity: {
+        id: "instance-9200",
+        targetType: "instance" as const,
+        qrCode: "QR-9200",
+        partType,
+        location: "Shelf A",
+        state: "available",
+        assignee: null,
+        partDbSyncStatus: "never" as const,
+        quantity: null,
+        minimumQuantity: null,
+      },
+      recentEvents: [],
+      availableActions: ["moved", "checked_out", "consumed", "damaged", "lost", "disposed"],
+      partDb: { configured: false, connected: false, message: "not found" },
+      canReverseIngest: true,
+      canEditSharedType: true,
+    };
+    apiMock.scan
+      .mockResolvedValueOnce(scanResult)
+      .mockResolvedValueOnce({
+        ...scanResult,
+        qrCode: { ...scanResult.qrCode, code: "QR-9201" },
+        entity: { ...scanResult.entity, qrCode: "QR-9201" },
+      });
+    apiMock.reassignEntityQr.mockResolvedValueOnce({
+      entity: { ...scanResult.entity, qrCode: "QR-9201" },
+      previousQrCode: {
+        ...scanResult.qrCode,
+        status: "printed",
+        assignedKind: null,
+        assignedId: null,
+      },
+      replacementQrCode: {
+        ...scanResult.qrCode,
+        code: "QR-9201",
+      },
+      correctionEvent: {
+        id: "corr-qr-9200",
+        targetType: "instance",
+        targetId: "instance-9200",
+        correctionKind: "entity_qr_reassigned",
+        actor: "lab-admin",
+        reason: "Wrong QR attached",
+        before: { qrCode: "QR-9200" },
+        after: { qrCode: "QR-9201" },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+
+    const controller = startRewriteApp(document.getElementById("root")!);
+    await flush();
+
+    const scanInput = document.querySelector<HTMLInputElement>('input[name="scanCode"]')!;
+    scanInput.value = "QR-9200";
+    scanInput.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLFormElement>('form[data-form="scan"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    document.querySelector<HTMLButtonElement>('[data-action="scan-edit-open"]')!.click();
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-scan-edit-action="reassignQr"]')!.click();
+    await flush();
+
+    const replacement = document.querySelector<HTMLInputElement>('input[name="scanEdit.replacementQrCode"]')!;
+    replacement.value = "QR-9201";
+    replacement.dispatchEvent(new Event("input", { bubbles: true }));
+    const reason = document.querySelector<HTMLTextAreaElement>('textarea[name="scanEdit.reason"]')!;
+    reason.value = "Wrong QR attached";
+    reason.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector<HTMLFormElement>('form[data-form="scan-edit-qr"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+
+    expect(apiMock.reassignEntityQr).toHaveBeenCalledWith({
+      targetType: "instance",
+      targetId: "instance-9200",
+      fromQrCode: "QR-9200",
+      toQrCode: "QR-9201",
+      reason: "Wrong QR attached",
+    });
+    expect(document.body.textContent).toContain("QR replaced: QR-9200 → QR-9201.");
+    expect(document.body.textContent).toContain("QR-9201");
     controller.dispose();
   });
 

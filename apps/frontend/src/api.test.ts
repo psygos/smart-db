@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ParseInputError } from "@smart-db/contracts";
 import {
   ApiClientError,
+  ApiTransportError,
   api,
   clearSessionToken,
   downloadQrBatchLabelsPdf,
@@ -12,6 +13,7 @@ import {
 } from "./api";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   clearSessionToken();
 });
@@ -281,6 +283,146 @@ describe("frontend api", () => {
     });
   });
 
+  it("replaces an entity QR through the correction endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          entity: {
+            id: "instance-1",
+            targetType: "instance",
+            qrCode: "QR-1002",
+            partType: {
+              id: "part-1",
+              canonicalName: "Arduino Uno R3",
+              category: "Microcontrollers",
+              categoryPath: ["Electronics", "Microcontrollers"],
+              aliases: [],
+              imageUrl: null,
+              notes: null,
+              countable: true,
+              unit: { symbol: "pcs", name: "Pieces", isInteger: true },
+              needsReview: false,
+              partDbPartId: null,
+              partDbCategoryId: null,
+              partDbUnitId: null,
+              partDbSyncStatus: "never",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            location: "Shelf A",
+            state: "available",
+            assignee: null,
+            partDbSyncStatus: "never",
+            quantity: null,
+            minimumQuantity: null,
+          },
+          previousQrCode: {
+            code: "QR-1001",
+            batchId: "batch-1",
+            status: "printed",
+            assignedKind: null,
+            assignedId: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+          replacementQrCode: {
+            code: "QR-1002",
+            batchId: "batch-1",
+            status: "assigned",
+            assignedKind: "instance",
+            assignedId: "instance-1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+          correctionEvent: {
+            id: "corr-qr",
+            targetType: "instance",
+            targetId: "instance-1",
+            correctionKind: "entity_qr_reassigned",
+            actor: "lab-admin",
+            reason: "Wrong QR",
+            before: { qrCode: "QR-1001" },
+            after: { qrCode: "QR-1002" },
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        }),
+      }),
+    );
+
+    await expect(api.reassignEntityQr({
+      targetType: "instance",
+      targetId: "instance-1",
+      fromQrCode: "QR-1001",
+      toQrCode: "QR-1002",
+      reason: "Wrong QR",
+    })).resolves.toMatchObject({
+      entity: { id: "instance-1", qrCode: "QR-1002" },
+      previousQrCode: { code: "QR-1001", status: "printed" },
+      replacementQrCode: { code: "QR-1002", status: "assigned" },
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/corrections/reassign-qr",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+  });
+
+  it("classifies browser-offline failures before they reach the UI", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+    const error = await api.scan("QR-OFFLINE").catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ApiTransportError);
+    expect(error).toMatchObject({
+      code: "transport",
+      reason: "offline",
+      endpoint: "/api/scan",
+    });
+    expect(error.message).toContain("device is offline");
+  });
+
+  it("distinguishes request timeouts from other transport failures", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("Timed out", "TimeoutError")),
+    );
+
+    const error = await api.getDashboard().catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ApiTransportError);
+    expect(error).toMatchObject({ reason: "timeout" });
+    expect(error.message).toContain("too long");
+  });
+
+  it("marks app-controlled cancellation as aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError")),
+    );
+
+    const error = await api.scan("QR-CANCELLED", { signal: controller.signal }).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ApiTransportError);
+    expect(error).toMatchObject({ reason: "aborted" });
+  });
+
+  it("distinguishes an unreachable Smart DB host while the browser is online", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+    const error = await api.getDashboard().catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(ApiTransportError);
+    expect(error).toMatchObject({ reason: "unreachable" });
+    expect(error.message).toContain("cannot reach the Smart DB host");
+  });
+
   it("falls back to status-only messages when the error payload is absent or malformed", async () => {
     vi.stubGlobal(
       "fetch",
@@ -302,8 +444,16 @@ describe("frontend api", () => {
         }),
     );
 
-    await expect(api.getDashboard()).rejects.toThrowError("Request failed with 503");
-    await expect(api.getDashboard()).rejects.toThrowError("Request failed with 502");
+    await expect(api.getDashboard()).rejects.toMatchObject({
+      code: "http_error",
+      message: "Smart DB returned HTTP 503.",
+      details: { httpStatus: 503 },
+    });
+    await expect(api.getDashboard()).rejects.toMatchObject({
+      code: "http_error",
+      message: "Smart DB returned HTTP 502.",
+      details: { httpStatus: 502 },
+    });
   });
 
   it("throws a parse error when the response shape is wrong", async () => {

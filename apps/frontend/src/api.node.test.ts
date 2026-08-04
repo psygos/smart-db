@@ -45,7 +45,7 @@ describe("frontend api helpers in node", () => {
     vi.stubGlobal("fetch", fetch);
 
     await apiModule.api.getDashboard();
-    await apiModule.api.scan("QR-1", controller.signal);
+    await apiModule.api.scan("QR-1", { signal: controller.signal });
 
     expect(fetch.mock.calls[0]?.[1]).toMatchObject({
       headers: expect.not.objectContaining({

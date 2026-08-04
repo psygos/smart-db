@@ -93,6 +93,7 @@ export type OutboxOperation =
           storageLocationName?: string | undefined;
           storageLocationPath?: string[] | undefined;
           description?: string | undefined;
+          userBarcode?: string | undefined;
         };
       };
       target: OutboxTarget | null;

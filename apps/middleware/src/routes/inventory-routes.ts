@@ -15,6 +15,7 @@ import {
   partTypeArtBackfillResponseSchema,
   partTypeSearchQuerySchema,
   reassignEntityPartTypeRequestSchema,
+  reassignEntityQrRequestSchema,
   recordEventRequestSchema,
   scanOptionsQuerySchema,
   registerQrBatchRequestSchema,
@@ -222,6 +223,18 @@ export async function registerInventoryRoutes(
       "reassign entity part type request",
     );
     return inventoryService.reassignEntityPartType({
+      ...command,
+      actor: request.authContext!.session.username,
+    });
+  });
+
+  app.post("/api/corrections/reassign-qr", adminMutation, async (request) => {
+    const command = parseWithSchema(
+      reassignEntityQrRequestSchema,
+      request.body,
+      "reassign entity QR request",
+    );
+    return inventoryService.reassignEntityQr({
       ...command,
       actor: request.authContext!.session.username,
     });

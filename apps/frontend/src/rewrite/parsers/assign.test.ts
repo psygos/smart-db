@@ -31,6 +31,59 @@ describe("parseAssignForm", () => {
     });
   });
 
+  it("records checkout details while assigning an instance", () => {
+    const dueAtInput = "2099-01-02T10:30";
+    const result = parseAssignForm({
+      qrCode: "QR-1002",
+      entityKind: "instance",
+      location: "Tool crib",
+      notes: "For the robotics team",
+      partTypeMode: "existing",
+      existingPartTypeId: "part-1",
+      initialStatus: "checked_out",
+      checkoutAssignee: " maker-jo ",
+      checkoutDueAt: dueAtInput,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.value).toMatchObject({
+      qrCode: "QR-1002",
+      initialStatus: "checked_out",
+      initialCheckout: {
+        assignee: "maker-jo",
+        dueAt: new Date(dueAtInput).toISOString(),
+      },
+    });
+  });
+
+  it("rejects a direct-checkout due date that is not in the future", () => {
+    const result = parseAssignForm({
+      qrCode: "QR-1003",
+      entityKind: "instance",
+      location: "Tool crib",
+      notes: "",
+      partTypeMode: "existing",
+      existingPartTypeId: "part-1",
+      initialStatus: "checked_out",
+      checkoutAssignee: "",
+      checkoutDueAt: "2000-01-01T00:00",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.error.issues).toContainEqual({
+      path: "checkoutDueAt",
+      message: "Due date must be in the future.",
+    });
+  });
+
   it("rejects existing bulk assignments when the starting quantity is zero", () => {
     const result = parseAssignForm({
       qrCode: "QR-1501",

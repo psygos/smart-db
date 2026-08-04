@@ -21,6 +21,8 @@ import {
   type EditPartTypeDefinitionResponse,
   type ReassignEntityPartTypeCommand,
   type ReassignEntityPartTypeResponse,
+  type ReassignEntityQrCommand,
+  type ReassignEntityQrResponse,
   type ReverseIngestAssignmentCommand,
   type ReverseIngestAssignmentResponse,
   InvariantError,
@@ -968,9 +970,11 @@ export class InventoryService {
       const partSyncDependencyId = this.ensurePartTypeSync(partType, correlationId);
 
       if (input.entityKind === "instance") {
-        const initialStatus = validInstanceStatus(input.initialStatus)
+        const requestedInitialStatus = validInstanceStatus(input.initialStatus)
           ? input.initialStatus
           : "available";
+        const directCheckout = requestedInitialStatus === "checked_out";
+        const initialStatus = directCheckout ? "available" : requestedInitialStatus;
         const id = randomUUID();
         this.db
           .prepare(
@@ -1008,6 +1012,33 @@ export class InventoryService {
           notes: input.notes ?? null,
           createdAt: timestamp,
         });
+        if (directCheckout) {
+          const borrower = input.initialCheckout?.assignee?.trim() || actor;
+          this.db
+            .prepare(`UPDATE physical_instances SET status = 'checked_out', assignee = ?, updated_at = ? WHERE id = ?`)
+            .run(borrower, timestamp, id);
+          this.insertEvent({
+            targetType: "instance",
+            targetId: id,
+            event: "checked_out",
+            fromState: "available",
+            toState: "checked_out",
+            location,
+            actor,
+            notes: input.notes ?? null,
+            createdAt: timestamp,
+          });
+          this.applyBorrowSideEffect({
+            instanceId: id,
+            event: "checked_out",
+            borrower,
+            dueAt: input.initialCheckout?.dueAt ?? null,
+            notes: input.notes ?? null,
+            actor,
+            timestamp,
+            previousStatus: "available",
+          });
+        }
         this.syncEntityFromInstance(id);
       } else {
         const initialQuantity = requireFinitePositiveQuantity(input.initialQuantity, "initialQuantity");
@@ -1620,6 +1651,123 @@ export class InventoryService {
 
     return {
       entity,
+      correctionEvent,
+    };
+  }
+
+  reassignEntityQr(input: ReassignEntityQrCommand): ReassignEntityQrResponse {
+    const target = this.loadCorrectionEntity(input.targetType, input.targetId);
+    if (!target) {
+      throw new NotFoundError(input.targetType === "instance" ? "Physical instance" : "Bulk stock", input.targetId);
+    }
+
+    const currentRow = this.findQrRowByScannedCode(sanitizeScannedCode(input.fromQrCode));
+    const currentQr = currentRow ? mapQrCode(currentRow) : null;
+    if (
+      !currentQr ||
+      currentQr.code !== target.qrCode ||
+      currentQr.status !== "assigned" ||
+      currentQr.assignedKind !== target.targetType ||
+      currentQr.assignedId !== target.id
+    ) {
+      throw new ConflictError("The scanned entity no longer uses the expected QR code.", {
+        targetId: target.id,
+        expectedQrCode: input.fromQrCode,
+        actualQrCode: target.qrCode,
+      });
+    }
+
+    this.assertNoPendingLotSync(target.table, target.id, "Wait for Part-DB lot sync to finish before replacing this QR code.");
+
+    const replacementValue = sanitizeScannedCode(input.toQrCode);
+    let replacementRow = this.findQrRowByScannedCode(replacementValue);
+    if (!replacementRow) {
+      this.ensureExternalBatch();
+      const createdAt = nowIso();
+      this.db
+        .prepare(
+          `INSERT INTO qrcodes (code, batch_id, status, assigned_kind, assigned_id, created_at, updated_at) VALUES (?, 'external', 'printed', NULL, NULL, ?, ?)`,
+        )
+        .run(replacementValue, createdAt, createdAt);
+      replacementRow = this.db
+        .prepare(`SELECT * FROM qrcodes WHERE code = ?`)
+        .get(replacementValue) as SqlRow | undefined;
+    }
+
+    if (!replacementRow) {
+      throw new InvariantError("Replacement QR registration failed.", { qrCode: replacementValue });
+    }
+
+    const replacementQr = mapQrCode(replacementRow);
+    if (replacementQr.code === currentQr.code) {
+      throw new ConflictError("Current and replacement QR codes must be different.", {
+        qrCode: currentQr.code,
+      });
+    }
+    if (replacementQr.status !== "printed") {
+      throw new ConflictError(`QR ${replacementQr.code} is already ${replacementQr.status}.`, {
+        qrCode: replacementQr.code,
+        status: replacementQr.status,
+      });
+    }
+
+    const timestamp = nowIso();
+    const correlationId = randomUUID();
+    let correctionEvent: CorrectionEvent | null = null;
+
+    this.withTransaction(() => {
+      this.db
+        .prepare(`UPDATE qrcodes SET status = 'printed', assigned_kind = NULL, assigned_id = NULL, updated_at = ? WHERE code = ?`)
+        .run(timestamp, currentQr.code);
+      this.db
+        .prepare(`UPDATE ${target.table} SET qr_code = ?, updated_at = ? WHERE id = ?`)
+        .run(replacementQr.code, timestamp, target.id);
+      this.updateQrAssignment(replacementQr.code, target.targetType, target.id, timestamp);
+
+      correctionEvent = this.insertCorrectionEvent({
+        targetType: target.targetType,
+        targetId: target.id,
+        correctionKind: "entity_qr_reassigned",
+        actor: input.actor,
+        reason: input.reason,
+        before: buildEntityCorrectionSnapshot(target),
+        after: {
+          ...buildEntityCorrectionSnapshot(target),
+          qrCode: replacementQr.code,
+        },
+        createdAt: timestamp,
+      });
+
+      this.enqueueLotUpdate(
+        { table: target.table, rowId: target.id, column: "partdb_lot_id" },
+        correlationId,
+        { userBarcode: replacementQr.code },
+      );
+
+      if (target.targetType === "instance") {
+        this.syncEntityFromInstance(target.id);
+      } else {
+        this.syncEntityFromBulk(target.id);
+      }
+    });
+
+    if (!correctionEvent) {
+      throw new InvariantError("QR correction succeeded without recording a correction event.", {
+        targetId: target.id,
+      });
+    }
+
+    const entity = this.getEntityByTarget(target.targetType, target.id);
+    const previousRow = this.db.prepare(`SELECT * FROM qrcodes WHERE code = ?`).get(currentQr.code) as SqlRow | undefined;
+    const assignedReplacementRow = this.db.prepare(`SELECT * FROM qrcodes WHERE code = ?`).get(replacementQr.code) as SqlRow | undefined;
+    if (!entity || !previousRow || !assignedReplacementRow) {
+      throw new InvariantError("Corrected QR state could not be read back.", { targetId: target.id });
+    }
+
+    return {
+      entity,
+      previousQrCode: mapQrCode(previousRow),
+      replacementQrCode: mapQrCode(assignedReplacementRow),
       correctionEvent,
     };
   }
@@ -2339,6 +2487,7 @@ export class InventoryService {
       amount?: number | undefined;
       storageLocationName?: string | undefined;
       storageLocationPath?: string[] | undefined;
+      userBarcode?: string | undefined;
     },
   ): void {
     if (!this.partDbOutbox) {

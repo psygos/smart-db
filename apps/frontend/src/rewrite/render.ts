@@ -21,6 +21,8 @@ import type { RewriteUiState, TabId, ToastRecord } from "./ui-state";
 import { findSharedTypeConflictCandidates } from "./view-helpers";
 import { buildTreePickerView } from "./tree-picker";
 
+const codeLikeTextEntryAttributes = 'autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"';
+
 export function renderApp(state: RewriteUiState): string {
   if (state.authState.status === "checking") {
     return `
@@ -501,7 +503,7 @@ function renderScanTab(state: RewriteUiState): string {
         aria-label="Scan or type a QR / barcode"
         placeholder="Scan or type a QR / barcode"
         value="${attr(state.scanCode)}"
-        autocomplete="off"
+        ${codeLikeTextEntryAttributes}
       />
       <button type="submit" class="scan-input-submit" aria-label="Submit code" ${disabled(state.pendingAction !== null)}>
         Open
@@ -754,7 +756,7 @@ function renderBulkLabelForm(
       ${form.partTypeMode === "existing" ? `
         <label class="wide">
           Search existing part types
-          <input name="bulkLabelSearch.query" value="${attr(state.bulkQueue.labelSearch.query)}" placeholder="Arduino, JST, PLA, cotton..." />
+          <input name="bulkLabelSearch.query" value="${attr(state.bulkQueue.labelSearch.query)}" placeholder="Arduino, JST, PLA, cotton..." ${codeLikeTextEntryAttributes} />
         </label>
         ${state.bulkQueue.labelSearch.error ? `<p class="banner error wide">${escapeHtml(state.bulkQueue.labelSearch.error)}</p>` : ""}
         ${assignIssues.existingPartTypeId ? `<p class="field-error wide">${escapeHtml(assignIssues.existingPartTypeId)}</p>` : ""}
@@ -784,18 +786,18 @@ function renderBulkLabelForm(
       ` : `
         <label class="wide">
           New canonical name
-          <input name="bulkLabel.canonicalName" value="${attr(form.canonicalName)}" placeholder="Arduino Uno R3" />
+          <input name="bulkLabel.canonicalName" value="${attr(form.canonicalName)}" placeholder="Arduino Uno R3" ${codeLikeTextEntryAttributes} />
           ${assignIssues.canonicalName ? `<span class="field-error">${escapeHtml(assignIssues.canonicalName)}</span>` : ""}
         </label>
         <label class="wide">
           Category path
-          <input name="bulkLabel.category" value="${attr(form.category)}" placeholder="Electronics / Resistors / SMD 0603" />
+          <input name="bulkLabel.category" value="${attr(form.category)}" placeholder="Electronics / Resistors / SMD 0603" ${codeLikeTextEntryAttributes} />
           ${assignIssues.category ? `<span class="field-error">${escapeHtml(assignIssues.category)}</span>` : ""}
         </label>
       `}
       <label class="wide">
         Location
-        <input name="bulkLabel.location" value="${attr(form.location)}" placeholder="Shelf A / Bin 7" />
+        <input name="bulkLabel.location" value="${attr(form.location)}" placeholder="Shelf A / Bin 7" ${codeLikeTextEntryAttributes} />
         ${assignIssues.location ? `<span class="field-error">${escapeHtml(assignIssues.location)}</span>` : ""}
       </label>
       ${renderLocationTreePicker(state.knownLocations, form.location, "tree-pick-bulk-label-location")}
@@ -807,9 +809,10 @@ function renderBulkLabelForm(
         <label>
           Initial status
           <select name="bulkLabel.initialStatus">
-            ${instanceStatuses.map((status) => `<option value="${status}"${selected(status === form.initialStatus)}>${escapeHtml(status)}</option>`).join("")}
+            ${instanceStatuses.map((status) => `<option value="${status}"${selected(status === form.initialStatus)}>${escapeHtml(instanceStatusLabel(status))}</option>`).join("")}
           </select>
         </label>
+        ${form.initialStatus === "checked_out" ? renderDirectCheckoutFields("bulkLabel", form, assignIssues, true) : ""}
       ` : `
         <label>
           Unit of measure
@@ -830,7 +833,7 @@ function renderBulkLabelForm(
           ${assignIssues.minimumQuantity ? `<span class="field-error">${escapeHtml(assignIssues.minimumQuantity)}</span>` : ""}
         </label>
       `}
-      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || Object.keys(assignIssues).length > 0)}>
+      <button type="submit" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)}>
         ${state.pendingAction === "bulk" ? "Labeling..." : `Label ${state.bulkQueue.summary.uniqueLabelCount} labels`}
       </button>
     </form>
@@ -865,7 +868,7 @@ function renderBulkMoveForm(state: RewriteUiState): string {
         <div class="location-card location-card-to">
           <span class="location-card-label">To</span>
           <label class="location-card-input">
-            <input name="bulkMove.location" value="${attr(state.bulkQueue.moveForm.location)}" placeholder="Destination location" />
+            <input name="bulkMove.location" value="${attr(state.bulkQueue.moveForm.location)}" placeholder="Destination location" ${codeLikeTextEntryAttributes} />
           </label>
         </div>
       </div>
@@ -873,7 +876,7 @@ function renderBulkMoveForm(state: RewriteUiState): string {
         Notes
         <textarea name="bulkMove.notes">${escapeHtml(state.bulkQueue.moveForm.notes)}</textarea>
       </label>
-      <button type="submit" class="primary-uppercase wide" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.moveForm.location.trim().length === 0)}>
+      <button type="submit" class="primary-uppercase wide" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)}>
         ${state.pendingAction === "bulk" ? "Moving..." : `Move ${state.bulkQueue.summary.uniqueLabelCount} items`}
       </button>
     </form>
@@ -890,7 +893,7 @@ function renderBulkDeleteForm(state: RewriteUiState): string {
         Reason
         <textarea name="bulkDelete.reason">${escapeHtml(state.bulkQueue.deleteForm.reason)}</textarea>
       </label>
-      <button type="submit" class="primary-uppercase wide" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0 || state.bulkQueue.deleteForm.reason.trim().length === 0)}>
+      <button type="submit" class="primary-uppercase wide" ${disabled(state.pendingAction !== null || state.bulkQueue.rows.length === 0)}>
         ${state.pendingAction === "bulk" ? "Reversing..." : `Reverse ingest ${state.bulkQueue.summary.uniqueLabelCount} items`}
       </button>
     </form>
@@ -922,7 +925,7 @@ function renderLabelCard(
       <form class="form-grid" data-form="assign">
         ${renderPartTypeField(state, labelOptions, assignIssues)}
         ${renderSharedAssignFields(state, assignIssues)}
-        <button type="submit" class="primary-cta" ${disabled(state.pendingAction !== null || Object.keys(assignIssues).length > 0)}>
+        <button type="submit" class="primary-cta" ${disabled(state.pendingAction !== null)}>
           ${state.pendingAction === "assign" ? "Assigning..." : "Assign item"}
         </button>
       </form>
@@ -1011,7 +1014,7 @@ function renderPartTypeField(
           name="labelSearch.query"
           value="${attr(state.labelSearch.query)}"
           placeholder="Search by name, alias, or category…"
-          autocomplete="off"
+          ${codeLikeTextEntryAttributes}
         />
       </label>
       ${state.labelSearch.error ? `<p class="banner error wide">${escapeHtml(state.labelSearch.error)}</p>` : ""}
@@ -1097,7 +1100,7 @@ function renderNewPartTypePanel(
       <p class="path-create-title">New part type</p>
       <label class="wide">
         Canonical name
-        <input name="assign.canonicalName" value="${attr(state.assignForm.canonicalName)}" placeholder="Arduino Uno R3" autocomplete="off" />
+        <input name="assign.canonicalName" value="${attr(state.assignForm.canonicalName)}" placeholder="Arduino Uno R3" ${codeLikeTextEntryAttributes} />
         ${assignIssues.canonicalName ? `<span class="field-error">${escapeHtml(assignIssues.canonicalName)}</span>` : ""}
       </label>
       ${renderPathPickerField(state, "category")}
@@ -1135,9 +1138,10 @@ function renderSharedAssignFields(
       <label>
         Initial status
         <select name="assign.initialStatus">
-          ${instanceStatuses.map((status) => `<option value="${status}"${selected(status === state.assignForm.initialStatus)}>${escapeHtml(status)}</option>`).join("")}
+          ${instanceStatuses.map((status) => `<option value="${status}"${selected(status === state.assignForm.initialStatus)}>${escapeHtml(instanceStatusLabel(status))}</option>`).join("")}
         </select>
       </label>
+      ${state.assignForm.initialStatus === "checked_out" ? renderDirectCheckoutFields("assign", state.assignForm, assignIssues, false) : ""}
     ` : `
       <label>
         Low-stock threshold
@@ -1150,6 +1154,39 @@ function renderSharedAssignFields(
       <textarea name="assign.notes">${escapeHtml(state.assignForm.notes)}</textarea>
     </label>
   `;
+}
+
+function renderDirectCheckoutFields(
+  prefix: "assign" | "bulkLabel",
+  form: RewriteUiState["assignForm"] | RewriteUiState["bulkQueue"]["labelForm"],
+  issues: ReturnType<typeof getAssignFormIssues>,
+  isBatch: boolean,
+): string {
+  return `
+    <fieldset class="direct-checkout wide">
+      <legend>${isBatch ? "Check out these items now" : "Check out this item now"}</legend>
+      <p class="muted-copy">The checkout is recorded in the same transaction as intake, so there is no second scan.</p>
+      <label>
+        Borrower
+        <input name="${prefix}.checkoutAssignee" value="${attr(form.checkoutAssignee)}" placeholder="Leave blank for yourself" ${codeLikeTextEntryAttributes} />
+      </label>
+      <label>
+        Due date (optional)
+        <input type="datetime-local" name="${prefix}.checkoutDueAt" value="${attr(form.checkoutDueAt)}" />
+        ${issues.checkoutDueAt ? `<span class="field-error">${escapeHtml(issues.checkoutDueAt)}</span>` : ""}
+      </label>
+    </fieldset>
+  `;
+}
+
+function instanceStatusLabel(status: (typeof instanceStatuses)[number]): string {
+  switch (status) {
+    case "available": return "Available";
+    case "checked_out": return "Check out";
+    case "consumed": return "Consumed";
+    case "damaged": return "Damaged";
+    case "lost": return "Lost";
+  }
 }
 
 function renderInteractCard(
@@ -1230,7 +1267,7 @@ function renderInteractCard(
         ${(state.eventForm.event === "moved" || state.eventForm.event === "checked_out") ? `
           <label>
             Location
-            <input name="event.location" value="${attr(state.eventForm.location)}" />
+            <input name="event.location" value="${attr(state.eventForm.location)}" ${codeLikeTextEntryAttributes} />
             ${eventIssues.location ? `<span class="field-error">${escapeHtml(eventIssues.location)}</span>` : ""}
           </label>
           ${state.eventForm.event === "moved" && state.scanResult.entity.targetType === "bulk" ? `
@@ -1245,7 +1282,7 @@ function renderInteractCard(
         ${state.eventForm.event === "checked_out" ? `
           <label>
             Assignee
-            <input name="event.assignee" value="${attr(state.eventForm.assignee)}" placeholder="${attr(state.authState.status === "authenticated" ? formatActor(state.authState.session.username) : "")}" />
+            <input name="event.assignee" value="${attr(state.eventForm.assignee)}" placeholder="${attr(state.authState.status === "authenticated" ? formatActor(state.authState.session.username) : "")}" ${codeLikeTextEntryAttributes} />
             <small class="field-help">Leave blank to check out to yourself.</small>
           </label>
         ` : ""}
@@ -1268,7 +1305,7 @@ function renderInteractCard(
           <textarea name="event.notes">${escapeHtml(state.eventForm.notes)}</textarea>
           ${eventIssues.notes ? `<span class="field-error">${escapeHtml(eventIssues.notes)}</span>` : ""}
         </label>
-        <button type="submit" ${disabled(state.pendingAction !== null || Object.keys(eventIssues).length > 0)}>
+        <button type="submit" ${disabled(state.pendingAction !== null)}>
           ${state.pendingAction === "event" ? "Saving..." : escapeHtml(`Confirm ${actionLabel(state.eventForm.event)}`)}
         </button>
       </form>
@@ -1549,11 +1586,13 @@ function renderScanEditPanel(state: RewriteUiState): string {
       </p>
       <div class="wide mode-toggle" role="radiogroup" aria-label="Edit action">
         <button type="button" role="radio" aria-checked="${String(edit.form.action === "reassign")}" class="${edit.form.action === "reassign" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reassign">Relabel</button>
+        <button type="button" role="radio" aria-checked="${String(edit.form.action === "reassignQr")}" class="${edit.form.action === "reassignQr" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reassignQr">Replace QR</button>
         ${"canEditSharedType" in target && target.canEditSharedType ? `<button type="button" role="radio" aria-checked="${String(edit.form.action === "editShared")}" class="${edit.form.action === "editShared" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="editShared">Rename shared type</button>` : ""}
         ${"canReverseIngest" in target && target.canReverseIngest ? `<button type="button" role="radio" aria-checked="${String(edit.form.action === "reverseIngest")}" class="${edit.form.action === "reverseIngest" ? "selected" : ""}" data-action="set-scan-edit-action" data-scan-edit-action="reverseIngest">Reverse ingest</button>` : ""}
       </div>
 
       ${edit.form.action === "reassign" ? renderScanEditReassignForm(state, edit.form, targetEntity) : ""}
+      ${edit.form.action === "reassignQr" ? renderScanEditQrForm(state, edit.form, target.qrCode.code) : ""}
       ${edit.form.action === "editShared" ? renderScanEditSharedForm(state, edit.form, targetEntity) : ""}
       ${edit.form.action === "reverseIngest" ? renderScanEditReverseForm(state, edit.form) : ""}
 
@@ -1570,6 +1609,29 @@ function renderScanEditPanel(state: RewriteUiState): string {
         </div>
       ` : ""}
     </section>
+  `;
+}
+
+function renderScanEditQrForm(
+  state: RewriteUiState,
+  form: Extract<RewriteUiState["scanEdit"], { status: "open" }>["form"] & { action: "reassignQr" },
+  currentQrCode: string,
+): string {
+  return `
+    <form class="form-grid" data-form="scan-edit-qr">
+      <p class="muted-copy wide">
+        Current QR: <code>${escapeHtml(currentQrCode)}</code>. Item history stays attached; the old QR returns to the printable pool.
+      </p>
+      <label class="wide">
+        Replacement QR or barcode
+        <input name="scanEdit.replacementQrCode" value="${attr(form.replacementQrCode)}" placeholder="Scan or enter an unused code" ${codeLikeTextEntryAttributes} />
+      </label>
+      <label class="wide">
+        Reason
+        <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
+      </label>
+      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Replacing..." : "Replace QR"}</button>
+    </form>
   `;
 }
 
@@ -1598,7 +1660,7 @@ function renderScanEditReassignForm(
     <form class="form-grid" data-form="scan-edit-reassign">
       <label class="wide">
         Find replacement part type
-        <input name="scanEditSearch.query" value="${attr(form.search.query)}" placeholder="Search existing type" />
+        <input name="scanEditSearch.query" value="${attr(form.search.query)}" placeholder="Search existing type" ${codeLikeTextEntryAttributes} />
       </label>
       ${form.search.error ? `<p class="banner error wide">${escapeHtml(form.search.error)}</p>` : ""}
       <div class="wide picker label-suggestion-picker replacement-suggestion-picker" role="radiogroup" aria-label="Replacement part type">
@@ -1642,11 +1704,11 @@ function renderScanEditSharedForm(
       </p>
       <label class="wide">
         Shared canonical name
-        <input name="scanEdit.sharedCanonicalName" value="${attr(form.sharedCanonicalName)}" />
+        <input name="scanEdit.sharedCanonicalName" value="${attr(form.sharedCanonicalName)}" ${codeLikeTextEntryAttributes} />
       </label>
       <label class="wide">
         Shared category path
-        <input name="scanEdit.sharedCategory" value="${attr(form.sharedCategory)}" />
+        <input name="scanEdit.sharedCategory" value="${attr(form.sharedCategory)}" ${codeLikeTextEntryAttributes} />
       </label>
       ${renderCategoryTreePicker(state.knownCategories, form.sharedCategory, "tree-pick-scan-edit-category")}
       ${sharedEditConflicts.length > 0 ? `
@@ -1669,7 +1731,7 @@ function renderScanEditSharedForm(
         Reason
         <textarea name="scanEdit.reason">${escapeHtml(form.reason)}</textarea>
       </label>
-      <button type="submit" ${disabled(state.pendingAction !== null || sharedEditConflicts.length > 0)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
+      <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "correct" ? "Saving..." : "Rename shared type"}</button>
     </form>
   `;
 }
@@ -1704,7 +1766,7 @@ function renderInventoryReverseToolbar(state: RewriteUiState, partTypeId: string
         <textarea name="inventoryReverse.reason" placeholder="Why is this being reversed?">${escapeHtml(selection.reason)}</textarea>
       </label>
       <div class="inventory-reverse-actions">
-        <button type="submit" ${disabled(state.pendingAction !== null || selection.reason.trim().length === 0)}>
+        <button type="submit" ${disabled(state.pendingAction !== null)}>
           ${state.pendingAction === "correct" ? "Reversing..." : `Reverse ${count} ingest${count === 1 ? "" : "s"}`}
         </button>
         <button type="button" class="disclosure" data-action="inventory-reverse-clear" ${disabled(state.pendingAction !== null)}>Clear selection</button>
@@ -1988,7 +2050,7 @@ function renderInventoryTab(state: RewriteUiState): string {
         </div>
       </div>
       <div class="stock-controls">
-        <input type="search" aria-label="Filter inventory" name="inventory.query" value="${attr(state.inventoryUi.query)}" placeholder="Search..." />
+        <input type="search" aria-label="Filter inventory" name="inventory.query" value="${attr(state.inventoryUi.query)}" placeholder="Search..." ${codeLikeTextEntryAttributes} />
         <label class="inventory-toggle">
           <input type="checkbox" name="inventory.showAll"${checked(state.inventoryUi.showAll)} />
           Show all
@@ -2360,7 +2422,7 @@ function renderAdminTab(state: RewriteUiState): string {
           </div>
         ` : `<p class="muted-copy">No QR batch has been registered yet.</p>`}
         <form class="form-grid" data-form="batch">
-          <label>Prefix<input name="batch.prefix" value="${attr(state.batchForm.prefix)}" maxlength="20" /></label>
+          <label>Prefix<input name="batch.prefix" value="${attr(state.batchForm.prefix)}" maxlength="20" ${codeLikeTextEntryAttributes} /></label>
           <label>Start number<input name="batch.startNumber" type="number" min="0" value="${attr(state.batchForm.startNumber)}" /></label>
           <label>Count<input name="batch.count" type="number" min="1" max="500" value="${attr(state.batchForm.count)}" /></label>
           <button type="submit" ${disabled(state.pendingAction !== null)}>${state.pendingAction === "batch" ? "Registering..." : "Register batch"}</button>
@@ -2602,12 +2664,12 @@ function renderPathPickerField(
             name="pathPicker.${kind}.createName"
             value="${attr(pickerState.createName)}"
             placeholder="${escapeHtml(kind === "category" ? "e.g. SMD 0603" : "e.g. Bin 12")}"
-            autocomplete="off"
+            ${codeLikeTextEntryAttributes}
           />
         </label>
         <div class="path-create-actions">
           <button type="button" class="secondary" data-action="close-path-create" data-kind="${kind}">Cancel</button>
-          <button type="button" data-action="commit-path-create" data-kind="${kind}" ${pickerState.createName.trim() === "" ? "disabled" : ""}>Create</button>
+          <button type="button" data-action="commit-path-create" data-kind="${kind}">Create</button>
         </div>
       </div>
     `
@@ -2623,7 +2685,7 @@ function renderPathPickerField(
             value="${attr(pickerState.query)}"
             placeholder="Search ${escapeHtml(label.toLowerCase())}s…"
             aria-label="Search ${escapeHtml(label.toLowerCase())}s"
-            autocomplete="off"
+            ${codeLikeTextEntryAttributes}
           />
         </div>
         ${
@@ -2707,6 +2769,8 @@ function correctionLabel(kind: string): string {
   switch (kind) {
     case "entity_part_type_reassigned":
       return "Item/bin reassigned";
+    case "entity_qr_reassigned":
+      return "QR replaced";
     case "part_type_definition_edited":
       return "Shared part type edited";
     case "ingest_reversed":

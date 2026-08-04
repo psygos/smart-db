@@ -34,6 +34,7 @@ import {
   qrCodeSchema,
   reassignEntityPartTypeRequestSchema,
   reassignEntityPartTypeResponseSchema,
+  reassignEntityQrRequestSchema,
   recordEventRequestSchema,
   registerQrBatchRequestSchema,
   reverseIngestAssignmentRequestSchema,
@@ -199,6 +200,43 @@ describe("schemas", () => {
       },
       initialStatus: "available",
     });
+
+    expect(
+      assignQrRequestSchema.parse({
+        qrCode: "QR-1001-CHECKOUT",
+        entityKind: "instance",
+        location: "Tool crib",
+        partType: {
+          kind: "existing",
+          existingPartTypeId: "part-1",
+        },
+        initialStatus: "checked_out",
+        initialCheckout: {
+          assignee: " maker-jo ",
+          dueAt: "2099-01-02T10:30:00.000Z",
+        },
+      }),
+    ).toMatchObject({
+      initialStatus: "checked_out",
+      initialCheckout: {
+        assignee: "maker-jo",
+        dueAt: "2099-01-02T10:30:00.000Z",
+      },
+    });
+
+    expect(() =>
+      assignQrRequestSchema.parse({
+        qrCode: "QR-1001-PAST-DUE",
+        entityKind: "instance",
+        location: "Tool crib",
+        partType: {
+          kind: "existing",
+          existingPartTypeId: "part-1",
+        },
+        initialStatus: "checked_out",
+        initialCheckout: { dueAt: "2000-01-01T00:00:00.000Z" },
+      }),
+    ).toThrow(/future/i);
 
     expect(
       assignQrRequestSchema.parse({
@@ -415,6 +453,32 @@ describe("schemas", () => {
         fromPartTypeId: "part-a",
         toPartTypeId: "part-a",
         reason: "Wrong type",
+      }),
+    ).toThrow();
+
+    expect(
+      reassignEntityQrRequestSchema.parse({
+        targetType: "instance",
+        targetId: "instance-1",
+        fromQrCode: " QR-1001 ",
+        toQrCode: " QR-1002 ",
+        reason: "Wrong QR",
+      }),
+    ).toEqual({
+      targetType: "instance",
+      targetId: "instance-1",
+      fromQrCode: "QR-1001",
+      toQrCode: "QR-1002",
+      reason: "Wrong QR",
+    });
+
+    expect(() =>
+      reassignEntityQrRequestSchema.parse({
+        targetType: "instance",
+        targetId: "instance-1",
+        fromQrCode: "QR-1001",
+        toQrCode: "qr-1001",
+        reason: "Wrong QR",
       }),
     ).toThrow();
 

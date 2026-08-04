@@ -132,12 +132,19 @@ describe("PartDbOperations", () => {
           lotIri: "/api/part_lots/4",
           patch: {
             amount: 12,
+            userBarcode: "QR-6551",
           },
         },
         target: null,
         dependsOnId: null,
       }),
     ).resolves.toEqual(Ok({ iri: "/api/part_lots/4", body: { "@id": "/api/part_lots/4", id: 4, amount: 12 } }));
+    expect(partLots.patch).toHaveBeenCalledWith("/api/part_lots/4", {
+      amount: 12,
+      storage_location: undefined,
+      description: undefined,
+      user_barcode: "QR-6551",
+    });
 
     await expect(
       operations.execute({

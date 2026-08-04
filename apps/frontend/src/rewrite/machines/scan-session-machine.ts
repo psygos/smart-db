@@ -58,13 +58,13 @@ export type ScanSessionEvent =
   | { readonly type: "SPLIT.FAILED"; readonly failure: RewriteFailure }
   | {
       readonly type: "EDIT.OPEN";
-      readonly editKind: "reassign" | "editShared" | "reverseIngest";
+      readonly editKind: "reassign" | "reassignQr" | "editShared" | "reverseIngest";
     }
   | { readonly type: "EDIT.CLOSE" }
   | { readonly type: "EDIT.SUBMIT_REQUESTED" }
   | {
       readonly type: "EDIT.SUCCEEDED";
-      readonly editKind: "reassign" | "editShared" | "reverseIngest";
+      readonly editKind: "reassign" | "reassignQr" | "editShared" | "reverseIngest";
     }
   | { readonly type: "EDIT.FAILED"; readonly failure: RewriteFailure }
   | { readonly type: "SCAN.CLEAR_REQUESTED" }

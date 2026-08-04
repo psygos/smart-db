@@ -47,6 +47,7 @@ import {
   parseEventForm,
   parseMergeForm,
   parseReassignPartTypeForm,
+  parseReassignQrForm,
   parseReverseIngestForm,
 } from "./parsers";
 import { renderApp, formatActor } from "./render";
@@ -97,6 +98,11 @@ interface FocusSnapshot {
   readonly key: string;
   readonly selectionStart: number | null;
   readonly selectionEnd: number | null;
+}
+
+interface ParkedTextControl {
+  readonly control: HTMLInputElement | HTMLTextAreaElement;
+  readonly parkingNode: HTMLDivElement;
 }
 
 type RewritePatch = {
@@ -200,6 +206,7 @@ export class RewriteAppController {
   private scanLocationsRequestId = 0;
   private inventoryQueryRenderTimer: number | null = null;
   private renderSuppressed = false;
+  private scanAutofocusPending = true;
   private readonly cameraService = new CameraScannerService({
     onScan: (code) => {
       void this.handleCameraScan(code);
@@ -335,7 +342,12 @@ export class RewriteAppController {
   }
 
   private readonly handleOnline = () => {
-    this.patch({ isOnline: true });
+    const reconnected = !this.state.isOnline;
+    this.patch({ isOnline: true, refreshError: null });
+    if (reconnected && this.state.authState.status === "authenticated") {
+      this.addToast("Back online. Refreshing Smart DB data…", "info");
+      void this.loadAuthenticatedData();
+    }
   };
 
   private readonly handleOffline = () => {
@@ -377,6 +389,11 @@ export class RewriteAppController {
   };
 
   private applyUrlPatch(patch: UrlPatch): void {
+    if (patch.activeTab === "scan" && this.state.activeTab !== "scan") {
+      this.scanAutofocusPending = true;
+    } else if (patch.activeTab !== "scan") {
+      this.scanAutofocusPending = false;
+    }
     const nextInventoryUi = (patch.browsePath.length > 0 || patch.detailPartTypeId || patch.activeTab === "inventory")
       ? {
           ...this.state.inventoryUi,
@@ -485,6 +502,11 @@ export class RewriteAppController {
           if (nextTab !== "scan" && this.cameraService.getSnapshot().activeStream) {
             this.cameraService.stop();
             void this.cameraService.attachVideoElement(null);
+          }
+          if (nextTab === "scan" && this.state.activeTab !== "scan") {
+            this.scanAutofocusPending = true;
+          } else if (nextTab !== "scan") {
+            this.scanAutofocusPending = false;
           }
           this.patch({ activeTab: nextTab });
         }
@@ -792,6 +814,7 @@ export class RewriteAppController {
       case "set-scan-edit-action":
         if (
           actionEl.dataset.scanEditAction === "reassign" ||
+          actionEl.dataset.scanEditAction === "reassignQr" ||
           actionEl.dataset.scanEditAction === "editShared" ||
           actionEl.dataset.scanEditAction === "reverseIngest"
         ) {
@@ -900,6 +923,9 @@ export class RewriteAppController {
       case "scan-edit-reassign":
         void this.handleScanEditReassign();
         break;
+      case "scan-edit-qr":
+        void this.handleScanEditReassignQr();
+        break;
       case "scan-edit-shared":
         void this.handleScanEditEditShared();
         break;
@@ -925,7 +951,26 @@ export class RewriteAppController {
       return;
     }
 
-    this.applyInput(name, target instanceof HTMLInputElement && target.type === "checkbox" ? target.checked : target.value);
+    const value = target instanceof HTMLInputElement && target.type === "checkbox"
+      ? target.checked
+      : target.value;
+
+    // The DOM already contains the latest value. Rebuilding the entire app on
+    // each soft-keyboard event is both expensive and destructive: it replaces
+    // the focused node, which resets iOS/Android shift, caps-lock, and
+    // autocorrect state. Keep state synchronized here and render only when a
+    // later workflow/search result actually changes what is displayed.
+    if (isContinuousTextEntry(target)) {
+      this.renderSuppressed = true;
+      try {
+        this.applyInput(name, value);
+      } finally {
+        this.renderSuppressed = false;
+      }
+      return;
+    }
+
+    this.applyInput(name, value);
   };
 
   private readonly handleChange = (event: Event) => {
@@ -964,6 +1009,11 @@ export class RewriteAppController {
       event.preventDefault();
       const nextTab = tabs[nextIndex];
       if (nextTab) {
+        if (nextTab === "scan" && this.state.activeTab !== "scan") {
+          this.scanAutofocusPending = true;
+        } else if (nextTab !== "scan") {
+          this.scanAutofocusPending = false;
+        }
         this.patch({ activeTab: nextTab });
         window.requestAnimationFrame(() => {
           this.root.querySelector<HTMLElement>(`[data-tab="${nextTab}"]`)?.focus();
@@ -1217,6 +1267,11 @@ export class RewriteAppController {
       return;
     }
 
+    if (edit.form.action === "reassignQr" && name === "scanEdit.replacementQrCode") {
+      this.patchScanEditForm({ replacementQrCode: value } as Partial<ScanEditForm>);
+      return;
+    }
+
     if (edit.form.action === "editShared") {
       if (name === "scanEdit.sharedCanonicalName") {
         this.patchScanEditForm({ sharedCanonicalName: value } as Partial<ScanEditForm>);
@@ -1278,6 +1333,12 @@ export class RewriteAppController {
       case "assign.initialStatus":
         next.initialStatus = value as typeof next.initialStatus;
         break;
+      case "assign.checkoutAssignee":
+        next.checkoutAssignee = value;
+        break;
+      case "assign.checkoutDueAt":
+        next.checkoutDueAt = value;
+        break;
       default:
         return;
     }
@@ -1311,6 +1372,12 @@ export class RewriteAppController {
         break;
       case "bulkLabel.initialStatus":
         next.initialStatus = value as typeof next.initialStatus;
+        break;
+      case "bulkLabel.checkoutAssignee":
+        next.checkoutAssignee = value;
+        break;
+      case "bulkLabel.checkoutDueAt":
+        next.checkoutDueAt = value;
         break;
       default:
         return;
@@ -2447,6 +2514,13 @@ export class RewriteAppController {
         reason: "",
       };
     }
+    if (action === "reassignQr") {
+      return {
+        action: "reassignQr",
+        replacementQrCode: "",
+        reason: "",
+      };
+    }
     if (action === "editShared") {
       return {
         action: "editShared",
@@ -2485,6 +2559,12 @@ export class RewriteAppController {
           error: null,
         },
         replacementPartTypeId: "",
+        reason: "",
+      };
+    } else if (action === "reassignQr") {
+      form = {
+        action: "reassignQr",
+        replacementQrCode: "",
         reason: "",
       };
     } else if (action === "editShared") {
@@ -2604,6 +2684,71 @@ export class RewriteAppController {
         failure: {
           kind: "unexpected",
           operation: "correction.reassignEntityPartType",
+          message: errorMessage(caught),
+          retryability: "never",
+          details: { machine: "scanSession" },
+          cause: caught,
+        },
+      });
+      if (!this.handleApiFailure(caught)) {
+        this.addToast(errorMessage(caught), "error");
+      }
+    } finally {
+      this.patch({ pendingAction: null });
+    }
+  }
+
+  private async handleScanEditReassignQr(): Promise<void> {
+    const target = this.interactTarget();
+    const edit = this.state.scanEdit;
+    if (!target || edit.status !== "open" || edit.form.action !== "reassignQr") {
+      this.addToast("Scan an ingested item first.", "error");
+      return;
+    }
+
+    const parsed = parseReassignQrForm({
+      targetType: target.entity.targetType,
+      targetId: target.entity.id,
+      fromQrCode: target.qrCode.code,
+      toQrCode: edit.form.replacementQrCode,
+      reason: edit.form.reason,
+    });
+    if (!parsed.ok) {
+      this.addToast(this.failureMessage(parsed.error), "error");
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Replace ${target.qrCode.code} with ${parsed.value.toQrCode}? The old QR will return to the printable pool, and item history will stay attached.`,
+      )
+    ) {
+      return;
+    }
+
+    this.scanActor.send({ type: "EDIT.SUBMIT_REQUESTED" });
+    this.patch({ pendingAction: "correct" as PendingAction });
+    try {
+      const response = await api.reassignEntityQr(parsed.value);
+      this.scanActor.send({ type: "EDIT.SUCCEEDED", editKind: "reassignQr" });
+      const refreshed = await api.scan(response.replacementQrCode.code, { autoIncrement: false });
+      this.patch({
+        scanResult: refreshed,
+        scanCode: "",
+        scanEdit: defaultScanEditState,
+      });
+      this.addToast(
+        `QR replaced: ${response.previousQrCode.code} → ${response.replacementQrCode.code}.`,
+        "success",
+      );
+      await this.loadAuthenticatedData();
+    } catch (caught) {
+      this.scanActor.send({
+        type: "EDIT.FAILED",
+        failure: {
+          kind: "unexpected",
+          operation: "correction.reassignQr",
           message: errorMessage(caught),
           retryability: "never",
           details: { machine: "scanSession" },
@@ -3733,6 +3878,7 @@ export class RewriteAppController {
 
   private render(): void {
     const focusSnapshot = this.captureFocus();
+    const parkedTextControl = this.parkFocusedTextControl(focusSnapshot);
 
     // If the camera is actively scanning, preserve the live video element.
     // innerHTML replacement would destroy it and kill the stream.
@@ -3751,6 +3897,7 @@ export class RewriteAppController {
       }
     }
 
+    this.restoreParkedTextControl(parkedTextControl, focusSnapshot);
     this.restoreFocus(focusSnapshot);
     this.autofocusScanInput(focusSnapshot);
     this.syncUrl();
@@ -3782,6 +3929,9 @@ export class RewriteAppController {
   }
 
   private autofocusScanInput(previousFocus: FocusSnapshot | null): void {
+    if (!this.scanAutofocusPending) {
+      return;
+    }
     if (previousFocus) {
       return;
     }
@@ -3797,6 +3947,7 @@ export class RewriteAppController {
       typeof window.matchMedia === "function" &&
       window.matchMedia("(pointer: coarse)").matches
     ) {
+      this.scanAutofocusPending = false;
       return;
     }
     const input = this.root.querySelector<HTMLInputElement>("#scan-code-input");
@@ -3805,6 +3956,7 @@ export class RewriteAppController {
     }
     input.focus();
     input.select();
+    this.scanAutofocusPending = false;
   }
 
   private captureFocus(): FocusSnapshot | null {
@@ -3812,7 +3964,7 @@ export class RewriteAppController {
     if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement)) {
       return null;
     }
-    const key = active.id ? `#${active.id}` : active.name ? `[name="${CSS.escape(active.name)}"]` : "";
+    const key = active.id ? `#${active.id}` : active.name ? `[name=${JSON.stringify(active.name)}]` : "";
     if (!key) {
       return null;
     }
@@ -3821,6 +3973,58 @@ export class RewriteAppController {
       selectionStart: active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.selectionStart : null,
       selectionEnd: active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement ? active.selectionEnd : null,
     };
+  }
+
+  private parkFocusedTextControl(snapshot: FocusSnapshot | null): ParkedTextControl | null {
+    const active = document.activeElement;
+    if (
+      !snapshot ||
+      !(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) ||
+      !isContinuousTextEntry(active) ||
+      !this.root.contains(active) ||
+      !this.root.parentNode
+    ) {
+      return null;
+    }
+
+    const parkingNode = document.createElement("div");
+    parkingNode.setAttribute("aria-hidden", "true");
+    parkingNode.style.cssText = "position:fixed;inset:auto auto 0 -10000px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none";
+    this.root.parentNode.insertBefore(parkingNode, this.root.nextSibling);
+    parkingNode.append(active);
+    return { control: active, parkingNode };
+  }
+
+  private restoreParkedTextControl(
+    parked: ParkedTextControl | null,
+    snapshot: FocusSnapshot | null,
+  ): void {
+    if (!parked || !snapshot) {
+      return;
+    }
+
+    const replacement = this.root.querySelector(snapshot.key);
+    const sameControl =
+      (replacement instanceof HTMLInputElement || replacement instanceof HTMLTextAreaElement) &&
+      replacement.tagName === parked.control.tagName &&
+      (!(replacement instanceof HTMLInputElement) ||
+        !(parked.control instanceof HTMLInputElement) ||
+        replacement.type === parked.control.type) &&
+      replacement.value === parked.control.value;
+
+    if (sameControl) {
+      for (const attribute of Array.from(parked.control.attributes)) {
+        if (!replacement.hasAttribute(attribute.name)) {
+          parked.control.removeAttribute(attribute.name);
+        }
+      }
+      for (const attribute of Array.from(replacement.attributes)) {
+        parked.control.setAttribute(attribute.name, attribute.value);
+      }
+      replacement.replaceWith(parked.control);
+    }
+
+    parked.parkingNode.remove();
   }
 
   private restoreFocus(snapshot: FocusSnapshot | null): void {
@@ -3857,4 +4061,29 @@ function summarizeBulkQueue(rows: readonly BulkQueueRow[]) {
     totalScanCount,
     duplicateScanCount: totalScanCount - rows.length,
   };
+}
+
+const nonContinuousInputTypes = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+function isContinuousTextEntry(
+  target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+): target is HTMLInputElement | HTMLTextAreaElement {
+  if (target instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  if (!(target instanceof HTMLInputElement)) {
+    return false;
+  }
+  return !nonContinuousInputTypes.has(target.type);
 }

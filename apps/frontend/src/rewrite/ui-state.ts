@@ -10,7 +10,7 @@ import type {
   RegisterQrBatchRequest,
   ScanResponse,
 } from "@smart-db/contracts";
-export type ScanEditAction = "reassign" | "editShared" | "reverseIngest";
+export type ScanEditAction = "reassign" | "reassignQr" | "editShared" | "reverseIngest";
 import type { InventorySummaryRow, PartTypeItemsResponse } from "../api";
 import type { PwaInstallPromptState } from "../pwa";
 import type { CameraScannerSnapshot } from "./services/camera-scanner-service";
@@ -178,6 +178,11 @@ export type ScanEditForm =
       readonly reason: string;
     }
   | {
+      readonly action: "reassignQr";
+      readonly replacementQrCode: string;
+      readonly reason: string;
+    }
+  | {
       readonly action: "editShared";
       readonly sharedCanonicalName: string;
       readonly sharedCategory: string;
@@ -296,6 +301,8 @@ export const defaultAssignForm: AssignFormState = {
   countable: true,
   unitSymbol: "pcs",
   initialStatus: "available",
+  checkoutAssignee: "",
+  checkoutDueAt: "",
   initialQuantity: "1",
   minimumQuantity: "",
 };
@@ -311,6 +318,8 @@ export const defaultBulkLabelForm: BulkLabelFormState = {
   countable: true,
   unitSymbol: "pcs",
   initialStatus: "available",
+  checkoutAssignee: "",
+  checkoutDueAt: "",
   initialQuantity: "1",
   minimumQuantity: "",
 };
@@ -409,6 +418,14 @@ export function makeEditSharedForm(
     sharedCanonicalName: canonicalName,
     sharedCategory: categoryPath.join(" / "),
     sharedExpectedUpdatedAt: expectedUpdatedAt,
+    reason: "",
+  };
+}
+
+export function makeReassignQrForm(): Extract<ScanEditForm, { action: "reassignQr" }> {
+  return {
+    action: "reassignQr",
+    replacementQrCode: "",
     reason: "",
   };
 }
